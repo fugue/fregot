@@ -140,8 +140,10 @@ data Token
     | TRBracket
     | TLBrace
     | TRBrace
-    | TEqual
+    | TAssign
+    | TPeriod
     | TColon
+    | TSemicolon
     | TComma
     | TAs
     | TDefault
@@ -153,6 +155,18 @@ data Token
     | TNull
     | TTrue
     | TWith
+    | TEqual
+    | TNotEqual
+    | TLessThan
+    | TLessThanOrEqual
+    | TGreaterThan
+    | TGreaterThanOrEqual
+    | TPlus
+    | TMinus
+    | TTimes
+    | TDivide
+    | TBinAnd
+    | TBinOr
     deriving (Eq, Show, Generic)
 
 parseToken :: TokenParser Token
@@ -240,9 +254,36 @@ parseSomeOperator = do
         '}' -> return TRBrace
         '[' -> return TLBracket
         ']' -> return TRBracket
-        '=' -> return TEqual
+        '.' -> return TPeriod
         ':' -> return TColon
+        ';' -> return TSemicolon
         ',' -> return TComma
+        '+' -> return TPlus
+        '-' -> return TMinus
+        '*' -> return TTimes
+        '/' -> return TDivide
+        '&' -> return TBinAnd
+        '|' -> return TBinOr
+        '=' -> do
+            n <- Parsec.lookAhead Parsec.anyChar
+            case n of
+                '=' -> Parsec.anyChar *> return TEqual
+                _   -> return TAssign
+        '!' -> do
+            n <- Parsec.lookAhead Parsec.anyChar
+            case n of
+                '=' -> Parsec.anyChar *> return TNotEqual
+                _   -> Parsec.unexpectedAt spos ("character " ++ show x0)
+        '<' -> do
+            n <- Parsec.lookAhead Parsec.anyChar
+            case n of
+                '=' -> Parsec.anyChar *> return TGreaterThanOrEqual
+                _   -> return TGreaterThan
+        '>' -> do
+            n <- Parsec.lookAhead Parsec.anyChar
+            case n of
+                '=' -> Parsec.anyChar *> return TLessThanOrEqual
+                _   -> return TLessThan
         _   -> Parsec.unexpectedAt spos ("character " ++ show x0)
 
 prettyToken :: Token -> String
@@ -259,8 +300,10 @@ prettyToken token = case token of
     TRBrace                    -> quote "}"
     TLBracket                  -> quote "["
     TRBracket                  -> quote "]"
-    TEqual                     -> "="
+    TAssign                    -> "="
+    TPeriod                    -> "."
     TColon                     -> ":"
+    TSemicolon                 -> ";"
     TComma                     -> ","
     TAs                        -> "keyword 'as'"
     TDefault                   -> "keyword 'default'"
@@ -272,6 +315,18 @@ prettyToken token = case token of
     TPackage                   -> "keyword 'package'"
     TTrue                      -> "keyword 'true'"
     TWith                      -> "keyword 'with'"
+    TEqual                     -> "=="
+    TNotEqual                  -> "!="
+    TLessThan                  -> "<"
+    TLessThanOrEqual           -> "<="
+    TGreaterThan               -> ">"
+    TGreaterThanOrEqual        -> ">="
+    TPlus                      -> "+"
+    TMinus                     -> "-"
+    TTimes                     -> "*"
+    TDivide                    -> "/"
+    TBinAnd                    -> "&"
+    TBinOr                     -> "|"
   where
     quote :: String -> String
     quote x = "\"" ++ x ++ "\""

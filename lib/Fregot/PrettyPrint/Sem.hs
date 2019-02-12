@@ -8,6 +8,7 @@ module Fregot.PrettyPrint.Sem
     , header
     , hint
     , code
+    , keyword
     , literal
     , punctuation
 
@@ -29,6 +30,7 @@ data Sem
     | Hint
     | Code
 
+    | Keyword
     | Literal
     | Punctuation
     deriving (Generic, Show)
@@ -50,7 +52,8 @@ hint = annotate Hint
 code :: SemDoc -> SemDoc
 code = annotate Code
 
-literal, punctuation :: SemDoc -> SemDoc
+keyword, literal, punctuation :: SemDoc -> SemDoc
+keyword     = annotate Keyword
 literal     = annotate Literal
 punctuation = annotate Punctuation
 
@@ -59,6 +62,8 @@ semToColor Error       = Ansi.Red
 semToColor Header      = Ansi.Blue
 semToColor Hint        = Ansi.Green
 semToColor Code        = Ansi.Yellow
+
+semToColor Keyword     = Ansi.Blue
 semToColor Literal     = Ansi.Red
 semToColor Punctuation = Ansi.Yellow
 

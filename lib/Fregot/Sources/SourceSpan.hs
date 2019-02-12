@@ -19,9 +19,11 @@ module Fregot.Sources.SourceSpan
 
     , sourceSpanToSourcePos
     , sourcePosToSourceSpan
+
+    , unsafeMergeSourceSpan
     ) where
 
-import           Control.Lens          ((^.))
+import           Control.Lens          ((&), (.~), (^.))
 import           Control.Lens.TH       (makeLenses)
 import           Data.Maybe            (fromMaybe, isNothing)
 import qualified Data.Text             as T
@@ -116,3 +118,11 @@ sourcePosToSourceSpan sp pos = SourceSpan
     }
   where
     p = Position (Parsec.sourceLine pos) (Parsec.sourceColumn pos)
+
+unsafeMergeSourceSpan :: SourceSpan -> SourceSpan -> SourceSpan
+unsafeMergeSourceSpan x y
+    | x ^. sourcePointer /= y ^. sourcePointer = error
+        "Fregot.Sources.unsafeMergeSourceSpan: source pointer mismatch"
+    | otherwise = x
+        & start .~ (min (x ^. start) (y ^. start))
+        & end   .~ (max (x ^. end)   (y ^. end))

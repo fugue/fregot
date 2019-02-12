@@ -48,6 +48,7 @@ import qualified Data.Text.Lazy                    as TL
 import           Prelude                           hiding (error)
 import qualified System.Console.ANSI               as Ansi
 import qualified System.IO.Extended                as IO
+import qualified Data.Scientific as Scientific
 import qualified Text.Blaze.Html                   as Html
 import qualified Text.Blaze.Html.Renderer.Text     as Html
 import           Text.PrettyPrint.Annotated.Leijen hiding ((<>))
@@ -162,6 +163,11 @@ instance Pretty a Integer where
 
 instance Pretty a Double where
     pretty = double
+
+instance Pretty a Scientific.Scientific where
+    pretty s = case Scientific.floatingOrInteger s of
+        Left  x -> pretty (x :: Double)
+        Right x -> pretty (x :: Integer)
 
 instance Pretty a T.Text where
     pretty = string . T.unpack

@@ -17,24 +17,30 @@ Library
 
   Exposed-modules:
     Fregot.Error
+    Fregot.Eval
+    Fregot.Eval.Value
+    Fregot.Eval.Rules
     Fregot.Lexer
     Fregot.Lexer.Comment
     Fregot.Lexer.Internal
     Fregot.Lexer.Position
     Fregot.Lexer.String
     Fregot.Parser.Internal
-    Fregot.Parser.Token
     Fregot.Parser.Sugar
+    Fregot.Parser.Token
     Fregot.PrettyPrint
     Fregot.PrettyPrint.Internal
     Fregot.PrettyPrint.Sem
     Fregot.Repl
+    Fregot.Repl.Multiline
     Fregot.Sources
     Fregot.Sources.SourceSpan
     Fregot.Sugar
 
     Control.Monad.Parachute
+    Data.DisjointSets
 
+    Control.Monad.Extended
     Data.Aeson.TH.Extended
     Data.Vector.Extended
     System.IO.Extended
