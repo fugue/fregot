@@ -13,7 +13,7 @@ import qualified Data.HashMap.Strict       as HMS
 import           Data.Maybe                (fromMaybe)
 import           Fregot.Sources.SourceSpan
 import           Fregot.Sugar
-import           Prelude                   hiding (head, lookup)
+import           Prelude                   hiding (lookup)
 
 data Rules = Rules
     { _table :: !(HMS.HashMap Var [Rule SourceSpan])
@@ -27,7 +27,7 @@ empty = Rules HMS.empty
 -- | TODO: Error out if arity is wrong.
 insert :: Rule SourceSpan -> Rules -> Rules
 insert rule rules = rules &
-    table %~ (HMS.insertWith (++) (rule ^. head . name) [rule])
+    table %~ (HMS.insertWith (++) (rule ^. ruleHead . ruleName) [rule])
 
 lookup :: Var -> Rules -> [Rule SourceSpan]
 lookup var = fromMaybe [] . HMS.lookup var . (^. table)

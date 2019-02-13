@@ -5,9 +5,12 @@
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE TemplateHaskell            #-}
 module Fregot.Sugar
-    ( Var (..)
-    , Rule (..), head, body
-    , RuleHead (..), name, ann, index, value
+    ( PackageName (..)
+    , Package (..), packageName, packagePolicy
+
+    , Var (..)
+    , Rule (..), ruleHead, ruleBody
+    , RuleHead (..), ruleName, ruleAnn, ruleIndex, ruleValue
     , Literal (..)
     , Expr (..)
     , Term (..)
@@ -27,7 +30,14 @@ import           Data.Scientific    (Scientific)
 import qualified Data.Text          as T
 import           Fregot.PrettyPrint ((<$$>), (<+>), (<+>?))
 import qualified Fregot.PrettyPrint as PP
-import           Prelude            hiding (head)
+
+newtype PackageName = PackageName {unPackageName :: [T.Text]}
+    deriving (Hashable, Eq, Ord, Show)
+
+data Package a = Package
+    { _packageName   :: !PackageName
+    , _packagePolicy :: ![Rule a]
+    } deriving (Show)
 
 newtype Var = Var {unVar :: T.Text}
     deriving (Hashable, Eq, Ord, Show)
@@ -35,17 +45,17 @@ newtype Var = Var {unVar :: T.Text}
 -- TODO:
 -- * default
 data Rule a = Rule
-    { _head :: !(RuleHead a)
-    , _body :: ![Literal a]
+    { _ruleHead :: !(RuleHead a)
+    , _ruleBody :: ![Literal a]
     } deriving (Show)
 
 -- TODO
 -- * args
 data RuleHead a = RuleHead
-    { _name  :: !Var
-    , _ann   :: !a
-    , _index :: !(Maybe (Term a))
-    , _value :: !(Maybe (Term a))
+    { _ruleName  :: !Var
+    , _ruleAnn   :: !a
+    , _ruleIndex :: !(Maybe (Term a))
+    , _ruleValue :: !(Maybe (Term a))
     } deriving (Show)
 
 -- TODO:
@@ -102,16 +112,25 @@ data BinOp
     | DivideO
     deriving (Show)
 
+$(makeLenses ''Package)
 $(makeLenses ''Rule)
 $(makeLenses ''RuleHead)
+
+instance PP.Pretty a PackageName where
+    pretty = PP.pretty . T.intercalate "." . unPackageName
+
+instance PP.Pretty PP.Sem (Package a) where
+    pretty pkg =
+        PP.keyword "package" <+> PP.pretty (pkg ^. packageName) <$$>
+        PP.vcat2 (map PP.pretty (pkg ^. packagePolicy))
 
 instance PP.Pretty a Var where
     pretty = PP.pretty . unVar
 
 instance PP.Pretty PP.Sem (Rule a) where
     pretty r =
-        PP.pretty (r ^. head) <+>?
-        (case r ^. body of
+        PP.pretty (r ^. ruleHead) <+>?
+        (case r ^. ruleBody of
             [] -> Nothing
             bs -> Just $
                 PP.punctuation "{" <$$>
@@ -120,12 +139,12 @@ instance PP.Pretty PP.Sem (Rule a) where
 
 instance PP.Pretty PP.Sem (RuleHead a) where
     pretty r =
-        PP.pretty (r ^. name) <>
-        (case r ^. index of
+        PP.pretty (r ^. ruleName) <>
+        (case r ^. ruleIndex of
             Nothing  -> mempty
             Just idx ->
                 PP.punctuation "[" <> PP.pretty idx <> PP.punctuation "]") <>
-        (case r ^. value of
+        (case r ^. ruleValue of
             Nothing  -> mempty
             Just val -> PP.space <>
                 PP.punctuation "=" <+> PP.pretty val)

@@ -28,7 +28,6 @@ import qualified Fregot.Repl.Multiline     as Multiline
 import qualified Fregot.Sources            as Sources
 import           Fregot.Sources.SourceSpan (SourceSpan)
 import           Fregot.Sugar
-import           Prelude                   hiding (head)
 import qualified System.Console.Haskeline  as Hl
 import qualified System.IO.Extended        as IO
 
@@ -69,12 +68,15 @@ parseRuleOrExpr _h input = do
     sources = Sources.insert sourcep input Sources.empty
 
     ruleToExpr r
-        | null (r ^. body)
-        , isNothing (r ^. head . value) = case r ^. head . index of
-            Nothing -> Just $ TermE undefined $
-                VarT undefined (r ^. head . name)
-            Just idx -> Just $ TermE undefined $
-                RefT undefined undefined (r ^. head . name) [RefBrackArg idx]
+        | null (r ^. ruleBody)
+        , isNothing (r ^. ruleHead . ruleValue) =
+            case r ^. ruleHead . ruleIndex of
+                -- TODO (jaspervdj): undefined
+                Nothing -> Just $ TermE undefined $
+                    VarT undefined (r ^. ruleHead . ruleName)
+                Just idx -> Just $ TermE undefined $
+                    RefT undefined undefined
+                        (r ^. ruleHead . ruleName) [RefBrackArg idx]
 
         | otherwise = Nothing
 

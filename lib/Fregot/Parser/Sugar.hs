@@ -1,6 +1,7 @@
 {-# LANGUAGE RecordWildCards #-}
 module Fregot.Parser.Sugar
-    ( rule
+    ( package
+    , rule
     , expr
     ) where
 
@@ -14,27 +15,39 @@ import           Prelude                   hiding (head)
 import qualified Text.Parsec               as Parsec
 import qualified Text.Parsec.Expr          as Parsec
 
+parsePackageName :: FregotParser PackageName
+parsePackageName =
+    PackageName <$> Parsec.sepBy1 Tok.var (Tok.symbol Tok.TPeriod)
+
+package :: FregotParser (Package SourceSpan)
+package = Package
+    <$> parsePackageHead
+    <*> Parsec.many rule
+
+parsePackageHead :: FregotParser PackageName
+parsePackageHead = Tok.symbol Tok.TPackage *> parsePackageName
+
 var :: FregotParser Var
 var = Var <$> Tok.var
 
 rule :: FregotParser (Rule SourceSpan)
-rule = Rule <$> ruleHead <*> Parsec.option [] ruleBody
+rule = Rule <$> parseRuleHead <*> Parsec.option [] parseRuleBody
 
-ruleHead :: FregotParser (RuleHead SourceSpan)
-ruleHead = withSourceSpan $ do
-    _name <- var
-    _index <- Parsec.optionMaybe $ do
+parseRuleHead :: FregotParser (RuleHead SourceSpan)
+parseRuleHead = withSourceSpan $ do
+    _ruleName <- var
+    _ruleIndex <- Parsec.optionMaybe $ do
         Tok.symbol Tok.TLBracket
         t <- term
         expectToken Tok.TRBracket
         return t
-    _value <- Parsec.optionMaybe $ do
+    _ruleValue <- Parsec.optionMaybe $ do
         Tok.symbol Tok.TAssign
         term
-    return $ \_ann -> RuleHead {..}
+    return $ \_ruleAnn -> RuleHead {..}
 
-ruleBody :: FregotParser [Literal SourceSpan]
-ruleBody = do
+parseRuleBody :: FregotParser [Literal SourceSpan]
+parseRuleBody = do
     Tok.symbol Tok.TLBrace
     lits <- blockOrSemi literal
     Tok.symbol Tok.TRBrace

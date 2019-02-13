@@ -30,7 +30,6 @@ import           Fregot.Eval.Value
 import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources.SourceSpan (SourceSpan)
 import           Fregot.Sugar
-import           Prelude                   hiding (head)
 
 newtype Scope = Scope {unScope :: HMS.HashMap Var Value}
     deriving (Monoid, Semigroup)
@@ -141,7 +140,7 @@ evalTerm (RefT _ _ v args) = do
         -- TODO(jaspervdj): Add a check for consistent rule arity.
         [RefBrackArg x]
                 | r0 : _ <- rs
-                , isJust (r0 ^. head . index) -> do
+                , isJust (r0 ^. ruleHead . ruleIndex) -> do
             y <- evalTerm x
             branch $ map (evalRule (Just y)) rs
         _ -> do
@@ -229,20 +228,20 @@ evalRefArg indexee refArg = do
 
 evalRule :: Maybe Value -> Rule a -> EvalM Value
 evalRule mbIndex rule = clearContext $ do
-    case (mbIndex, rule ^. head . index) of
-        (Nothing, Nothing)   -> go (rule ^. body)
+    case (mbIndex, rule ^. ruleHead . ruleIndex) of
+        (Nothing, Nothing)   -> go (rule ^. ruleBody)
         (Just arg, Just tpl) -> do
             tplv <- evalTerm tpl
             unify arg tplv
-            go (rule ^. body)
+            go (rule ^. ruleBody)
         (Just _, Nothing) -> fail $
             "evalRule: got argument for rule " ++
-            show (PP.pretty (rule ^. head . name)) ++
+            show (PP.pretty (rule ^. ruleHead . ruleName)) ++
             " but didn't expect one"
         (Nothing, Just _) -> fail $
             "other arity error"
   where
-    go [] = case rule ^. head . value of
+    go [] = case rule ^. ruleHead . ruleValue of
         Nothing   -> return $ BoolV True
         Just term -> evalTerm term
 
