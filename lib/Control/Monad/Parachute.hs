@@ -7,6 +7,8 @@ module Control.Monad.Parachute
     , tellErrors
     ) where
 
+import           Control.Monad.Trans (MonadIO (..))
+
 data ParachuteResult e a
     = Ok !a
     | Fatal
@@ -31,6 +33,11 @@ instance Monad m => Monad (ParachuteT e m) where
         case ma of
             Fatal -> pure (errors1, Fatal)
             Ok a  -> unParachuteT (g a) errors1
+
+instance MonadIO m => MonadIO (ParachuteT e m) where
+    liftIO io = ParachuteT $ \errors -> do
+        x <- liftIO io
+        pure (errors, Ok x)
 
 runParachuteT :: Monad m => ParachuteT e m a -> m ([e], Maybe a)
 runParachuteT p = do

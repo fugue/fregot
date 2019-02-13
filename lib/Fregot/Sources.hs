@@ -10,23 +10,29 @@ module Fregot.Sources
     , lookup
     , insert
     , delete
+
+    , Handle
+    , newHandle
     ) where
 
 import           Data.Hashable       (Hashable)
 import qualified Data.HashMap.Strict as HMS
 import           Data.Semigroup      (Semigroup)
 import qualified Data.Text           as T
+import qualified Data.IORef as IORef
 import           GHC.Generics
 import           Prelude             hiding (lookup)
 
 data SourcePointer
     = ReplInput Int T.Text
+    | FileInput FilePath
     deriving (Eq, Generic, Ord, Show)
 
 instance Hashable SourcePointer
 
 describeSourcePointer :: SourcePointer -> String
 describeSourcePointer (ReplInput _ txt) = T.unpack txt
+describeSourcePointer (FileInput p)     = p
 
 newtype Sources = Sources
     { unSourceStore :: HMS.HashMap SourcePointer T.Text
@@ -43,3 +49,8 @@ insert sp txt = Sources . HMS.insert sp txt . unSourceStore
 
 delete :: SourcePointer -> Sources -> Sources
 delete sp = Sources . HMS.delete sp . unSourceStore
+
+type Handle = IORef.IORef Sources
+
+newHandle :: IO Handle
+newHandle = IORef.newIORef empty

@@ -120,9 +120,9 @@ instance PP.Pretty a PackageName where
     pretty = PP.pretty . T.intercalate "." . unPackageName
 
 instance PP.Pretty PP.Sem (Package a) where
-    pretty pkg =
-        PP.keyword "package" <+> PP.pretty (pkg ^. packageName) <$$>
-        PP.vcat2 (map PP.pretty (pkg ^. packagePolicy))
+    pretty pkg = PP.vcat2 $
+        (PP.keyword "package" <+> PP.pretty (pkg ^. packageName)) :
+        map PP.pretty (pkg ^. packagePolicy)
 
 instance PP.Pretty a Var where
     pretty = PP.pretty . unVar

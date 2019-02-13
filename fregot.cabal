@@ -20,11 +20,13 @@ Library
     Fregot.Eval
     Fregot.Eval.Value
     Fregot.Eval.Rules
+    Fregot.Interpreter
     Fregot.Lexer
     Fregot.Lexer.Comment
     Fregot.Lexer.Internal
     Fregot.Lexer.Position
     Fregot.Lexer.String
+    Fregot.Parser
     Fregot.Parser.Internal
     Fregot.Parser.Sugar
     Fregot.Parser.Token
@@ -36,12 +38,14 @@ Library
     Fregot.Sources
     Fregot.Sources.SourceSpan
     Fregot.Sugar
+    Fregot.Test
 
     Control.Monad.Parachute
     Data.DisjointSets
 
     Control.Monad.Extended
     Data.Aeson.TH.Extended
+    Data.IORef.Extended
     Data.Vector.Extended
     System.IO.Extended
     Text.Parsec.Extended
@@ -67,5 +71,11 @@ Executable fregot-repl
   Main-is:           Main.hs
   Default-language:  Haskell2010
   Ghc-options:       -Wall -Werror -rtsopts -threaded
-  build-depends:
-    base, fregot
+  build-depends:     base, fregot
+
+Executable fregot-test
+  Hs-source-dirs:    src/fregot-test
+  Main-is:           Main.hs
+  Default-language:  Haskell2010
+  Ghc-options:       -Wall -Werror -rtsopts -threaded
+  build-depends:     base, fregot
