@@ -19,7 +19,7 @@ module Fregot.Eval
     , evalTerm
     ) where
 
-import           Control.Lens               (use, view, (%=), (.~), (&), (^.),
+import           Control.Lens               (use, view, (%=), (&), (.~), (^.),
                                              _3)
 import           Control.Lens.TH            (makeLenses)
 import           Control.Monad.Extended     (foldM, forM)
@@ -81,7 +81,7 @@ instance Applicative EvalM where
     EvalM mf <*> EvalM mx = EvalM $ \rs ctx0 -> do
         row1 <- mf rs ctx0
         row2 <- mx rs (row1 ^. rowContext)
-        return $! row2 & rowValue .~ ((row1 ^. rowValue) (row2 ^. rowValue))
+        return $! row2 & rowValue .~ (row1 ^. rowValue) (row2 ^. rowValue)
 
 instance Monad EvalM where
     EvalM mx >>= f = EvalM $ \rs ctx0 -> do
@@ -134,6 +134,14 @@ clearContext mx = do
     return x
 
 --------------------------------------------------------------------------------
+
+ground :: EvalM Value -> EvalM Value
+ground mval = do
+    val <- mval
+    case val of
+        FreeV v   -> fail $ "Unknown variable: " ++ show (PP.pretty v)
+        WildcardV -> fail $ "Unknown variable: _"
+        _         -> return val
 
 evalExpr :: Expr a -> EvalM Value
 evalExpr (TermE _ t) = evalTerm t
@@ -265,10 +273,10 @@ evalRuleDefinition mbIndex ruleDef = clearContext $ do
 
     go (lit : lits)
         | lit ^. literalNegation = do
-            negation trueish $ evalExpr $ lit ^. literalExpr
+            negation trueish $ ground $ evalExpr $ lit ^. literalExpr
             go lits
         | otherwise = do
-            r <- evalExpr $ lit ^. literalExpr
+            r <- ground $ evalExpr $ lit ^. literalExpr
             if trueish r then go lits else cut
 
     trueish (BoolV False) = False
