@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 module Fregot.Test
     ( main
     ) where
@@ -11,6 +12,7 @@ import qualified Fregot.Error            as Error
 import qualified Fregot.Eval             as Eval
 import qualified Fregot.Eval.Value       as Value
 import qualified Fregot.Interpreter      as Interpreter
+import qualified Fregot.PrettyPrint      as PP
 import qualified Fregot.Sources          as Sources
 import           Fregot.Sugar            (PackageName, Var)
 import qualified Fregot.Sugar            as Sugar
@@ -24,8 +26,13 @@ runTest h pkgname rule = do
         "Running test " <> Sugar.packageNameToString pkgname <>
         "." <> Sugar.varToString rule <> "..."
     doc <- Interpreter.evalVar h pkgname rule
+
+    forM_ doc $ \row -> liftIO $
+        PP.hPutSemDoc IO.stderr $ "=" PP.<+> PP.pretty row
     liftIO $ IO.hPutStrLn IO.stderr $
-        if all (isTrue . view Eval.rowValue) doc then "OK" else "FAIL"
+        case doc of
+            (_ : _) | all (isTrue . view Eval.rowValue) doc -> "OK"
+            _                                               -> "FAIL"
   where
     isTrue (Value.BoolV b) = b
     isTrue _               = False
