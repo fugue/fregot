@@ -3,9 +3,10 @@
 module Fregot.Interpreter
     ( InterpreterM
     , Handle
-    , withHandle
-
+    , newHandle
     , loadModule
+    , insertRule
+    , evalExpr
     ) where
 
 import           Control.Lens               ((^.))
@@ -19,12 +20,14 @@ import qualified Data.IORef.Extended        as IORef
 import           Data.Maybe                 (fromMaybe)
 import qualified Data.Text.IO               as T
 import           Fregot.Error               (Error)
+import qualified Fregot.Eval                as Eval
 import           Fregot.Interpreter.Package (Package)
 import qualified Fregot.Interpreter.Package as Package
 import qualified Fregot.Parser              as Parser
 import qualified Fregot.PrettyPrint         as PP
 import qualified Fregot.Sources             as Sources
 import           Fregot.Sources.SourceSpan  (SourceSpan)
+import           Fregot.Sugar               (PackageName)
 import qualified Fregot.Sugar               as Sugar
 import qualified System.IO                  as IO
 
@@ -32,18 +35,17 @@ type InterpreterM a = ParachuteT Error IO a
 
 data Handle = Handle
     { _sources  :: !Sources.Handle
-    , _packages :: !(IORef (HMS.HashMap Sugar.PackageName Package))
+    , _packages :: !(IORef (HMS.HashMap PackageName Package))
     }
 
 $(makeLenses ''Handle)
 
-withHandle
+newHandle
     :: Sources.Handle
-    -> (Handle -> InterpreterM a)
-    -> InterpreterM a
-withHandle _sources f = do
+    -> IO Handle
+newHandle _sources = do
     _packages <- liftIO $ IORef.newIORef HMS.empty
-    f Handle {..}
+    return Handle {..}
 
 loadModule :: Handle -> FilePath -> InterpreterM ()
 loadModule h path = do
@@ -59,12 +61,18 @@ loadModule h path = do
   where
     sourcep = Sources.FileInput path
 
+-- | Get a single package by package name.  If the package does not exist, an
+-- empty one is created.
+readPackage :: Handle -> PackageName -> InterpreterM Package
+readPackage h pkgname =
+    fromMaybe (Package.empty pkgname) . HMS.lookup pkgname <$>
+    liftIO (IORef.readIORef (h ^. packages))
+
 -- | TODO(jaspervdj): This will require a lock if we concurrently load modules.
 insertModule :: Handle -> Sugar.Module SourceSpan -> InterpreterM ()
 insertModule h modul = do
     -- Lookup an existing package or create a new one if necessary.
-    package0 <- fromMaybe (Package.empty pkgname) . HMS.lookup pkgname <$>
-        liftIO (IORef.readIORef (h ^. packages))
+    package0 <- readPackage h pkgname
 
     -- One by one, add the rules in the sugared module to the package.
     package1 <- foldM
@@ -77,3 +85,21 @@ insertModule h modul = do
         HMS.insert pkgname package1
   where
     pkgname = modul ^. Sugar.modulePackage
+
+insertRule
+    :: Handle -> PackageName -> Sugar.Rule SourceSpan -> InterpreterM ()
+insertRule h pkgname rule = do
+    package0 <- readPackage h pkgname
+    package1 <- Package.insert [] rule package0
+    liftIO $ IORef.atomicModifyIORef_ (h ^. packages) $
+        HMS.insert pkgname package1
+
+evalExpr
+    :: Handle -> PackageName -> Sugar.Expr SourceSpan
+    -> InterpreterM (Eval.Document Eval.Value)
+evalExpr h pkgname expr = do
+    pkgs <- liftIO $ IORef.readIORef (h ^. packages)
+    pkg  <- readPackage h pkgname
+    let env = Eval.Environment pkgs pkg
+        doc = Eval.runEvalM env (Eval.evalExpr expr)
+    return doc

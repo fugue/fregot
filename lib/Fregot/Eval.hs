@@ -5,7 +5,10 @@
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE TemplateHaskell            #-}
 module Fregot.Eval
-    ( Rules
+    ( Environment (..), packages, package
+
+    , Value
+    , Document
 
     , EvalM
     , runEvalM
@@ -14,21 +17,20 @@ module Fregot.Eval
     , evalTerm
     ) where
 
-import           Control.Lens              (use, view, (%=), (^.), _3)
-import           Control.Lens.TH           (makeLenses)
-import           Control.Monad.Extended    (foldM, forM)
-import           Control.Monad.Reader      (MonadReader (..), ask)
-import           Control.Monad.State       (MonadState (..))
-import qualified Data.DisjointSets         as DJ
-import qualified Data.HashMap.Strict       as HMS
-import           Data.Maybe                (isJust)
-import qualified Data.Scientific           as Scientific
-import qualified Data.Vector               as V
-import           Fregot.Eval.Rules         (Rules)
-import qualified Fregot.Eval.Rules         as Rules
+import           Control.Lens               (use, view, (%=), (^.), _3)
+import           Control.Lens.TH            (makeLenses)
+import           Control.Monad.Extended     (foldM, forM)
+import           Control.Monad.Reader       (MonadReader (..), ask)
+import           Control.Monad.State        (MonadState (..))
+import qualified Data.DisjointSets          as DJ
+import qualified Data.HashMap.Strict        as HMS
+import           Data.Maybe                 (isJust)
+import qualified Data.Scientific            as Scientific
+import qualified Data.Vector                as V
 import           Fregot.Eval.Value
-import qualified Fregot.PrettyPrint        as PP
-import           Fregot.Sources.SourceSpan (SourceSpan)
+import           Fregot.Interpreter.Package (Package)
+import qualified Fregot.Interpreter.Package as Package
+import qualified Fregot.PrettyPrint         as PP
 import           Fregot.Sugar
 
 newtype Scope = Scope {unScope :: HMS.HashMap Var Value}
@@ -57,7 +59,14 @@ type Document a = [Row a]
 
 --------------------------------------------------------------------------------
 
-newtype EvalM a = EvalM {unBranchM :: Rules -> Context -> [Row a]}
+data Environment = Environment
+    { _packages :: !(HMS.HashMap PackageName Package)
+    , _package  :: !Package
+    } deriving (Show)
+
+$(makeLenses ''Environment)
+
+newtype EvalM a = EvalM {unBranchM :: Environment -> Context -> [Row a]}
     deriving (Functor)
 
 instance Applicative EvalM where
@@ -72,7 +81,7 @@ instance Monad EvalM where
         Row ctx1 x <- mx rs ctx0
         unBranchM (f x) rs ctx1
 
-instance MonadReader Rules EvalM where
+instance MonadReader Environment EvalM where
     ask = EvalM $ \rs ctx -> pure $! Row ctx rs
     local l (EvalM f) = EvalM $ \rs ctx -> f (l rs) ctx
 
@@ -81,7 +90,7 @@ instance MonadState Context EvalM where
     put ctx = EvalM $ \_ _    -> [Row ctx ()]
     state f = EvalM $ \_ ctx0 -> let (x, ctx1) = f ctx0 in [Row ctx1 x]
 
-runEvalM :: Rules -> EvalM a -> Document a
+runEvalM :: Environment -> EvalM a -> Document a
 runEvalM rules0 (EvalM f) = f rules0 emptyContext
 
 branch :: [EvalM a] -> EvalM a
@@ -104,10 +113,10 @@ unsafeBind root (FreeV alpha) =
 unsafeBind v val =
     scope %= Scope . HMS.insert v val . unScope
 
-lookupRule :: Var -> EvalM [Rule SourceSpan]
+lookupRule :: Var -> EvalM [Package.RuleDefinition]
 lookupRule root = do
-    rules0 <- ask
-    return $ Rules.lookup root rules0
+    env0 <- ask
+    return $ Package.lookup root (env0 ^. package)
 
 clearContext :: EvalM a -> EvalM a
 clearContext mx = do
@@ -140,7 +149,7 @@ evalTerm (RefT _ _ v args) = do
         -- TODO(jaspervdj): Add a check for consistent rule arity.
         [RefBrackArg x]
                 | r0 : _ <- rs
-                , isJust (r0 ^. ruleHead . ruleIndex) -> do
+                , isJust (r0 ^. Package.ruleDefRule . ruleHead . ruleIndex) -> do
             y <- evalTerm x
             branch $ map (evalRule (Just y)) rs
         _ -> do
@@ -226,8 +235,8 @@ evalRefArg indexee refArg = do
     getRefArgTerm (RefBrackArg t)       = t
     getRefArgTerm (RefDotArg a (Var k)) = ScalarT a (String k)
 
-evalRule :: Maybe Value -> Rule a -> EvalM Value
-evalRule mbIndex rule = clearContext $ do
+evalRule :: Maybe Value -> Package.RuleDefinition -> EvalM Value
+evalRule mbIndex ruleDef = clearContext $ do
     case (mbIndex, rule ^. ruleHead . ruleIndex) of
         (Nothing, Nothing)   -> go (rule ^. ruleBody)
         (Just arg, Just tpl) -> do
@@ -241,6 +250,8 @@ evalRule mbIndex rule = clearContext $ do
         (Nothing, Just _) -> fail $
             "other arity error"
   where
+    rule = ruleDef ^. Package.ruleDefRule
+
     go [] = case rule ^. ruleHead . ruleValue of
         Nothing   -> return $ BoolV True
         Just term -> evalTerm term

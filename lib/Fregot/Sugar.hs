@@ -30,12 +30,16 @@ import           Control.Lens.TH    (makeLenses)
 import           Data.Hashable      (Hashable (..))
 import qualified Data.List          as L
 import           Data.Scientific    (Scientific)
+import           Data.String        (IsString (..))
 import qualified Data.Text          as T
 import           Fregot.PrettyPrint ((<$$>), (<+>), (<+>?), (?<+>))
 import qualified Fregot.PrettyPrint as PP
 
 newtype PackageName = PackageName {unPackageName :: [T.Text]}
     deriving (Hashable, Eq, Ord, Show)
+
+instance IsString PackageName where
+    fromString = PackageName . T.split (== '.') . fromString
 
 data Import a = Import
     { _importAnn     :: !a

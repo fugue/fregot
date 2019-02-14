@@ -19,7 +19,6 @@ Library
     Fregot.Error
     Fregot.Eval
     Fregot.Eval.Value
-    Fregot.Eval.Rules
     Fregot.Interpreter
     Fregot.Interpreter.Package
     Fregot.Lexer

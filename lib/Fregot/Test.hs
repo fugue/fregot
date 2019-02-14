@@ -15,11 +15,10 @@ import qualified System.IO               as IO
 main :: IO ()
 main = do
     sources <- Sources.newHandle
-    (errors, _mbResult) <- runParachuteT $
-        Interpreter.withHandle sources $ \interpreter -> do
-            args <- liftIO getArgs
-            forM_ args $ \arg ->
-                Interpreter.loadModule interpreter arg
+    interpreter <- Interpreter.newHandle sources
+    (errors, _mbResult) <- runParachuteT $ do
+        args <- liftIO getArgs
+        forM_ args $ \arg -> Interpreter.loadModule interpreter arg
 
     sources' <- IORef.readIORef sources
     Error.hPutErrors IO.stderr sources' Error.TextFmt errors
