@@ -12,7 +12,7 @@ module Fregot.Sugar
     , Var (..)
     , Rule (..), ruleHead, ruleBody
     , RuleHead (..), ruleName, ruleAnn, ruleIndex, ruleValue
-    , Literal (..)
+    , Literal (..), literalNegation, literalExpr, literalWith
     , Expr (..)
     , Term (..)
     , RefArg (..)
@@ -20,6 +20,7 @@ module Fregot.Sugar
     , Object
     , ObjectKey (..)
     , BinOp (..)
+    , With (..), withWith, withAs
 
     , exprAnn
     ) where
@@ -27,9 +28,10 @@ module Fregot.Sugar
 import           Control.Lens       ((^.))
 import           Control.Lens.TH    (makeLenses)
 import           Data.Hashable      (Hashable (..))
+import qualified Data.List          as L
 import           Data.Scientific    (Scientific)
 import qualified Data.Text          as T
-import           Fregot.PrettyPrint ((<$$>), (<+>), (<+>?))
+import           Fregot.PrettyPrint ((<$$>), (<+>), (<+>?), (?<+>))
 import qualified Fregot.PrettyPrint as PP
 
 newtype PackageName = PackageName {unPackageName :: [T.Text]}
@@ -68,10 +70,11 @@ data RuleHead a = RuleHead
 
 -- TODO:
 -- * with-modifier
-data Literal a
-    = ExprL    (Expr a)
-    | NotExprL (Expr a)
-    deriving (Show)
+data Literal a = Literal
+    { _literalNegation :: !Bool
+    , _literalExpr     :: !(Expr a)
+    , _literalWith     :: ![With a]
+    } deriving (Show)
 
 data Expr a
     = TermE a (Term a)
@@ -120,10 +123,17 @@ data BinOp
     | DivideO
     deriving (Show)
 
+data With a = With
+    { _withWith :: !(Term a)
+    , _withAs   :: !(Term a)
+    } deriving (Show)
+
 $(makeLenses ''Import)
 $(makeLenses ''Package)
 $(makeLenses ''Rule)
 $(makeLenses ''RuleHead)
+$(makeLenses ''Literal)
+$(makeLenses ''With)
 
 instance PP.Pretty a PackageName where
     pretty = PP.pretty . T.intercalate "." . unPackageName
@@ -167,8 +177,14 @@ instance PP.Pretty PP.Sem (RuleHead a) where
                 PP.punctuation "=" <+> PP.pretty val)
 
 instance PP.Pretty PP.Sem (Literal a) where
-    pretty (ExprL e)    = PP.pretty e
-    pretty (NotExprL e) = PP.keyword "not" <+> PP.pretty e
+    pretty lit =
+        (if lit ^. literalNegation
+            then Just (PP.keyword "not")
+            else Nothing) ?<+>
+        PP.pretty (lit ^. literalExpr) <+>?
+        (case lit ^. literalWith of
+            []    -> Nothing
+            withs -> Just $ PP.hcat (L.intersperse " " (map PP.pretty withs)))
 
 instance PP.Pretty PP.Sem (Expr a) where
     pretty (TermE _ t)      = PP.pretty t
@@ -212,6 +228,11 @@ instance PP.Pretty PP.Sem BinOp where
         MinusO              -> "-"
         TimesO              -> "*"
         DivideO             -> "/"
+
+instance PP.Pretty PP.Sem (With a) where
+    pretty with =
+        PP.keyword "with" <+> PP.pretty (with ^. withWith) <+>
+        PP.keyword "as" <+> PP.pretty (with ^. withAs)
 
 exprAnn :: Expr a -> a
 exprAnn = \case

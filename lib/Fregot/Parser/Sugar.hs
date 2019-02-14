@@ -6,6 +6,7 @@ module Fregot.Parser.Sugar
     ) where
 
 import           Control.Applicative       ((<|>))
+import           Data.Functor              (($>))
 import qualified Data.Scientific           as Scientific
 import           Fregot.Parser.Internal
 import qualified Fregot.Parser.Token       as Tok
@@ -88,9 +89,11 @@ blockOrSemi linep =
         return []
 
 literal :: FregotParser (Literal SourceSpan)
-literal =
-    (Tok.symbol Tok.TNot *> (NotExprL <$> unificationExpr)) <|>
-    (ExprL <$> unificationExpr)
+literal = do
+    _literalNegation <- Parsec.option False $ Tok.symbol Tok.TNot $> True
+    _literalExpr <- unificationExpr
+    _literalWith <- Parsec.many parseWith
+    return Literal {..}
 
 unificationExpr :: FregotParser (Expr SourceSpan)
 unificationExpr = toUnification <$> expr
@@ -195,6 +198,14 @@ objectKey = withSourceSpan $
     (do
         s <- scalar
         return $ \ss -> ScalarK ss s)
+
+parseWith :: FregotParser (With SourceSpan)
+parseWith = do
+    Tok.symbol Tok.TWith
+    _withWith <- term
+    Tok.symbol Tok.TAs
+    _withAs <- term
+    return With {..}
 
 -- | An expression between braces separated with commas.  There may be a
 -- trailing comma.  We also need a start and end token.

@@ -245,13 +245,13 @@ evalRule mbIndex rule = clearContext $ do
         Nothing   -> return $ BoolV True
         Just term -> evalTerm term
 
-    go (ExprL e : lits) = do
-        r <- evalExpr e
-        if trueish r then go lits else cut
-
-    go (NotExprL e : lits) = do
-        negation trueish (evalExpr e)
-        go lits
+    go (lit : lits)
+        | lit ^. literalNegation = do
+            negation trueish $ evalExpr $ lit ^. literalExpr
+            go lits
+        | otherwise = do
+            r <- evalExpr $ lit ^. literalExpr
+            if trueish r then go lits else cut
 
     trueish (BoolV False) = False
     trueish _             = True
