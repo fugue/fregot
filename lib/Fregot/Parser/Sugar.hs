@@ -22,10 +22,20 @@ parsePackageName =
 package :: FregotParser (Package SourceSpan)
 package = Package
     <$> parsePackageHead
+    <*> Parsec.many parsePackageImport
     <*> Parsec.many rule
 
 parsePackageHead :: FregotParser PackageName
 parsePackageHead = Tok.symbol Tok.TPackage *> parsePackageName
+
+parsePackageImport :: FregotParser (Import SourceSpan)
+parsePackageImport = withSourceSpan $ do
+    Tok.symbol Tok.TImport
+    _importPackage <- parsePackageName
+    _importAs <- Parsec.optionMaybe $ do
+        Tok.symbol Tok.TAs
+        var
+    return $ \_importAnn -> Import {..}
 
 var :: FregotParser Var
 var = Var <$> Tok.var

@@ -6,7 +6,8 @@
 {-# LANGUAGE TemplateHaskell            #-}
 module Fregot.Sugar
     ( PackageName (..)
-    , Package (..), packageName, packagePolicy
+    , Import (..), importAnn, importPackage, importAs
+    , Package (..), packageName, packageImports, packagePolicy
 
     , Var (..)
     , Rule (..), ruleHead, ruleBody
@@ -34,9 +35,16 @@ import qualified Fregot.PrettyPrint as PP
 newtype PackageName = PackageName {unPackageName :: [T.Text]}
     deriving (Hashable, Eq, Ord, Show)
 
+data Import a = Import
+    { _importAnn     :: !a
+    , _importPackage :: !PackageName
+    , _importAs      :: !(Maybe Var)
+    } deriving (Show)
+
 data Package a = Package
-    { _packageName   :: !PackageName
-    , _packagePolicy :: ![Rule a]
+    { _packageName    :: !PackageName
+    , _packageImports :: ![Import a]
+    , _packagePolicy  :: ![Rule a]
     } deriving (Show)
 
 newtype Var = Var {unVar :: T.Text}
@@ -112,6 +120,7 @@ data BinOp
     | DivideO
     deriving (Show)
 
+$(makeLenses ''Import)
 $(makeLenses ''Package)
 $(makeLenses ''Rule)
 $(makeLenses ''RuleHead)
@@ -119,9 +128,17 @@ $(makeLenses ''RuleHead)
 instance PP.Pretty a PackageName where
     pretty = PP.pretty . T.intercalate "." . unPackageName
 
+instance PP.Pretty PP.Sem (Import a) where
+    pretty imp =
+        PP.keyword "import" <+> PP.pretty (imp ^. importPackage) <+>?
+        fmap PP.pretty (imp ^. importAs)
+
 instance PP.Pretty PP.Sem (Package a) where
     pretty pkg = PP.vcat2 $
         (PP.keyword "package" <+> PP.pretty (pkg ^. packageName)) :
+        (case pkg ^. packageImports of
+            []   -> []
+            imps -> [PP.vcat $ map PP.pretty imps]) ++
         map PP.pretty (pkg ^. packagePolicy)
 
 instance PP.Pretty a Var where
