@@ -4,6 +4,7 @@ module Fregot.Interpreter
     ( InterpreterM
     , Handle
     , newHandle
+    , readRules
     , loadModule
     , insertRule
     , evalExpr
@@ -27,7 +28,7 @@ import qualified Fregot.Parser              as Parser
 import qualified Fregot.PrettyPrint         as PP
 import qualified Fregot.Sources             as Sources
 import           Fregot.Sources.SourceSpan  (SourceSpan)
-import           Fregot.Sugar               (PackageName)
+import           Fregot.Sugar               (PackageName, Var)
 import qualified Fregot.Sugar               as Sugar
 import qualified System.IO                  as IO
 
@@ -67,6 +68,16 @@ readPackage :: Handle -> PackageName -> InterpreterM Package
 readPackage h pkgname =
     fromMaybe (Package.empty pkgname) . HMS.lookup pkgname <$>
     liftIO (IORef.readIORef (h ^. packages))
+
+-- | Read all available rules.  This is used to enumerate all rules starting
+-- with `test_` by the tester.
+readRules :: Handle -> InterpreterM [(PackageName, Var)]
+readRules h = do
+    pkgs <- liftIO $ IORef.readIORef (h ^. packages)
+    return $ do
+        (pkgname, pkg) <- HMS.toList pkgs
+        rule           <- Package.rules pkg
+        return (pkgname, rule)
 
 -- | TODO(jaspervdj): This will require a lock if we concurrently load modules.
 insertModule :: Handle -> Sugar.Module SourceSpan -> InterpreterM ()

@@ -7,9 +7,10 @@ module Fregot.Interpreter.Package
     , empty
     , insert
     , lookup
+    , rules
     ) where
 
-import           Control.Lens              ((%~), (&), (^.))
+import           Control.Lens              (view, (%~), (&), (^.))
 import           Control.Lens.TH           (makeLenses)
 import           Control.Monad.Parachute
 import qualified Data.HashMap.Strict       as HMS
@@ -56,3 +57,6 @@ insert imports rule package = return $
 
 lookup :: Var -> Package -> [RuleDefinition]
 lookup var pkg = fromMaybe [] $ HMS.lookup var (pkg ^. packageRules)
+
+rules :: Package -> [Var]
+rules = map fst . HMS.toList . view packageRules

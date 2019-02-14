@@ -19,6 +19,8 @@ main = do
     (errors, _mbResult) <- runParachuteT $ do
         args <- liftIO getArgs
         forM_ args $ \arg -> Interpreter.loadModule interpreter arg
+        rules <- Interpreter.readRules interpreter
+        liftIO $ print rules
 
     sources' <- IORef.readIORef sources
     Error.hPutErrors IO.stderr sources' Error.TextFmt errors
