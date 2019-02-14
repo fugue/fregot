@@ -1,6 +1,6 @@
 {-# LANGUAGE RecordWildCards #-}
 module Fregot.Parser.Sugar
-    ( package
+    ( parseModule
     , rule
     , expr
     ) where
@@ -20,17 +20,17 @@ parsePackageName :: FregotParser PackageName
 parsePackageName =
     PackageName <$> Parsec.sepBy1 Tok.var (Tok.symbol Tok.TPeriod)
 
-package :: FregotParser (Package SourceSpan)
-package = Package
-    <$> parsePackageHead
-    <*> Parsec.many parsePackageImport
+parseModule :: FregotParser (Module SourceSpan)
+parseModule = Module
+    <$> parseModuleHead
+    <*> Parsec.many parseModuleImport
     <*> Parsec.many rule
 
-parsePackageHead :: FregotParser PackageName
-parsePackageHead = Tok.symbol Tok.TPackage *> parsePackageName
+parseModuleHead :: FregotParser PackageName
+parseModuleHead = Tok.symbol Tok.TPackage *> parsePackageName
 
-parsePackageImport :: FregotParser (Import SourceSpan)
-parsePackageImport = withSourceSpan $ do
+parseModuleImport :: FregotParser (Import SourceSpan)
+parseModuleImport = withSourceSpan $ do
     Tok.symbol Tok.TImport
     _importPackage <- parsePackageName
     _importAs <- Parsec.optionMaybe $ do

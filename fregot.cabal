@@ -21,6 +21,7 @@ Library
     Fregot.Eval.Value
     Fregot.Eval.Rules
     Fregot.Interpreter
+    Fregot.Interpreter.Package
     Fregot.Lexer
     Fregot.Lexer.Comment
     Fregot.Lexer.Internal

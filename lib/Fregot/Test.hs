@@ -19,7 +19,7 @@ main = do
         Interpreter.withHandle sources $ \interpreter -> do
             args <- liftIO getArgs
             forM_ args $ \arg ->
-                Interpreter.loadPackageFile interpreter arg
+                Interpreter.loadModule interpreter arg
 
     sources' <- IORef.readIORef sources
     Error.hPutErrors IO.stderr sources' Error.TextFmt errors

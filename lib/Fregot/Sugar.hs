@@ -7,7 +7,7 @@
 module Fregot.Sugar
     ( PackageName (..)
     , Import (..), importAnn, importPackage, importAs
-    , Package (..), packageName, packageImports, packagePolicy
+    , Module (..), modulePackage, moduleImports, modulePolicy
 
     , Var (..)
     , Rule (..), ruleHead, ruleBody
@@ -43,10 +43,10 @@ data Import a = Import
     , _importAs      :: !(Maybe Var)
     } deriving (Show)
 
-data Package a = Package
-    { _packageName    :: !PackageName
-    , _packageImports :: ![Import a]
-    , _packagePolicy  :: ![Rule a]
+data Module a = Module
+    { _modulePackage :: !PackageName
+    , _moduleImports :: ![Import a]
+    , _modulePolicy  :: ![Rule a]
     } deriving (Show)
 
 newtype Var = Var {unVar :: T.Text}
@@ -129,7 +129,7 @@ data With a = With
     } deriving (Show)
 
 $(makeLenses ''Import)
-$(makeLenses ''Package)
+$(makeLenses ''Module)
 $(makeLenses ''Rule)
 $(makeLenses ''RuleHead)
 $(makeLenses ''Literal)
@@ -143,13 +143,13 @@ instance PP.Pretty PP.Sem (Import a) where
         PP.keyword "import" <+> PP.pretty (imp ^. importPackage) <+>?
         fmap PP.pretty (imp ^. importAs)
 
-instance PP.Pretty PP.Sem (Package a) where
+instance PP.Pretty PP.Sem (Module a) where
     pretty pkg = PP.vcat2 $
-        (PP.keyword "package" <+> PP.pretty (pkg ^. packageName)) :
-        (case pkg ^. packageImports of
+        (PP.keyword "package" <+> PP.pretty (pkg ^. modulePackage)) :
+        (case pkg ^. moduleImports of
             []   -> []
             imps -> [PP.vcat $ map PP.pretty imps]) ++
-        map PP.pretty (pkg ^. packagePolicy)
+        map PP.pretty (pkg ^. modulePolicy)
 
 instance PP.Pretty a Var where
     pretty = PP.pretty . unVar

@@ -5,7 +5,7 @@ module Fregot.Interpreter
     , Handle
     , withHandle
 
-    , loadPackageFile
+    , loadModule
     ) where
 
 import           Control.Lens            ((^.))
@@ -35,12 +35,12 @@ withHandle
 withHandle _sources f = do
     f Handle {..}
 
-loadPackageFile :: Handle -> FilePath -> InterpreterM ()
-loadPackageFile h path = do
+loadModule :: Handle -> FilePath -> InterpreterM ()
+loadModule h path = do
     input <- liftIO $ T.readFile path
     liftIO $ IORef.atomicModifyIORef_ (h ^. sources) $
         Sources.insert sourcep input
-    package <- Parser.lexAndParse Parser.package sourcep input
-    liftIO $ PP.hPutSemDoc IO.stdout $ PP.pretty package
+    modul <- Parser.lexAndParse Parser.parseModule sourcep input
+    liftIO $ PP.hPutSemDoc IO.stdout $ PP.pretty modul
   where
     sourcep = Sources.FileInput path
