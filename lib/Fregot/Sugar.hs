@@ -6,10 +6,14 @@
 {-# LANGUAGE TemplateHaskell            #-}
 module Fregot.Sugar
     ( PackageName (..)
+    , packageNameToString, packageNameToText
+
     , Import (..), importAnn, importPackage, importAs
     , Module (..), modulePackage, moduleImports, modulePolicy
 
     , Var (..)
+    , varToString, varToText
+
     , Rule (..), ruleHead, ruleBody
     , RuleHead (..), ruleName, ruleAnn, ruleIndex, ruleValue
     , Literal (..), literalNegation, literalExpr, literalWith
@@ -41,6 +45,12 @@ newtype PackageName = PackageName {unPackageName :: [T.Text]}
 instance IsString PackageName where
     fromString = PackageName . T.split (== '.') . fromString
 
+packageNameToString :: PackageName -> String
+packageNameToString = T.unpack . packageNameToText
+
+packageNameToText :: PackageName -> T.Text
+packageNameToText = T.intercalate "." . unPackageName
+
 data Import a = Import
     { _importAnn     :: !a
     , _importPackage :: !PackageName
@@ -55,6 +65,12 @@ data Module a = Module
 
 newtype Var = Var {unVar :: T.Text}
     deriving (Hashable, Eq, Ord, Show)
+
+varToString :: Var -> String
+varToString = T.unpack . varToText
+
+varToText :: Var -> T.Text
+varToText = unVar
 
 -- TODO:
 -- * default

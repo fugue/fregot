@@ -8,6 +8,7 @@ module Fregot.Interpreter
     , loadModule
     , insertRule
     , evalExpr
+    , evalVar
     ) where
 
 import           Control.Lens               ((^.))
@@ -105,12 +106,20 @@ insertRule h pkgname rule = do
     liftIO $ IORef.atomicModifyIORef_ (h ^. packages) $
         HMS.insert pkgname package1
 
-evalExpr
-    :: Handle -> PackageName -> Sugar.Expr SourceSpan
-    -> InterpreterM (Eval.Document Eval.Value)
-evalExpr h pkgname expr = do
+eval :: Handle -> PackageName -> Eval.EvalM a -> InterpreterM (Eval.Document a)
+eval h pkgname mx = do
     pkgs <- liftIO $ IORef.readIORef (h ^. packages)
     pkg  <- readPackage h pkgname
     let env = Eval.Environment pkgs pkg
-        doc = Eval.runEvalM env (Eval.evalExpr expr)
-    return doc
+        x   = Eval.runEvalM env mx
+    return x
+
+evalExpr
+    :: Handle -> PackageName -> Sugar.Expr SourceSpan
+    -> InterpreterM (Eval.Document Eval.Value)
+evalExpr h pkgname = eval h pkgname . Eval.evalExpr
+
+evalVar
+    :: Handle -> PackageName -> Var
+    -> InterpreterM (Eval.Document Eval.Value)
+evalVar h pkgname = eval h pkgname . Eval.evalVar

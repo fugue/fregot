@@ -9,15 +9,18 @@ module Fregot.Eval
 
     , Value
     , Document
+    , Row, rowValue
 
     , EvalM
     , runEvalM
 
+    , evalVar
     , evalExpr
     , evalTerm
     ) where
 
-import           Control.Lens               (use, view, (%=), (^.), _3)
+import           Control.Lens               (use, view, (%=), (.~), (&), (^.),
+                                             _3)
 import           Control.Lens.TH            (makeLenses)
 import           Control.Monad.Extended     (foldM, forM)
 import           Control.Monad.Reader       (MonadReader (..), ask)
@@ -49,8 +52,12 @@ emptyContext = Context
     , _scope       = mempty
     }
 
-data Row a = Row !Context !a
-    deriving (Functor)
+data Row a = Row
+    { _rowContext :: !Context
+    , _rowValue   :: !a
+    } deriving (Functor)
+
+$(makeLenses ''Row)
 
 instance PP.Pretty PP.Sem a => PP.Pretty PP.Sem (Row a) where
     pretty (Row _ v) = PP.pretty v
@@ -72,9 +79,9 @@ newtype EvalM a = EvalM {unBranchM :: Environment -> Context -> [Row a]}
 instance Applicative EvalM where
     pure x = EvalM $ \_ ctx -> [Row ctx x]
     EvalM mf <*> EvalM mx = EvalM $ \rs ctx0 -> do
-        Row ctx1 f <- mf rs ctx0
-        Row ctx2 x <- mx rs ctx1
-        return $! Row ctx2 (f x)
+        row1 <- mf rs ctx0
+        row2 <- mx rs (row1 ^. rowContext)
+        return $! row2 & rowValue .~ ((row1 ^. rowValue) (row2 ^. rowValue))
 
 instance Monad EvalM where
     EvalM mx >>= f = EvalM $ \rs ctx0 -> do
@@ -151,7 +158,7 @@ evalTerm (RefT _ _ v args) = do
                 | r0 : _ <- rs
                 , isJust (r0 ^. Package.ruleDefRule . ruleHead . ruleIndex) -> do
             y <- evalTerm x
-            branch $ map (evalRule (Just y)) rs
+            branch $ map (evalRuleDefinition (Just y)) rs
         _ -> do
             val <- evalVar v
             foldM evalRefArg val args
@@ -184,7 +191,7 @@ evalVar v = do
             rs <- lookupRule rv
             case rs of
                 [] -> return (FreeV rv)
-                _  -> branch $ map (evalRule Nothing) rs
+                _  -> branch $ map (evalRuleDefinition Nothing) rs
 
 -- NOTE (jaspervdj): I suspect these are roughly the cases we want to care
 -- about:
@@ -235,8 +242,8 @@ evalRefArg indexee refArg = do
     getRefArgTerm (RefBrackArg t)       = t
     getRefArgTerm (RefDotArg a (Var k)) = ScalarT a (String k)
 
-evalRule :: Maybe Value -> Package.RuleDefinition -> EvalM Value
-evalRule mbIndex ruleDef = clearContext $ do
+evalRuleDefinition :: Maybe Value -> Package.RuleDefinition -> EvalM Value
+evalRuleDefinition mbIndex ruleDef = clearContext $ do
     case (mbIndex, rule ^. ruleHead . ruleIndex) of
         (Nothing, Nothing)   -> go (rule ^. ruleBody)
         (Just arg, Just tpl) -> do
@@ -244,7 +251,7 @@ evalRule mbIndex ruleDef = clearContext $ do
             unify arg tplv
             go (rule ^. ruleBody)
         (Just _, Nothing) -> fail $
-            "evalRule: got argument for rule " ++
+            "evalRuleDefinition: got argument for rule " ++
             show (PP.pretty (rule ^. ruleHead . ruleName)) ++
             " but didn't expect one"
         (Nothing, Just _) -> fail $
