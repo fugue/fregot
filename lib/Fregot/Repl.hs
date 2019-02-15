@@ -58,7 +58,6 @@ parseRuleOrExpr h input = do
     (ruleErrors, mbRule) <- runParachuteT $
         Parser.lexAndParse Parser.rule sourcep input
     sauce <- IORef.readIORef (h ^. sources)
-    Error.hPutErrors IO.stderr sauce Error.TextFmt ruleErrors
     case mbRule of
         Just r | Just e <- ruleToExpr r -> do
             Error.hPutErrors IO.stderr sauce Error.TextFmt ruleErrors
