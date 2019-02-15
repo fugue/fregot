@@ -173,40 +173,21 @@ term = withSourceSpan $
         s <- scalar
         return $ \ss -> ScalarT ss s) <|>
     (do
-        -- TODO(jaspervdj): Refactor comprehension parsing (1/3)
-        compHead <- Parsec.try $ do
-            Tok.symbol Tok.TLBracket
-            x0 <- term
-            Tok.symbol Tok.TPipe
-            return x0
-        compBody <- parseUnbracedRuleBody
-        Tok.symbol Tok.TRBracket
-        return $ \ss -> ArrayCompT ss compHead compBody) <|>
+        (x, body) <- comprehension Tok.TLBracket Tok.TRBracket term
+        return $ \ss -> ArrayCompT ss x body) <|>
     (do
         a <- array
         return $ \ss -> ArrayT ss a) <|>
     (do
-        -- TODO(jaspervdj): Refactor comprehension parsing (2/3)
-        compHead <- Parsec.try $ do
-            Tok.symbol Tok.TLBrace
-            x0 <- term
-            Tok.symbol Tok.TPipe
-            return x0
-        compBody <- parseUnbracedRuleBody
-        Tok.symbol Tok.TRBrace
-        return $ \ss -> SetCompT ss compHead compBody) <|>
+        (x, body) <- comprehension Tok.TLBrace Tok.TRBrace term
+        return $ \ss -> SetCompT ss x body) <|>
     (do
-        -- TODO(jaspervdj): Refactor comprehension parsing (3/3)
-        (compK, compX) <- Parsec.try $ do
-            Tok.symbol Tok.TLBrace
+        ((k, x), body) <- comprehension Tok.TLBrace Tok.TRBrace $ do
             k0 <- objectKey
             Tok.symbol Tok.TColon
             x0 <- term
-            Tok.symbol Tok.TPipe
             return (k0, x0)
-        compBody <- parseUnbracedRuleBody
-        Tok.symbol Tok.TRBrace
-        return $ \ss -> ObjectCompT ss compK compX compBody) <|>
+        return $ \ss -> ObjectCompT ss k x body) <|>
     (do
         o <- object
         return $ \ss -> ObjectT ss o)
@@ -265,12 +246,29 @@ parseWith = do
     _withAs <- term
     return With {..}
 
+-- | Parse a comprehension.  These use 'Parsec.try' and should be tried before
+-- parsing regular arrays/objects etc.
+comprehension
+    :: Tok.Token       -- ^ '(' or '{'
+    -> Tok.Token       -- ^ ')' or '}'
+    -> FregotParser a  -- ^ Comprehension head
+    -> FregotParser (a, RuleBody SourceSpan)
+comprehension open close phead = do
+    chead <- Parsec.try $ do
+        Tok.symbol open
+        x <- phead
+        Tok.symbol Tok.TPipe
+        return x
+    cbody <- parseUnbracedRuleBody
+    Tok.symbol close
+    return (chead, cbody)
+
 -- | An expression between braces separated with commas.  There may be a
 -- trailing comma.  We also need a start and end token.
 sepTrailing
-    :: Tok.Token         -- '(' or '{'
-    -> Tok.Token         -- ')' or '}'
-    -> Tok.Token         -- ',' or ';'
+    :: Tok.Token         -- ^ '(' or '{'
+    -> Tok.Token         -- ^ ')' or '}'
+    -> Tok.Token         -- ^ ',' or ';'
     -> FregotParser a    -- ^ Parser
     -> FregotParser [a]  -- ^ Result
 sepTrailing open close comma p = do

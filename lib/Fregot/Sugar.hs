@@ -75,15 +75,11 @@ varToString = T.unpack . varToText
 varToText :: Var -> T.Text
 varToText = unVar
 
--- TODO:
--- * default
 data Rule a = Rule
     { _ruleHead :: !(RuleHead a)
     , _ruleBody :: !(RuleBody a)
     } deriving (Show)
 
--- TODO
--- * args
 data RuleHead a = RuleHead
     { _ruleAnn     :: !a
     , _ruleDefault :: !Bool
@@ -95,8 +91,6 @@ data RuleHead a = RuleHead
 
 type RuleBody a = [Literal a]
 
--- TODO:
--- * with-modifier
 data Literal a = Literal
     { _literalNegation :: !Bool
     , _literalExpr     :: !(Expr a)
