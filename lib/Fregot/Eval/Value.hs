@@ -21,6 +21,7 @@ data Value
     = FreeV   !Var
     | WildcardV
     | StringV !T.Text
+    -- TODO(jaspervdj): This would be cleaner using `IntV` and `DoubleV`.
     | NumberV !Scientific.Scientific
     | BoolV   !Bool
     | ArrayV  !(V.Vector Value)

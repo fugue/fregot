@@ -66,6 +66,9 @@ data Module a = Module
 newtype Var = Var {unVar :: T.Text}
     deriving (Hashable, Eq, Ord, Show)
 
+instance IsString Var where
+    fromString = Var . fromString
+
 varToString :: Var -> String
 varToString = T.unpack . varToText
 

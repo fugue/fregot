@@ -27,6 +27,7 @@ import           Control.Monad.Reader       (MonadReader (..), ask)
 import           Control.Monad.State        (MonadState (..))
 import qualified Data.DisjointSets          as DJ
 import qualified Data.HashMap.Strict        as HMS
+import           Data.Maybe                 (isNothing)
 import qualified Data.Scientific            as Scientific
 import qualified Data.Vector                as V
 import           Fregot.Eval.Value
@@ -103,6 +104,11 @@ branch :: [EvalM a] -> EvalM a
 branch options = EvalM $ \rs ctx -> do
     EvalM opt <- options
     opt rs ctx
+
+unbranch :: EvalM a -> EvalM [a]
+unbranch (EvalM f) = EvalM $ \rs ctx ->
+    let rows = f rs ctx in
+    [Row ctx (map (view rowValue) rows)]
 
 cut :: EvalM a
 cut = EvalM $ \_ _ -> []
@@ -190,8 +196,14 @@ evalTerm (RefT _ _ v args) = do
             val <- evalVar v
             foldM evalRefArg val args
 
-evalTerm (CallT _ _f _args) =
-    fail $ "Not implemented: function call"
+evalTerm (CallT _ f args)
+    -- TODO(jaspervdj): Use a more reliable system to register FFI functions.
+    | f == ["count"] = do
+        vargs <- mapM evalTerm args
+        case vargs of
+            [ArrayV a] -> return $ NumberV $ fromIntegral $ V.length a
+            _          -> fail $ "Bad parameter for count"
+    | otherwise = fail $ "Not implemented: function call: " ++ show f
 
 evalTerm (VarT _ v)
     | unVar v == "_" = return WildcardV
@@ -213,9 +225,9 @@ evalTerm (ObjectT _ o) = do
             _ -> fail "Unsupported object key type"
     return $ ObjectV $ HMS.fromList obj
 
-evalTerm (ArrayCompT _ _ _)    = fail "comprehensions not supported"
-evalTerm (SetCompT _ _ _)      = fail "comprehensions not supported"
-evalTerm (ObjectCompT _ _ _ _) = fail "comprehensions not supported"
+evalTerm (ArrayCompT _ _ _)    = fail "list comprehensions not supported"
+evalTerm (SetCompT _ _ _)      = fail "set comprehensions not supported"
+evalTerm (ObjectCompT _ _ _ _) = fail "object comprehensions not supported"
 
 evalVar :: Var -> EvalM Value
 evalVar v = do
@@ -281,8 +293,17 @@ evalRefArg indexee refArg = do
 
 evalCompiledRule :: Package.CompiledRule -> Maybe Value -> EvalM Value
 evalCompiledRule crule mbIndex =
+    -- If the rule takes an argument, e.g. `resources[id]`, but we refer to it
+    -- without argument, e.g. `count(resources)`, we want to evaluate the
+    -- document to an array again.
+    (if not (crule ^. Package.cruleComplete) && isNothing mbIndex
+        then fmap (ArrayV . V.fromList) . unbranch
+        else id) $
+    -- If the rule is complete, we check the consistency of the result.
     (if crule ^. Package.cruleComplete then requireComplete else id) $
+    -- If there is a default, then we fill it in if the rule yields no rows.
     catchDefault $
+    -- Standard branching evaluation of rule definitions.
     branch
         [ evalRuleDefinition mbIndex def
         | def <- crule ^. Package.cruleDefs
@@ -295,23 +316,30 @@ evalCompiledRule crule mbIndex =
 evalRuleDefinition :: Maybe Value -> Package.RuleDefinition -> EvalM Value
 evalRuleDefinition mbIndex ruleDef = clearContext $ do
     case (mbIndex, rule ^. ruleHead . ruleIndex) of
-        (Nothing, Nothing)   -> go (rule ^. ruleBody)
+        (Nothing, Nothing)   -> evalRuleBody (rule ^. ruleBody) final
         (Just arg, Just tpl) -> do
             tplv <- evalTerm tpl
             unify arg tplv
-            go (rule ^. ruleBody)
+            evalRuleBody (rule ^. ruleBody) final
         (Just _, Nothing) -> fail $
             "evalRuleDefinition: got argument for rule " ++
             show (PP.pretty (rule ^. ruleHead . ruleName)) ++
             " but didn't expect one"
-        (Nothing, Just _) -> fail $
-            "other arity error"
-  where
-    rule = ruleDef ^. Package.ruleDefRule
 
-    go [] = case rule ^. ruleHead . ruleValue of
+        -- If the rule definition has an argument, but we didn't give any, we
+        -- want to evaluate things anyway.
+        (Nothing, Just _) -> evalRuleBody (rule ^. ruleBody) final
+  where
+    rule  = ruleDef ^. Package.ruleDefRule
+    final = case rule ^. ruleHead . ruleValue of
         Nothing   -> return $ BoolV True
         Just term -> evalTerm term
+
+-- | Evaluate the rule body, then perform a continuation.
+evalRuleBody :: RuleBody s -> EvalM a -> EvalM a
+evalRuleBody lits0 final = go lits0
+  where
+    go [] = final
 
     go (lit : lits)
         | lit ^. literalNegation = do
