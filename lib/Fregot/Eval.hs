@@ -185,6 +185,9 @@ evalTerm (RefT _ _ v args) = do
             val <- evalVar v
             foldM evalRefArg val args
 
+evalTerm (CallT _ _f _args) =
+    fail $ "Not implemented: function call"
+
 evalTerm (VarT _ v)
     | unVar v == "_" = return WildcardV
     | otherwise      = evalVar v

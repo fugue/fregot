@@ -96,14 +96,18 @@ data Literal a = Literal
     } deriving (Show)
 
 data Expr a
-    = TermE a (Term a)
-    | UnifyE a (Expr a) (Expr a)
-    | BinOpE a (Expr a) BinOp (Expr a)
+    = TermE   a (Term a)
+    | UnifyE  a (Expr a) (Expr a)
+    | BinOpE  a (Expr a) BinOp (Expr a)
     | ParensE a (Expr a)
     deriving (Show)
 
 data Term a
     = RefT      a a Var [RefArg a]
+    -- NOTE(jaspervdj): According to the grammar, a function call should be an
+    -- expression, not a term.  Putting it here is more permissive though, so I
+    -- hope that won't cause any trouble.
+    | CallT     a [Var] [Term a]
     | VarT      a Var
     | ScalarT   a (Scalar a)
     | ArrayT    a [Expr a]
@@ -215,6 +219,11 @@ instance PP.Pretty PP.Sem (Expr a) where
 
 instance PP.Pretty PP.Sem (Term a) where
     pretty (RefT _ _ v args) = PP.pretty v <> mconcat (map PP.pretty args)
+    pretty (CallT _ vs as)  =
+        mconcat (L.intersperse (PP.punctuation ".") (map PP.pretty vs)) <>
+        PP.punctuation "(" <>
+        PP.commaSep (map PP.pretty as) <>
+        PP.punctuation ")"
     pretty (VarT _ v)        = PP.pretty v
     pretty (ScalarT _ s)     = PP.pretty s
     pretty (ArrayT _ a)      = PP.array a
@@ -274,6 +283,7 @@ termAnn = lens getAnn setAnn
   where
     getAnn = \case
         RefT      a _ _ _ -> a
+        CallT     a _ _   -> a
         VarT      a _     -> a
         ScalarT   a _     -> a
         ArrayT    a _     -> a
@@ -281,6 +291,7 @@ termAnn = lens getAnn setAnn
 
     setAnn t a = case t of
         RefT      _ b v r -> RefT    a b v r
+        CallT     _ f as  -> CallT   a f as
         VarT      _ v     -> VarT    a v
         ScalarT   _ s     -> ScalarT a s
         ArrayT    _ l     -> ArrayT  a l

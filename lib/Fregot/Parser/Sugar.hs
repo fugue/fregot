@@ -146,8 +146,22 @@ term :: FregotParser (Term SourceSpan)
 term = withSourceSpan $
     (do
         (v, vss) <- withSourceSpan $ var >>= \v -> return $ \vss -> (v, vss)
-        as       <- Parsec.many refArg
-        return $ \ss -> if null as then VarT ss v else RefT ss vss v as) <|>
+        refArgs  <- Parsec.many refArg
+
+        let isDotArg (RefDotArg _ _) = True
+            isDotArg (RefBrackArg _) = False
+
+        mbCallArgs <- case all isDotArg refArgs of
+            False -> return Nothing
+            True  -> Parsec.optionMaybe $
+                sepTrailing Tok.TLParen Tok.TRParen Tok.TComma term
+
+        return $ \ss -> case (refArgs, mbCallArgs) of
+            ([], Nothing)   -> VarT ss v
+            (_,  Nothing)   -> RefT ss vss v refArgs
+            (_, Just cargs) -> CallT ss
+                (v : [v' | RefDotArg _ v' <- refArgs])
+                cargs) <|>
     (do
         s <- scalar
         return $ \ss -> ScalarT ss s) <|>
