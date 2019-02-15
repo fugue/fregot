@@ -49,6 +49,8 @@ parseRuleHead :: FregotParser (RuleHead SourceSpan)
 parseRuleHead = withSourceSpan $ do
     _ruleDefault <- Parsec.option False $ Tok.symbol Tok.TDefault $> True
     _ruleName <- var
+    _ruleArgs <- Parsec.optionMaybe $
+        sepTrailing Tok.TLParen Tok.TRParen Tok.TComma term
     _ruleIndex <- Parsec.optionMaybe $ do
         Tok.symbol Tok.TLBracket
         t <- term

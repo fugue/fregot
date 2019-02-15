@@ -15,7 +15,7 @@ module Fregot.Sugar
     , varToString, varToText
 
     , Rule (..), ruleHead, ruleBody
-    , RuleHead (..), ruleDefault, ruleName, ruleAnn, ruleIndex, ruleValue
+    , RuleHead (..), ruleAnn, ruleDefault, ruleName, ruleArgs, ruleIndex, ruleValue
     , RuleBody
     , Literal (..), literalNegation, literalExpr, literalWith
 
@@ -82,9 +82,10 @@ data Rule a = Rule
 -- TODO
 -- * args
 data RuleHead a = RuleHead
-    { _ruleDefault :: !Bool
+    { _ruleAnn     :: !a
+    , _ruleDefault :: !Bool
     , _ruleName    :: !Var
-    , _ruleAnn     :: !a
+    , _ruleArgs    :: !(Maybe [Term a])
     , _ruleIndex   :: !(Maybe (Term a))
     , _ruleValue   :: !(Maybe (Term a))
     } deriving (Show)
@@ -202,6 +203,11 @@ instance PP.Pretty PP.Sem (RuleHead a) where
     pretty r =
         (if r ^. ruleDefault then Just (PP.keyword "default") else Nothing) ?<+>
         PP.pretty (r ^. ruleName) <>
+        (case r ^. ruleArgs of
+            Nothing   -> mempty
+            Just args ->
+                PP.punctuation "(" <> PP.commaSep (map PP.pretty args) <>
+                PP.punctuation ")") <>
         (case r ^. ruleIndex of
             Nothing  -> mempty
             Just idx ->
