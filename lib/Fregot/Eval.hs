@@ -27,7 +27,6 @@ import           Control.Monad.Reader       (MonadReader (..), ask)
 import           Control.Monad.State        (MonadState (..))
 import qualified Data.DisjointSets          as DJ
 import qualified Data.HashMap.Strict        as HMS
-import           Data.Maybe                 (isJust)
 import qualified Data.Scientific            as Scientific
 import qualified Data.Vector                as V
 import           Fregot.Eval.Value
@@ -113,6 +112,23 @@ negation trueish (EvalM f) = EvalM $ \rs ctx ->
     let rows = filter (\(Row _ x) -> trueish x) (f rs ctx) in
     if null rows then [Row ctx ()] else []
 
+withDefault :: EvalM a -> EvalM a -> EvalM a
+withDefault (EvalM def) (EvalM f) = EvalM $ \env ctx ->
+    case f env ctx of
+        [] -> def env emptyContext
+        xs -> xs
+
+requireComplete :: Eq a => EvalM a -> EvalM a
+requireComplete (EvalM f) = EvalM $ \env ctx ->
+    let rows = f env ctx in
+    case rows of
+        (r : more)
+            | all ((== r ^. rowValue) . view rowValue) more -> [r]
+            | otherwise -> fail
+                -- TODO(jaspervdj): Better error message.
+                "requireComplete: inconsistent result for complete rule"
+        _          -> rows
+
 -- | Note that 'v' MUST be a root in the DisjointSets.
 unsafeBind :: Var -> Value -> EvalM ()
 unsafeBind root (FreeV alpha) =
@@ -120,7 +136,7 @@ unsafeBind root (FreeV alpha) =
 unsafeBind v val =
     scope %= Scope . HMS.insert v val . unScope
 
-lookupRule :: Var -> EvalM [Package.RuleDefinition]
+lookupRule :: Var -> EvalM (Maybe Package.CompiledRule)
 lookupRule root = do
     env0 <- ask
     return $ Package.lookup root (env0 ^. package)
@@ -156,17 +172,15 @@ evalExpr (ParensE _ e) = evalExpr e
 evalTerm :: Term a -> EvalM Value
 evalTerm (RefT _ _ v args) = do
 
-    rs <- lookupRule v
+    mbCompiledRule <- lookupRule v
     case args of
         -- Using a rule with an index.  This only triggers if the rule requires
-        -- an argument.
-        --
-        -- TODO(jaspervdj): Add a check for consistent rule arity.
+        -- an argument, i.e. it is not a complete rule.
         [RefBrackArg x]
-                | r0 : _ <- rs
-                , isJust (r0 ^. Package.ruleDefRule . ruleHead . ruleIndex) -> do
+                | Just crule <- mbCompiledRule
+                , not (crule ^. Package.cruleComplete) -> do
             y <- evalTerm x
-            branch $ map (evalRuleDefinition (Just y)) rs
+            evalCompiledRule crule (Just y)
         _ -> do
             val <- evalVar v
             foldM evalRefArg val args
@@ -196,10 +210,10 @@ evalVar v = do
     case HMS.lookup rv (unScope scop) of
         Just val -> return val
         Nothing -> do
-            rs <- lookupRule rv
-            case rs of
-                [] -> return (FreeV rv)
-                _  -> branch $ map (evalRuleDefinition Nothing) rs
+            mbCompiledRule <- lookupRule rv
+            case mbCompiledRule of
+                Nothing    -> return (FreeV rv)
+                Just crule -> evalCompiledRule crule Nothing
 
 -- NOTE (jaspervdj): I suspect these are roughly the cases we want to care
 -- about:
@@ -249,6 +263,19 @@ evalRefArg indexee refArg = do
   where
     getRefArgTerm (RefBrackArg t)       = t
     getRefArgTerm (RefDotArg a (Var k)) = ScalarT a (String k)
+
+evalCompiledRule :: Package.CompiledRule -> Maybe Value -> EvalM Value
+evalCompiledRule crule mbIndex =
+    (if crule ^. Package.cruleComplete then requireComplete else id) $
+    catchDefault $
+    branch
+        [ evalRuleDefinition mbIndex def
+        | def <- crule ^. Package.cruleDefs
+        ]
+  where
+    catchDefault = case crule ^. Package.cruleDefault of
+        Nothing  -> id
+        Just def -> withDefault (evalTerm def)
 
 evalRuleDefinition :: Maybe Value -> Package.RuleDefinition -> EvalM Value
 evalRuleDefinition mbIndex ruleDef = clearContext $ do

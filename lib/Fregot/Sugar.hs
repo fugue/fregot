@@ -15,21 +15,19 @@ module Fregot.Sugar
     , varToString, varToText
 
     , Rule (..), ruleHead, ruleBody
-    , RuleHead (..), ruleName, ruleAnn, ruleIndex, ruleValue
+    , RuleHead (..), ruleDefault, ruleName, ruleAnn, ruleIndex, ruleValue
     , Literal (..), literalNegation, literalExpr, literalWith
-    , Expr (..)
-    , Term (..)
+    , Expr (..), exprAnn
+    , Term (..), termAnn
     , RefArg (..)
     , Scalar (..)
     , Object
     , ObjectKey (..)
     , BinOp (..)
     , With (..), withWith, withAs
-
-    , exprAnn
     ) where
 
-import           Control.Lens       ((^.))
+import           Control.Lens       (Lens', lens, (^.))
 import           Control.Lens.TH    (makeLenses)
 import           Data.Hashable      (Hashable (..))
 import qualified Data.List          as L
@@ -82,10 +80,11 @@ data Rule a = Rule
 -- TODO
 -- * args
 data RuleHead a = RuleHead
-    { _ruleName  :: !Var
-    , _ruleAnn   :: !a
-    , _ruleIndex :: !(Maybe (Term a))
-    , _ruleValue :: !(Maybe (Term a))
+    { _ruleDefault :: !Bool
+    , _ruleName    :: !Var
+    , _ruleAnn     :: !a
+    , _ruleIndex   :: !(Maybe (Term a))
+    , _ruleValue   :: !(Maybe (Term a))
     } deriving (Show)
 
 -- TODO:
@@ -186,6 +185,7 @@ instance PP.Pretty PP.Sem (Rule a) where
 
 instance PP.Pretty PP.Sem (RuleHead a) where
     pretty r =
+        (if r ^. ruleDefault then Just (PP.keyword "default") else Nothing) ?<+>
         PP.pretty (r ^. ruleName) <>
         (case r ^. ruleIndex of
             Nothing  -> mempty
@@ -254,9 +254,34 @@ instance PP.Pretty PP.Sem (With a) where
         PP.keyword "with" <+> PP.pretty (with ^. withWith) <+>
         PP.keyword "as" <+> PP.pretty (with ^. withAs)
 
-exprAnn :: Expr a -> a
-exprAnn = \case
-    TermE a _      -> a
-    UnifyE a _ _   -> a
-    BinOpE a _ _ _ -> a
-    ParensE a _    -> a
+exprAnn :: Lens' (Expr a) a
+exprAnn = lens getAnn setAnn
+  where
+    getAnn = \case
+        TermE   a _     -> a
+        UnifyE  a _ _   -> a
+        BinOpE  a _ _ _ -> a
+        ParensE a _     -> a
+
+    setAnn e a = case e of
+        TermE   _ t     -> TermE   a t
+        UnifyE  _ x y   -> UnifyE  a x y
+        BinOpE  _ x o y -> BinOpE  a x o y
+        ParensE _ x     -> ParensE a x
+
+termAnn :: Lens' (Term a) a
+termAnn = lens getAnn setAnn
+  where
+    getAnn = \case
+        RefT      a _ _ _ -> a
+        VarT      a _     -> a
+        ScalarT   a _     -> a
+        ArrayT    a _     -> a
+        ObjectT   a _     -> a
+
+    setAnn t a = case t of
+        RefT      _ b v r -> RefT    a b v r
+        VarT      _ v     -> VarT    a v
+        ScalarT   _ s     -> ScalarT a s
+        ArrayT    _ l     -> ArrayT  a l
+        ObjectT   _ o     -> ObjectT a o

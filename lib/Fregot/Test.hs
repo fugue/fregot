@@ -8,6 +8,7 @@ import           Control.Monad           (forM_)
 import           Control.Monad.Parachute
 import           Control.Monad.Trans     (liftIO)
 import qualified Data.IORef              as IORef
+import qualified Data.Text               as T
 import qualified Fregot.Error            as Error
 import qualified Fregot.Eval             as Eval
 import qualified Fregot.Eval.Value       as Value
@@ -44,8 +45,10 @@ main = do
     (errors, _mbResult) <- runParachuteT $ do
         args <- liftIO getArgs
         forM_ args $ \arg -> Interpreter.loadModule interpreter arg
-        rules <- Interpreter.readRules interpreter
-        forM_ rules $ \(pkg, rule) -> runTest interpreter pkg rule
+        tests <- filter isTest <$> Interpreter.readRules interpreter
+        forM_ tests $ \(pkg, rule) -> runTest interpreter pkg rule
 
     sources' <- IORef.readIORef sources
     Error.hPutErrors IO.stderr sources' Error.TextFmt errors
+  where
+    isTest (_pkgname, var) = "test_" `T.isPrefixOf` Sugar.varToText var

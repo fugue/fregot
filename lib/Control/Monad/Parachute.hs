@@ -5,6 +5,7 @@ module Control.Monad.Parachute
 
     , fatal
     , tellErrors
+    , tellError
     ) where
 
 import           Control.Monad.Trans (MonadIO (..))
@@ -51,3 +52,6 @@ fatal x = ParachuteT $ \errors -> return (x : errors, Fatal)
 
 tellErrors :: Monad m => [e] -> ParachuteT e m ()
 tellErrors es = ParachuteT $ \errors -> return (es ++ errors, Ok ())
+
+tellError :: Monad m => e -> ParachuteT e m ()
+tellError e = ParachuteT $ \errors -> return (e : errors, Ok ())

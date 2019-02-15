@@ -38,7 +38,8 @@ module Fregot.Parser.Internal
 import           Control.Applicative       (empty)
 import           Control.Lens              ((&), (.~), (^.))
 import           Control.Monad.Identity    (when)
-import           Control.Monad.Parachute
+import           Control.Monad.Parachute   (ParachuteT)
+import qualified Control.Monad.Parachute   as Parachute
 import           Control.Monad.Reader      (Reader, ask, local, runReader)
 import qualified Data.Text                 as T
 import qualified Fregot.Error              as Error
@@ -88,8 +89,8 @@ parse
     -> ParachuteT Error.Error m a
 parse parser sp inputTokens =
     case errOrOk of
-        Right (x, es) -> tellErrors es >> return x
-        Left err      -> fatal $
+        Right (x, es) -> Parachute.tellErrors es >> return x
+        Left err      -> Parachute.fatal $
             Error.fromParsecError' Error.FatalSeverity sp err
   where
     errOrOk = flip runReader noResumeFromRecover $!

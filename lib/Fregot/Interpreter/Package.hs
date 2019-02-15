@@ -1,7 +1,8 @@
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell   #-}
 module Fregot.Interpreter.Package
     ( Package (..), packageName, packageRules
-    , CompiledRule
+    , CompiledRule (..), cruleDefault, cruleComplete, cruleDefs
     , RuleDefinition (..), ruleDefImports, ruleDefRule
 
     , empty
@@ -10,22 +11,31 @@ module Fregot.Interpreter.Package
     , rules
     ) where
 
+import           Control.Applicative       ((<|>))
 import           Control.Lens              (view, (%~), (&), (^.))
 import           Control.Lens.TH           (makeLenses)
+import           Control.Monad             (unless, when)
 import           Control.Monad.Parachute
 import qualified Data.HashMap.Strict       as HMS
-import           Data.Maybe                (fromMaybe)
+import           Data.Maybe                (mapMaybe)
+import           Data.Maybe                (isJust, isNothing)
 import           Fregot.Error              (Error)
+import           Fregot.Error              as Error
 import           Fregot.Sources.SourceSpan (SourceSpan)
 import           Fregot.Sugar
-import           Prelude                   hiding (lookup)
+import           Prelude                   hiding (head, lookup)
 
 data Package = Package
     { _packageName  :: !PackageName
     , _packageRules :: !(HMS.HashMap Var CompiledRule)
     } deriving (Show)
 
-type CompiledRule = [RuleDefinition]
+data CompiledRule = CompiledRule
+    { _cruleAnn      :: !SourceSpan
+    , _cruleDefault  :: !(Maybe (Term SourceSpan))
+    , _cruleComplete :: !Bool
+    , _cruleDefs     :: [RuleDefinition]
+    } deriving (Show)
 
 data RuleDefinition = RuleDefinition
     { _ruleDefImports :: ![Import SourceSpan]
@@ -33,6 +43,7 @@ data RuleDefinition = RuleDefinition
     } deriving (Show)
 
 $(makeLenses ''Package)
+$(makeLenses ''CompiledRule)
 $(makeLenses ''RuleDefinition)
 
 empty :: PackageName -> Package
@@ -41,6 +52,77 @@ empty name = Package
     , _packageRules = HMS.empty
     }
 
+-- | Create a new compiled rule from a sugared rule.
+compileRule
+    :: Monad m
+    => [Import SourceSpan] -> Rule SourceSpan
+    -> ParachuteT Error m CompiledRule
+compileRule imports rule
+    | head ^. ruleDefault = do
+        -- NOTE(jaspervdj): Perform sanity checks on default rules.
+        when (isJust $ head ^. ruleIndex) $ tellError $ Error.mkError
+            "compile"
+            (head ^. ruleAnn)
+            "bad default"
+            "Default rule should not have an index associated with it."
+
+        unless (null $ rule ^. ruleBody) $ tellError $ Error.mkError
+            "compile"
+            (head ^. ruleAnn)
+            "bad default"
+            "Default rule should not have a body."
+
+        -- TODO(jaspervdj): About the default term, they write:
+        --
+        --     The term may be any scalar, composite, or comprehension value but
+        --     it may not be a variable or reference. If the value is a
+        --     composite then it may not contain variables or references.
+        pure CompiledRule
+            { _cruleAnn      = head ^. ruleAnn
+            , _cruleDefault  = head ^. ruleValue
+            , _cruleComplete = True
+            , _cruleDefs     = []
+            }
+
+    | otherwise = do
+        -- NOTE(jaspervdj): Perform sanity checks on rules.
+        pure CompiledRule
+            { _cruleAnn      = head ^. ruleAnn
+            , _cruleDefault  = Nothing
+            , _cruleComplete = isNothing (head ^. ruleIndex)
+            , _cruleDefs     = [RuleDefinition imports rule]
+            }
+  where
+    head = rule ^. ruleHead
+
+-- | Merge two rules that have the same name.  This can go wrong in all sorts of
+-- ways.
+mergeRules
+    :: Monad m
+    => CompiledRule -> CompiledRule
+    -> ParachuteT Error m CompiledRule
+mergeRules x y = do
+    let defaults = mapMaybe (view cruleDefault) [x, y]
+    when (length defaults > 1) $ tellError $ Error.mkMultiError
+        "compile" "conflicting default"
+        [ (def ^. termAnn, "default defined here")
+        | def <- defaults
+        ]
+
+    when (x ^. cruleComplete /= y ^. cruleComplete) $ tellError $
+        Error.mkMultiError
+            "compile" "complete definition mismatch"
+            [ (c ^. cruleAnn, case c ^. cruleComplete of
+                False -> "not defined as complete rule"
+                True  -> "defined as complete rule")
+            | c <- [x, y]
+            ]
+
+    -- Merge y into x
+    return $! x
+        & cruleDefault %~ (<|> y ^. cruleDefault)
+        & cruleDefs    %~ (++ y ^. cruleDefs)
+
 -- | Add a new rule.
 insert
     :: Monad m
@@ -48,15 +130,18 @@ insert
     -> Rule SourceSpan
     -> Package
     -> ParachuteT Error m Package
-insert imports rule package = return $
-    -- | TODO(jaspervdj): Error out if arity is wrong.
-    package & packageRules %~ HMS.insertWith (++) rname [rdef]
+insert imports rule package = do
+    new <- compileRule imports rule
+    merged <- case HMS.lookup rname (package ^. packageRules) of
+        Nothing  -> return new
+        Just old -> mergeRules old new
+
+    return $ package & packageRules %~ HMS.insert rname merged
   where
     rname = rule ^. ruleHead . ruleName
-    rdef  = RuleDefinition imports rule
 
-lookup :: Var -> Package -> [RuleDefinition]
-lookup var pkg = fromMaybe [] $ HMS.lookup var (pkg ^. packageRules)
+lookup :: Var -> Package -> Maybe CompiledRule
+lookup var pkg = HMS.lookup var (pkg ^. packageRules)
 
 rules :: Package -> [Var]
 rules = map fst . HMS.toList . view packageRules

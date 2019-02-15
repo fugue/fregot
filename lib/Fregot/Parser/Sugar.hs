@@ -6,6 +6,7 @@ module Fregot.Parser.Sugar
     ) where
 
 import           Control.Applicative       ((<|>))
+import           Control.Lens              ((^.))
 import           Data.Functor              (($>))
 import qualified Data.Scientific           as Scientific
 import           Fregot.Parser.Internal
@@ -46,6 +47,7 @@ rule = Rule <$> parseRuleHead <*> Parsec.option [] parseRuleBody
 
 parseRuleHead :: FregotParser (RuleHead SourceSpan)
 parseRuleHead = withSourceSpan $ do
+    _ruleDefault <- Parsec.option False $ Tok.symbol Tok.TDefault $> True
     _ruleName <- var
     _ruleIndex <- Parsec.optionMaybe $ do
         Tok.symbol Tok.TLBracket
@@ -138,7 +140,7 @@ expr = Parsec.buildExpressionParser
     binary tok op = Parsec.Infix (do
         Tok.symbol tok
         return $ \x y ->
-            BinOpE (unsafeMergeSourceSpan (exprAnn x) (exprAnn y)) x op y)
+            BinOpE (unsafeMergeSourceSpan (x ^. exprAnn) (y ^. exprAnn)) x op y)
 
 term :: FregotParser (Term SourceSpan)
 term = withSourceSpan $

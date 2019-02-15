@@ -11,6 +11,7 @@ module Fregot.Error
     ( SourceSpanMessage (..), sourceSpan, title, body
 
     , Severity (..)
+    , Subsystem
     , Error (..), severity, subsystem, sourceSpans, details, hints
     , Errors
 
@@ -19,6 +20,9 @@ module Fregot.Error
 
     , fromParsecError
     , fromParsecError'
+
+    , mkError
+    , mkMultiError
     ) where
 
 import           Control.Lens              (preview, (^.), _head)
@@ -55,9 +59,11 @@ instance PP.Pretty e Severity where
     pretty ErrorSeverity   = "error"
     pretty WarningSeverity = "warning"
 
+type Subsystem = T.Text
+
 data Error = Error
   { _severity    :: !Severity
-  , _subsystem   :: !T.Text
+  , _subsystem   :: !Subsystem
   , _sourceSpans :: ![SourceSpanMessage]
   , _details     :: ![PP.SemDoc]
   , _hints       :: ![PP.SemDoc]
@@ -142,3 +148,21 @@ fromParsecError'
     :: Severity -> Sources.SourcePointer -> Parsec.ParseError -> Error
 fromParsecError' sev sp e =
     fromParsecError sev sp (sourcePosToSourceSpan sp $ Parsec.errorPos e) e
+
+mkError :: Subsystem -> SourceSpan -> PP.SemDoc -> PP.SemDoc -> Error
+mkError sub ss title' body' = mkMultiError sub title' [(ss, body')]
+
+mkMultiError :: Subsystem -> PP.SemDoc -> [(SourceSpan, PP.SemDoc)] -> Error
+mkMultiError sub title' bodies = Error
+    { _severity    = ErrorSeverity
+    , _subsystem   = sub
+    , _details     = []
+    , _hints       = []
+    , _sourceSpans = do
+        (ss, body') <- bodies
+        return SourceSpanMessage
+            { _sourceSpan = ss
+            , _title      = title'
+            , _body       = Just body'
+            }
+    }
