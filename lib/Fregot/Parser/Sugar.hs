@@ -57,7 +57,7 @@ parseRuleHead = withSourceSpan $ do
         expectToken Tok.TRBracket
         return t
     _ruleValue <- Parsec.optionMaybe $ do
-        Tok.symbol Tok.TAssign
+        Tok.symbol Tok.TUnify
         term
     return $ \_ruleAnn -> RuleHead {..}
 
@@ -128,6 +128,7 @@ expr = Parsec.buildExpressionParser
       , binary Tok.TNotEqual NotEqualO Parsec.AssocLeft
       ]
 
+    , [ binary Tok.TUnify  UnifyO  Parsec.AssocRight ]
     , [ binary Tok.TAssign AssignO Parsec.AssocRight ]
     ]
     simpleExpr
@@ -263,4 +264,3 @@ sepTrailing open close comma p = do
                     , go (x : acc)
                     ]
             ]
-

@@ -140,6 +140,7 @@ data Token
     | TRBracket
     | TLBrace
     | TRBrace
+    | TUnify
     | TAssign
     | TPeriod
     | TColon
@@ -255,7 +256,6 @@ parseSomeOperator = do
         '[' -> return TLBracket
         ']' -> return TRBracket
         '.' -> return TPeriod
-        ':' -> return TColon
         ';' -> return TSemicolon
         ',' -> return TComma
         '|' -> return TPipe
@@ -264,11 +264,16 @@ parseSomeOperator = do
         '*' -> return TTimes
         '/' -> return TDivide
         '&' -> return TBinAnd
+        ':' -> do
+            n <- Parsec.lookAhead Parsec.anyChar
+            case n of
+                '=' -> Parsec.anyChar *> return TAssign
+                _   -> return TColon
         '=' -> do
             n <- Parsec.lookAhead Parsec.anyChar
             case n of
                 '=' -> Parsec.anyChar *> return TEqual
-                _   -> return TAssign
+                _   -> return TUnify
         '!' -> do
             n <- Parsec.lookAhead Parsec.anyChar
             case n of
@@ -300,7 +305,8 @@ prettyToken token = case token of
     TRBrace                    -> quote "}"
     TLBracket                  -> quote "["
     TRBracket                  -> quote "]"
-    TAssign                    -> "="
+    TUnify                     -> "="
+    TAssign                    -> ":="
     TPeriod                    -> "."
     TColon                     -> ":"
     TSemicolon                 -> ";"

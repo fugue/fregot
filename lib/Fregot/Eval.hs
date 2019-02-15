@@ -166,6 +166,11 @@ evalExpr (UnifyE _ x y) = do
     yv <- evalExpr y
     unify xv yv
     return $ BoolV True
+evalExpr (AssignE _ v x) = do
+    xv <- evalExpr x
+    -- TODO(jaspervdj): Do we need to check that 'v' is indeed free?
+    unsafeBind v xv
+    return xv
 evalExpr (BinOpE _ x o y) = evalBinOp x o y
 evalExpr (ParensE _ e) = evalExpr e
 

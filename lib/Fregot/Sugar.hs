@@ -102,7 +102,10 @@ data Literal a = Literal
 
 data Expr a
     = TermE   a (Term a)
-    | UnifyE  a (Expr a) (Expr a)
+    | UnifyE  a (Expr a) (Expr a)  -- =
+    -- NOTE(jaspervdj): Perhaps assign should be part of 'Literal'.  It is
+    -- missing from the grammar, so I'm not sure at this point.
+    | AssignE a Var (Expr a)       -- :=
     | BinOpE  a (Expr a) BinOp (Expr a)
     | ParensE a (Expr a)
     deriving (Show)
@@ -145,7 +148,8 @@ data ObjectKey a
     deriving (Show)
 
 data BinOp
-    = AssignO
+    = UnifyO
+    | AssignO
     | EqualO
     | NotEqualO
     | LessThanO
@@ -230,6 +234,7 @@ instance PP.Pretty PP.Sem (Literal a) where
 instance PP.Pretty PP.Sem (Expr a) where
     pretty (TermE _ t)      = PP.pretty t
     pretty (UnifyE _ x y)   = PP.pretty x <+> PP.punctuation "=" <+> PP.pretty y
+    pretty (AssignE _ v x)  = PP.pretty v <+> PP.punctuation ":=" <+> PP.pretty x
     pretty (BinOpE _ x o y) = PP.pretty x <+> PP.pretty o <+> PP.pretty y
     pretty (ParensE _ e)    =
         PP.punctuation "(" <> PP.pretty e <> PP.punctuation ")"
@@ -286,7 +291,8 @@ instance PP.Pretty PP.Sem (ObjectKey a) where
 
 instance PP.Pretty PP.Sem BinOp where
     pretty bo = PP.punctuation $ case bo of
-        AssignO             -> "="
+        UnifyO              -> "="
+        AssignO             -> ":="
         EqualO              -> "=="
         NotEqualO           -> "!="
         LessThanO           -> "<"
@@ -309,12 +315,14 @@ exprAnn = lens getAnn setAnn
     getAnn = \case
         TermE   a _     -> a
         UnifyE  a _ _   -> a
+        AssignE a _ _   -> a
         BinOpE  a _ _ _ -> a
         ParensE a _     -> a
 
     setAnn e a = case e of
         TermE   _ t     -> TermE   a t
         UnifyE  _ x y   -> UnifyE  a x y
+        AssignE _ v x   -> AssignE a v x
         BinOpE  _ x o y -> BinOpE  a x o y
         ParensE _ x     -> ParensE a x
 
