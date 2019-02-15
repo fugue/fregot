@@ -172,6 +172,7 @@ term = withSourceSpan $
         s <- scalar
         return $ \ss -> ScalarT ss s) <|>
     (do
+        -- TODO(jaspervdj): Refactor comprehension parsing (1/3)
         compHead <- Parsec.try $ do
             Tok.symbol Tok.TLBracket
             x0 <- term
@@ -183,6 +184,28 @@ term = withSourceSpan $
     (do
         a <- array
         return $ \ss -> ArrayT ss a) <|>
+    (do
+        -- TODO(jaspervdj): Refactor comprehension parsing (2/3)
+        compHead <- Parsec.try $ do
+            Tok.symbol Tok.TLBrace
+            x0 <- term
+            Tok.symbol Tok.TPipe
+            return x0
+        compBody <- parseUnbracedRuleBody
+        Tok.symbol Tok.TRBrace
+        return $ \ss -> SetCompT ss compHead compBody) <|>
+    (do
+        -- TODO(jaspervdj): Refactor comprehension parsing (3/3)
+        (compK, compX) <- Parsec.try $ do
+            Tok.symbol Tok.TLBrace
+            k0 <- objectKey
+            Tok.symbol Tok.TColon
+            x0 <- term
+            Tok.symbol Tok.TPipe
+            return (k0, x0)
+        compBody <- parseUnbracedRuleBody
+        Tok.symbol Tok.TRBrace
+        return $ \ss -> ObjectCompT ss compK compX compBody) <|>
     (do
         o <- object
         return $ \ss -> ObjectT ss o)
@@ -228,7 +251,10 @@ objectKey :: FregotParser (ObjectKey SourceSpan)
 objectKey = withSourceSpan $
     (do
         s <- scalar
-        return $ \ss -> ScalarK ss s)
+        return $ \ss -> ScalarK ss s) <|>
+    (do
+        v <- var
+        return $ \ss -> VarK ss v)
 
 parseWith :: FregotParser (With SourceSpan)
 parseWith = do
