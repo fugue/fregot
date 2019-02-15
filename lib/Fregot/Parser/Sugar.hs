@@ -105,8 +105,9 @@ literal = do
 unificationExpr :: FregotParser (Expr SourceSpan)
 unificationExpr = toUnification <$> expr
   where
-    toUnification (BinOpE a x AssignO y) = UnifyE a x y
-    toUnification e                      = e
+    toUnification (BinOpE a x UnifyO y)                     = UnifyE a x y
+    toUnification (BinOpE a (TermE _ (VarT _ v)) AssignO x) = AssignE a v x
+    toUnification e                                         = e
 
 expr :: FregotParser (Expr SourceSpan)
 expr = Parsec.buildExpressionParser
