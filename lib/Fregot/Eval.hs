@@ -225,7 +225,10 @@ evalTerm (ObjectT _ o) = do
             _ -> fail "Unsupported object key type"
     return $ ObjectV $ HMS.fromList obj
 
-evalTerm (ArrayCompT _ _ _)    = fail "list comprehensions not supported"
+evalTerm (ArrayCompT _ chead cbody) = do
+    rows <- unbranch $ evalRuleBody cbody (evalTerm chead)
+    return $ ArrayV $ V.fromList rows
+
 evalTerm (SetCompT _ _ _)      = fail "set comprehensions not supported"
 evalTerm (ObjectCompT _ _ _ _) = fail "object comprehensions not supported"
 

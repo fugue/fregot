@@ -87,6 +87,15 @@ containers = [
     }
 ]
 
+################################################################################
+# Array comprehensions
+
+test_array_comprehensions {
+    region = "west"
+    west_names = [name | sites[i].region = region; sites[i].name = name]
+    west_names == ["smoke", "dev"]
+}
+
 prod_servers[name] = name {
     sites[_] = site
     site.name = "prod"
