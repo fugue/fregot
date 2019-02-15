@@ -59,12 +59,15 @@ parseRuleHead = withSourceSpan $ do
         term
     return $ \_ruleAnn -> RuleHead {..}
 
-parseRuleBody :: FregotParser [Literal SourceSpan]
+parseRuleBody :: FregotParser (RuleBody SourceSpan)
 parseRuleBody = do
     Tok.symbol Tok.TLBrace
-    lits <- blockOrSemi literal
+    body <- parseUnbracedRuleBody
     Tok.symbol Tok.TRBrace
-    return lits
+    return body
+
+parseUnbracedRuleBody :: FregotParser (RuleBody SourceSpan)
+parseUnbracedRuleBody = blockOrSemi literal
 
 -- | Parse either a block of lines, or lines separated by a semicolon, or both.
 blockOrSemi :: FregotParser a -> FregotParser [a]
@@ -165,6 +168,15 @@ term = withSourceSpan $
     (do
         s <- scalar
         return $ \ss -> ScalarT ss s) <|>
+    (do
+        compHead <- Parsec.try $ do
+            Tok.symbol Tok.TLBracket
+            x0 <- term
+            Tok.symbol Tok.TPipe
+            return x0
+        compBody <- parseUnbracedRuleBody
+        Tok.symbol Tok.TRBracket
+        return $ \ss -> ArrayCompT ss compHead compBody) <|>
     (do
         a <- array
         return $ \ss -> ArrayT ss a) <|>

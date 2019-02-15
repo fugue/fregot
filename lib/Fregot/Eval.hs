@@ -195,6 +195,9 @@ evalTerm (ScalarT _ s) = evalScalar s
 evalTerm (ArrayT _ a) = do
     bs <- mapM evalExpr a
     return $ ArrayV $ V.fromList bs
+evalTerm (SetT _ s) = do
+    bs <- mapM evalExpr s
+    return $ SetV $ V.fromList bs
 evalTerm (ObjectT _ o) = do
     obj <- forM o $ \(kt, vt) -> do
         key <- evalObjectKey kt
@@ -204,6 +207,10 @@ evalTerm (ObjectT _ o) = do
                 return (txt, val)
             _ -> fail "Unsupported object key type"
     return $ ObjectV $ HMS.fromList obj
+
+evalTerm (ArrayCompT _ _ _)    = fail "comprehensions not supported"
+evalTerm (SetCompT _ _ _)      = fail "comprehensions not supported"
+evalTerm (ObjectCompT _ _ _ _) = fail "comprehensions not supported"
 
 evalVar :: Var -> EvalM Value
 evalVar v = do
@@ -320,6 +327,7 @@ evalScalar Null       = return $ NullV
 
 evalObjectKey :: ObjectKey a -> EvalM Value
 evalObjectKey (ScalarK _ s) = evalScalar s
+evalObjectKey (VarK _ v)    = evalVar v
 
 evalBinOp :: Expr a -> BinOp -> Expr a -> EvalM Value
 evalBinOp x op y = do

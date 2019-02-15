@@ -6,6 +6,7 @@ module Fregot.PrettyPrint
 
     , pretty'
     , array
+    , set
     , object
     ) where
 
@@ -18,6 +19,11 @@ pretty' = pretty
 array :: Pretty Sem a => [a] -> SemDoc
 array a = parensSepVert
     (punctuation "[") (punctuation "]") (punctuation ",")
+    (map pretty a)
+
+set :: Pretty Sem a => [a] -> SemDoc
+set a = parensSepVert
+    (punctuation "{") (punctuation "}") (punctuation ",")
     (map pretty a)
 
 object :: (Pretty Sem k, Pretty Sem v) => [(k, v)] -> SemDoc

@@ -24,6 +24,7 @@ data Value
     | NumberV !Scientific.Scientific
     | BoolV   !Bool
     | ArrayV  !(V.Vector Value)
+    | SetV    !(V.Vector Value)
     | ObjectV !(HMS.HashMap T.Text Value)
     | NullV
     deriving (Eq, Show)
@@ -35,6 +36,7 @@ instance PP.Pretty PP.Sem Value where
     pretty (NumberV s) = PP.literal $ PP.pretty s
     pretty (BoolV   b) = PP.literal $ if b then "true" else "false"
     pretty (ArrayV  a) = PP.array (V.toList a)
+    pretty (SetV    s) = PP.set (V.toList s)
     pretty (ObjectV o) = PP.object
         [ (StringV k, v)
         | (k, v) <- HMS.toList o
@@ -49,5 +51,6 @@ describeValue = \case
     NumberV _ -> "number"
     BoolV   _ -> "boolean"
     ArrayV  _ -> "array"
+    SetV    _ -> "set"
     ObjectV _ -> "object"
     NullV     -> "null"

@@ -145,6 +145,7 @@ data Token
     | TColon
     | TSemicolon
     | TComma
+    | TPipe
     | TAs
     | TDefault
     | TElse
@@ -166,7 +167,6 @@ data Token
     | TTimes
     | TDivide
     | TBinAnd
-    | TBinOr
     deriving (Eq, Show, Generic)
 
 parseToken :: TokenParser Token
@@ -258,12 +258,12 @@ parseSomeOperator = do
         ':' -> return TColon
         ';' -> return TSemicolon
         ',' -> return TComma
+        '|' -> return TPipe
         '+' -> return TPlus
         '-' -> return TMinus
         '*' -> return TTimes
         '/' -> return TDivide
         '&' -> return TBinAnd
-        '|' -> return TBinOr
         '=' -> do
             n <- Parsec.lookAhead Parsec.anyChar
             case n of
@@ -305,6 +305,7 @@ prettyToken token = case token of
     TColon                     -> ":"
     TSemicolon                 -> ";"
     TComma                     -> ","
+    TPipe                      -> "|"
     TAs                        -> "keyword 'as'"
     TDefault                   -> "keyword 'default'"
     TElse                      -> "keyword 'else'"
@@ -326,7 +327,6 @@ prettyToken token = case token of
     TTimes                     -> "*"
     TDivide                    -> "/"
     TBinAnd                    -> "&"
-    TBinOr                     -> "|"
   where
     quote :: String -> String
     quote x = "\"" ++ x ++ "\""

@@ -16,7 +16,9 @@ module Fregot.Sugar
 
     , Rule (..), ruleHead, ruleBody
     , RuleHead (..), ruleDefault, ruleName, ruleAnn, ruleIndex, ruleValue
+    , RuleBody
     , Literal (..), literalNegation, literalExpr, literalWith
+
     , Expr (..), exprAnn
     , Term (..), termAnn
     , RefArg (..)
@@ -74,7 +76,7 @@ varToText = unVar
 -- * default
 data Rule a = Rule
     { _ruleHead :: !(RuleHead a)
-    , _ruleBody :: ![Literal a]
+    , _ruleBody :: !(RuleBody a)
     } deriving (Show)
 
 -- TODO
@@ -86,6 +88,8 @@ data RuleHead a = RuleHead
     , _ruleIndex   :: !(Maybe (Term a))
     , _ruleValue   :: !(Maybe (Term a))
     } deriving (Show)
+
+type RuleBody a = [Literal a]
 
 -- TODO:
 -- * with-modifier
@@ -110,8 +114,14 @@ data Term a
     | CallT     a [Var] [Term a]
     | VarT      a Var
     | ScalarT   a (Scalar a)
+
     | ArrayT    a [Expr a]
+    | SetT      a [Expr a]
     | ObjectT   a (Object a)
+
+    | ArrayCompT  a (Term a) (RuleBody a)
+    | SetCompT    a (Term a) (RuleBody a)
+    | ObjectCompT a (ObjectKey a) (Term a) (RuleBody a)
     deriving (Show)
 
 data RefArg a
@@ -130,6 +140,7 @@ type Object a = [(ObjectKey a, Expr a)]
 
 data ObjectKey a
     = ScalarK a (Scalar a)
+    | VarK    a Var
     deriving (Show)
 
 data BinOp
@@ -224,10 +235,32 @@ instance PP.Pretty PP.Sem (Term a) where
         PP.punctuation "(" <>
         PP.commaSep (map PP.pretty as) <>
         PP.punctuation ")"
+
     pretty (VarT _ v)        = PP.pretty v
     pretty (ScalarT _ s)     = PP.pretty s
+
     pretty (ArrayT _ a)      = PP.array a
+    pretty (SetT _ s)        = PP.set s
     pretty (ObjectT _ o)     = PP.object o
+
+    pretty (ArrayCompT _ x lits) =
+        PP.punctuation "[" <> PP.pretty x <+> PP.punctuation "|" <+>
+        prettyComprehensionBody lits <>
+        PP.punctuation "]"
+    pretty (SetCompT _ x lits) =
+        PP.punctuation "{" <> PP.pretty x <+> PP.punctuation "|" <+>
+        prettyComprehensionBody lits <>
+        PP.punctuation "}"
+    pretty (ObjectCompT _ k x lits) =
+        PP.punctuation "{" <> PP.pretty k <> PP.punctuation ":" <+>
+        PP.pretty x <+> PP.punctuation "|" <+>
+        prettyComprehensionBody lits <>
+        PP.punctuation "}"
+
+prettyComprehensionBody :: RuleBody a -> PP.SemDoc
+prettyComprehensionBody lits = mconcat $ L.intersperse
+    (PP.punctuation ";" <> PP.space)
+    (map PP.pretty lits)
 
 instance PP.Pretty PP.Sem (RefArg a) where
     pretty (RefBrackArg a) =
@@ -243,6 +276,7 @@ instance PP.Pretty PP.Sem (Scalar a) where
 
 instance PP.Pretty PP.Sem (ObjectKey a) where
     pretty (ScalarK _ s) = PP.pretty s
+    pretty (VarK _ v)    = PP.pretty v
 
 instance PP.Pretty PP.Sem BinOp where
     pretty bo = PP.punctuation $ case bo of
@@ -282,17 +316,25 @@ termAnn :: Lens' (Term a) a
 termAnn = lens getAnn setAnn
   where
     getAnn = \case
-        RefT      a _ _ _ -> a
-        CallT     a _ _   -> a
-        VarT      a _     -> a
-        ScalarT   a _     -> a
-        ArrayT    a _     -> a
-        ObjectT   a _     -> a
+        RefT        a _ _ _ -> a
+        CallT       a _ _   -> a
+        VarT        a _     -> a
+        ScalarT     a _     -> a
+        ArrayT      a _     -> a
+        SetT        a _     -> a
+        ObjectT     a _     -> a
+        ArrayCompT  a _ _   -> a
+        SetCompT    a _ _   -> a
+        ObjectCompT a _ _ _ -> a
 
     setAnn t a = case t of
-        RefT      _ b v r -> RefT    a b v r
-        CallT     _ f as  -> CallT   a f as
-        VarT      _ v     -> VarT    a v
-        ScalarT   _ s     -> ScalarT a s
-        ArrayT    _ l     -> ArrayT  a l
-        ObjectT   _ o     -> ObjectT a o
+        RefT        _ b v r -> RefT        a b v r
+        CallT       _ f as  -> CallT       a f as
+        VarT        _ v     -> VarT        a v
+        ScalarT     _ s     -> ScalarT     a s
+        ArrayT      _ l     -> ArrayT      a l
+        SetT        _ s     -> SetT        a s
+        ObjectT     _ o     -> ObjectT     a o
+        ArrayCompT  _ x b   -> ArrayCompT  a x b
+        SetCompT    _ x b   -> SetCompT    a x b
+        ObjectCompT _ k x b -> ObjectCompT a k x b
