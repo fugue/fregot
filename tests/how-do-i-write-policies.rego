@@ -88,6 +88,21 @@ containers = [
 ]
 
 ################################################################################
+# Generating Objects
+
+apps_by_hostname[hostname] = app {
+    sites[_].servers[_] = server
+    server.hostname = hostname
+    apps[i].servers[_] = server.name
+    apps[i].name = app
+}
+
+test_apps_by_hostname {
+    app = apps_by_hostname["helium"]
+    app == "web"
+}
+
+################################################################################
 # Array comprehensions
 
 test_array_comprehensions {
