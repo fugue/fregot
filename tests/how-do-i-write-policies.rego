@@ -88,6 +88,19 @@ containers = [
 ]
 
 ################################################################################
+# Generating Sets
+
+hostnames[name] { sites[_].servers[_].hostname = name }
+
+test_hostnames {
+    hostnames["hydrogen"]
+}
+
+test_not_hostnames {
+    not hostnames["bulbasaur"]
+}
+
+################################################################################
 # Generating Objects
 
 apps_by_hostname[hostname] = app {
@@ -100,6 +113,39 @@ apps_by_hostname[hostname] = app {
 test_apps_by_hostname {
     app = apps_by_hostname["helium"]
     app == "web"
+}
+
+################################################################################
+# Incremental definitions
+
+instances[instance] {
+    sites[_].servers[_] = server
+    instance = {"address": server.hostname, "name": server.name}
+}
+
+instances[instance] {
+    containers[_] = container
+    instance = {"address": container.ipaddress, "name": container.name}
+}
+
+test_instances {
+    # This checks that `x` gets properly unified.
+    instances[x]
+    x == {"address": "hydrogen", "name": "web-0"}
+}
+
+################################################################################
+# Complete definitions
+
+user = "alice"
+
+power_users = {"alice", "bob", "fred"}
+restricted_users = {"bob", "kim"}
+max_memory = 32 { power_users[user] }
+max_memory = 4 { restricted_users[user] }
+
+test_max_memory {
+    max_memory == 32
 }
 
 ################################################################################

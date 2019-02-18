@@ -262,20 +262,29 @@ evalRefArg indexee refArg = do
     idx <- evalTerm (getRefArgTerm refArg)
     case idx of
         WildcardV -> case indexee of
-            ObjectV o -> branch [return val | (_, val) <- HMS.toList o]
             ArrayV a  -> branch [return val | val <- V.toList a]
+            SetV s -> branch [return val | val <- V.toList s]
+            ObjectV o -> branch [return val | (_, val) <- HMS.toList o]
             _ -> fail $
                 "evalRefArg: cannot index " ++ describeValue indexee ++
                 " with a free variable"
 
         FreeV unbound -> case indexee of
-            ObjectV o -> branch
-                [ unsafeBind unbound (StringV key) >> return val
-                | (key, val) <- HMS.toList o
-                ]
             ArrayV a -> branch
                 [ unsafeBind unbound (NumberV $ fromIntegral i) >> return val
                 | (i, val) <- zip [0 :: Int ..] (V.toList a)
+                ]
+            SetV s -> branch
+                -- | NOTE(jaspervdj): Returning true below is based on the idea
+                -- that rules always return true if they don't have a return
+                -- value.  We bind the index to the thing in the list so the
+                -- user should use that.
+                [ unsafeBind unbound val >> return (BoolV True)
+                | val <- V.toList s
+                ]
+            ObjectV o -> branch
+                [ unsafeBind unbound (StringV key) >> return val
+                | (key, val) <- HMS.toList o
                 ]
             _ -> fail $
                 "evalRefArg: cannot index " ++ describeValue indexee ++
@@ -293,9 +302,19 @@ evalRefArg indexee refArg = do
             else
                 fail "evalRefArg: index out of bounds"
 
+        _ | SetV set <- indexee ->
+            -- If the LHS is a set, we just test if the index is in there.
+            --
+            -- NOTE(jaspervdj): Another implementation would be to loop over
+            -- all elements in the set, and try to unify `idx` with those.
+            -- However, the opa interpreter doesn't seem to do this.
+            if idx `V.elem` set
+                then return (BoolV True)
+                else cut
+
         _ -> fail $
             "evalRefArg: cannot index " ++ describeValue indexee ++
-            " with a free variable"
+            " with a " ++ describeValue idx
   where
     getRefArgTerm (RefBrackArg t)       = t
     getRefArgTerm (RefDotArg a (Var k)) = ScalarT a (String k)
