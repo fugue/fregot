@@ -1,8 +1,10 @@
+{-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell   #-}
 module Fregot.Interpreter.Package
     ( Package (..), packageName, packageRules
-    , CompiledRule (..), cruleDefault, cruleComplete, cruleDefs
+    , RuleKind (..)
+    , CompiledRule (..), cruleDefault, cruleKind, cruleDefs
     , RuleDefinition (..), ruleDefImports, ruleDefRule
 
     , empty
@@ -18,7 +20,7 @@ import           Control.Monad             (unless, when)
 import           Control.Monad.Parachute
 import qualified Data.HashMap.Strict       as HMS
 import           Data.Maybe                (mapMaybe)
-import           Data.Maybe                (isJust, isNothing)
+import           Data.Maybe                (isJust)
 import           Fregot.Error              (Error)
 import           Fregot.Error              as Error
 import           Fregot.Sources.SourceSpan (SourceSpan)
@@ -30,11 +32,17 @@ data Package = Package
     , _packageRules :: !(HMS.HashMap Var CompiledRule)
     } deriving (Show)
 
+data RuleKind
+    = CompleteRule
+    | GenSetRule
+    | GenObjectRule
+    deriving (Eq, Show)
+
 data CompiledRule = CompiledRule
-    { _cruleAnn      :: !SourceSpan
-    , _cruleDefault  :: !(Maybe (Term SourceSpan))
-    , _cruleComplete :: !Bool
-    , _cruleDefs     :: [RuleDefinition]
+    { _cruleAnn     :: !SourceSpan
+    , _cruleDefault :: !(Maybe (Term SourceSpan))
+    , _cruleKind    :: !RuleKind
+    , _cruleDefs    :: [RuleDefinition]
     } deriving (Show)
 
 data RuleDefinition = RuleDefinition
@@ -78,19 +86,24 @@ compileRule imports rule
         --     it may not be a variable or reference. If the value is a
         --     composite then it may not contain variables or references.
         pure CompiledRule
-            { _cruleAnn      = head ^. ruleAnn
-            , _cruleDefault  = head ^. ruleValue
-            , _cruleComplete = True
-            , _cruleDefs     = []
+            { _cruleAnn     = head ^. ruleAnn
+            , _cruleDefault = head ^. ruleValue
+            , _cruleKind    = CompleteRule
+            , _cruleDefs    = []
             }
 
     | otherwise = do
+        let kind
+                | Nothing <- head ^. ruleIndex = CompleteRule
+                | Nothing <- head ^. ruleValue = GenSetRule
+                | otherwise                    = GenObjectRule
+
         -- NOTE(jaspervdj): Perform sanity checks on rules.
         pure CompiledRule
-            { _cruleAnn      = head ^. ruleAnn
-            , _cruleDefault  = Nothing
-            , _cruleComplete = isNothing (head ^. ruleIndex)
-            , _cruleDefs     = [RuleDefinition imports rule]
+            { _cruleAnn     = head ^. ruleAnn
+            , _cruleDefault = Nothing
+            , _cruleKind    = kind
+            , _cruleDefs    = [RuleDefinition imports rule]
             }
   where
     head = rule ^. ruleHead
@@ -109,12 +122,10 @@ mergeRules x y = do
         | def <- defaults
         ]
 
-    when (x ^. cruleComplete /= y ^. cruleComplete) $ tellError $
+    when (x ^. cruleKind /= y ^. cruleKind) $ tellError $
         Error.mkMultiError
             "compile" "complete definition mismatch"
-            [ (c ^. cruleAnn, case c ^. cruleComplete of
-                False -> "not defined as complete rule"
-                True  -> "defined as complete rule")
+            [ (c ^. cruleAnn, describeKind (c ^. cruleKind))
             | c <- [x, y]
             ]
 
@@ -122,6 +133,12 @@ mergeRules x y = do
     return $! x
         & cruleDefault %~ (<|> y ^. cruleDefault)
         & cruleDefs    %~ (++ y ^. cruleDefs)
+
+  where
+    describeKind = \case
+        CompleteRule  -> "is a complete rule"
+        GenSetRule    -> "generates a set"
+        GenObjectRule -> "generates an object"
 
 -- | Add a new rule.
 insert

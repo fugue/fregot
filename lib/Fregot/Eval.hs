@@ -189,7 +189,7 @@ evalTerm (RefT _ _ v args) = do
         -- an argument, i.e. it is not a complete rule.
         [RefBrackArg x]
                 | Just crule <- mbCompiledRule
-                , not (crule ^. Package.cruleComplete) -> do
+                , Package.CompleteRule /= (crule ^. Package.cruleKind) -> do
             y <- evalTerm x
             evalCompiledRule crule (Just y)
         _ -> do
@@ -295,26 +295,31 @@ evalRefArg indexee refArg = do
     getRefArgTerm (RefDotArg a (Var k)) = ScalarT a (String k)
 
 evalCompiledRule :: Package.CompiledRule -> Maybe Value -> EvalM Value
-evalCompiledRule crule mbIndex =
-    -- If the rule takes an argument, e.g. `resources[id]`, but we refer to it
-    -- without argument, e.g. `count(resources)`, we want to evaluate the
-    -- document to an array again.
-    (if not (crule ^. Package.cruleComplete) && isNothing mbIndex
-        then fmap (ArrayV . V.fromList) . unbranch
-        else id) $
-    -- If the rule is complete, we check the consistency of the result.
-    (if crule ^. Package.cruleComplete then requireComplete else id) $
-    -- If there is a default, then we fill it in if the rule yields no rows.
-    catchDefault $
+evalCompiledRule crule mbIndex = case crule ^. Package.cruleKind of
+    -- Complete definitions
+    Package.CompleteRule -> requireComplete $
+        case crule ^. Package.cruleDefault of
+            -- If there is a default, then we fill it in if the rule yields no
+            -- rows.
+            Just def -> withDefault (evalTerm def) branches
+            Nothing  -> branches
+
+    -- TODO(jaspervdj): We currently treat objects and sets the same.  This is
+    -- wrong.
+    _ ->
+        -- If the rule takes an argument, e.g. `resources[id]`, but we refer to
+        -- it without argument, e.g. `count(resources)`, we want to evaluate the
+        -- document to an array again.
+        (if isNothing mbIndex
+            then fmap (ArrayV . V.fromList) . unbranch
+            else id) $
+        branches
+  where
     -- Standard branching evaluation of rule definitions.
-    branch
+    branches = branch
         [ evalRuleDefinition mbIndex def
         | def <- crule ^. Package.cruleDefs
         ]
-  where
-    catchDefault = case crule ^. Package.cruleDefault of
-        Nothing  -> id
-        Just def -> withDefault (evalTerm def)
 
 evalRuleDefinition :: Maybe Value -> Package.RuleDefinition -> EvalM Value
 evalRuleDefinition mbIndex ruleDef = clearContext $ do
