@@ -188,3 +188,16 @@ same_site[apps[k].name] = apps[k].name {
     server != other_server
     apps[k].servers[_] = other_server
 }
+
+################################################################################
+# Functions
+
+trim_and_split(s) = x {
+    trim(s, " ", t)
+    split(t, ".", x)
+}
+
+test_trim_and_split {
+    x := trim_and_split("   foo.bar ")
+    x == ["foo", "bar"]
+}

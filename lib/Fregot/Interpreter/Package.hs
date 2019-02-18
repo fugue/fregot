@@ -20,7 +20,7 @@ import           Control.Monad             (unless, when)
 import           Control.Monad.Parachute
 import qualified Data.HashMap.Strict       as HMS
 import           Data.Maybe                (mapMaybe)
-import           Data.Maybe                (isJust)
+import           Data.Maybe                (isJust, isNothing)
 import           Fregot.Error              (Error)
 import           Fregot.Error              as Error
 import           Fregot.Sources.SourceSpan (SourceSpan)
@@ -36,6 +36,7 @@ data RuleKind
     = CompleteRule
     | GenSetRule
     | GenObjectRule
+    | FunctionRule
     deriving (Eq, Show)
 
 data CompiledRule = CompiledRule
@@ -92,6 +93,22 @@ compileRule imports rule
             , _cruleDefs    = []
             }
 
+    | not (null (head ^. ruleArgs)) = do
+        -- It's a function.
+        unless (isNothing $ head ^. ruleIndex) $ tellError $ Error.mkError
+            "compile"
+            (head ^. ruleAnn)
+            "invalid function" $
+            "Rule should have function arguments, " <>
+            "or regular arguments, but not both."
+
+        pure CompiledRule
+            { _cruleAnn     = head ^. ruleAnn
+            , _cruleDefault = Nothing
+            , _cruleKind    = FunctionRule
+            , _cruleDefs    = [RuleDefinition imports rule]
+            }
+
     | otherwise = do
         let kind
                 | Nothing <- head ^. ruleIndex = CompleteRule
@@ -139,6 +156,7 @@ mergeRules x y = do
         CompleteRule  -> "is a complete rule"
         GenSetRule    -> "generates a set"
         GenObjectRule -> "generates an object"
+        FunctionRule  -> "is a function"
 
 -- | Add a new rule.
 insert
