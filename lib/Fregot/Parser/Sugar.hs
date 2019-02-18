@@ -7,6 +7,7 @@ module Fregot.Parser.Sugar
 
 import           Control.Applicative       ((<|>))
 import           Control.Lens              ((^.))
+import           Data.Either               (partitionEithers)
 import           Data.Functor              (($>))
 import qualified Data.Scientific           as Scientific
 import           Fregot.Parser.Internal
@@ -189,8 +190,10 @@ term = withSourceSpan $
             return (k0, x0)
         return $ \ss -> ObjectCompT ss k x body) <|>
     (do
-        o <- object
-        return $ \ss -> ObjectT ss o)
+        os <- objectOrSet
+        return $ \ss -> case os of
+            Left  o -> ObjectT ss o
+            Right s -> SetT ss s)
 
 refArg :: FregotParser (RefArg SourceSpan)
 refArg =
@@ -219,15 +222,21 @@ scalar =
 array :: FregotParser [Expr SourceSpan]
 array = sepTrailing Tok.TLBracket Tok.TRBracket Tok.TComma expr
 
-object :: FregotParser (Object SourceSpan)
-object =
-    sepTrailing Tok.TLBrace Tok.TRBrace Tok.TComma item
+objectOrSet :: FregotParser (Either (Object SourceSpan) [Expr SourceSpan])
+objectOrSet = do
+    items <- sepTrailing Tok.TLBrace Tok.TRBrace Tok.TComma item
+    case partitionEithers items of
+        ([], setitems) -> return $ Right setitems
+        (objitems, []) -> return $ Left objitems
+        _              -> Parsec.unexpected "mixed object and set"
   where
-    item = do
-        k <- objectKey
-        expectToken Tok.TColon
-        e <- expr
-        return (k, e)
+    item =
+        (do
+            k <- Parsec.try $ objectKey <* Tok.symbol Tok.TColon
+            e <- expr
+            return $ Left (k, e)) <|>
+        (do
+            fmap Right expr)
 
 objectKey :: FregotParser (ObjectKey SourceSpan)
 objectKey = withSourceSpan $
