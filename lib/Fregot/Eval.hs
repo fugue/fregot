@@ -22,7 +22,7 @@ module Fregot.Eval
 import           Control.Lens               (use, view, (%=), (&), (.~), (^.),
                                              _3)
 import           Control.Lens.TH            (makeLenses)
-import           Control.Monad.Extended     (foldM, forM)
+import           Control.Monad.Extended     (foldM, forM, forM_)
 import           Control.Monad.Reader       (MonadReader (..), ask)
 import           Control.Monad.State        (MonadState (..))
 import qualified Data.DisjointSets          as DJ
@@ -191,7 +191,11 @@ evalTerm (RefT _ _ v args) = do
                 | Just crule <- mbCompiledRule
                 , Package.CompleteRule /= (crule ^. Package.cruleKind) -> do
             y <- evalTerm x
-            evalCompiledRule crule (Just y)
+            -- Remember to unify the index back with the argument that was
+            -- given.
+            (mbIndex, res) <- evalCompiledRule crule (Just y)
+            forM_ mbIndex $ unify y
+            return res
         _ -> do
             val <- evalVar v
             foldM evalRefArg val args
@@ -243,7 +247,9 @@ evalVar v = do
             mbCompiledRule <- lookupRule rv
             case mbCompiledRule of
                 Nothing    -> return (FreeV rv)
-                Just crule -> evalCompiledRule crule Nothing
+                Just crule -> do
+                    (_mbIndex, res) <- evalCompiledRule crule Nothing
+                    return res
 
 -- NOTE (jaspervdj): I suspect these are roughly the cases we want to care
 -- about:
@@ -294,14 +300,18 @@ evalRefArg indexee refArg = do
     getRefArgTerm (RefBrackArg t)       = t
     getRefArgTerm (RefDotArg a (Var k)) = ScalarT a (String k)
 
-evalCompiledRule :: Package.CompiledRule -> Maybe Value -> EvalM Value
+-- | Returns the value of the index value (if given) as well as the result of
+-- the rule.
+evalCompiledRule
+    :: Package.CompiledRule -> Maybe Value
+    -> EvalM (Maybe Value, Value)
 evalCompiledRule crule mbIndex = case crule ^. Package.cruleKind of
     -- Complete definitions
     Package.CompleteRule -> requireComplete $
         case crule ^. Package.cruleDefault of
             -- If there is a default, then we fill it in if the rule yields no
             -- rows.
-            Just def -> withDefault (evalTerm def) branches
+            Just def -> withDefault ((,) Nothing <$> evalTerm def) branches
             Nothing  -> branches
 
     -- TODO(jaspervdj): We currently treat objects and sets the same.  This is
@@ -311,18 +321,20 @@ evalCompiledRule crule mbIndex = case crule ^. Package.cruleKind of
         -- it without argument, e.g. `count(resources)`, we want to evaluate the
         -- document to an array again.
         (if isNothing mbIndex
-            then fmap (ArrayV . V.fromList) . unbranch
+            then fmap ((,) Nothing . ArrayV . V.fromList . map snd) . unbranch
             else id) $
         branches
   where
     -- Standard branching evaluation of rule definitions.
     branches = branch
-        [ evalRuleDefinition mbIndex def
+        [ evalRuleDefinition def mbIndex
         | def <- crule ^. Package.cruleDefs
         ]
 
-evalRuleDefinition :: Maybe Value -> Package.RuleDefinition -> EvalM Value
-evalRuleDefinition mbIndex ruleDef = clearContext $ do
+evalRuleDefinition
+    :: Package.RuleDefinition -> Maybe Value
+    -> EvalM (Maybe Value, Value)
+evalRuleDefinition ruleDef mbIndex = clearContext $ do
     case (mbIndex, rule ^. ruleHead . ruleIndex) of
         (Nothing, Nothing)   -> evalRuleBody (rule ^. ruleBody) final
         (Just arg, Just tpl) -> do
@@ -339,9 +351,17 @@ evalRuleDefinition mbIndex ruleDef = clearContext $ do
         (Nothing, Just _) -> evalRuleBody (rule ^. ruleBody) final
   where
     rule  = ruleDef ^. Package.ruleDefRule
-    final = case rule ^. ruleHead . ruleValue of
-        Nothing   -> return $ BoolV True
-        Just term -> evalTerm term
+    final = do
+        res <- case rule ^. ruleHead . ruleValue of
+            Nothing   -> return (BoolV True)
+            Just term -> evalTerm term
+
+        idx <- case mbIndex of
+            Nothing        -> return Nothing
+            Just (FreeV v) -> Just <$> evalVar v
+            Just val       -> return $ Just val
+
+        return (idx, res)
 
 -- | Evaluate the rule body, then perform a continuation.
 evalRuleBody :: RuleBody s -> EvalM a -> EvalM a
