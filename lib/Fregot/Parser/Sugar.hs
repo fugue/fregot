@@ -106,6 +106,7 @@ literal = do
 unificationExpr :: FregotParser (Expr SourceSpan)
 unificationExpr = toUnification <$> expr
   where
+    -- TODO(jaspervdj): This needs to happen in the 'Fregot.Prepare' module.
     toUnification (BinOpE a x UnifyO y)                     = UnifyE a x y
     toUnification (BinOpE a (TermE _ (VarT _ v)) AssignO x) = AssignE a v x
     toUnification e                                         = e

@@ -30,6 +30,8 @@ Library
     Fregot.Parser.Internal
     Fregot.Parser.Sugar
     Fregot.Parser.Token
+    Fregot.Prepare
+    Fregot.Prepare.AST
     Fregot.PrettyPrint
     Fregot.PrettyPrint.Internal
     Fregot.PrettyPrint.Sem

@@ -33,8 +33,9 @@ import qualified Data.Vector                as V
 import           Fregot.Eval.Value
 import           Fregot.Interpreter.Package (Package)
 import qualified Fregot.Interpreter.Package as Package
+import           Fregot.Prepare.AST
 import qualified Fregot.PrettyPrint         as PP
-import           Fregot.Sugar
+import           Fregot.Sources.SourceSpan  (SourceSpan)
 
 newtype Scope = Scope {unScope :: HMS.HashMap Var Value}
     deriving (Monoid, Semigroup)
@@ -142,7 +143,7 @@ unsafeBind root (FreeV alpha) =
 unsafeBind v val =
     scope %= Scope . HMS.insert v val . unScope
 
-lookupRule :: [Var] -> EvalM (Maybe Package.CompiledRule)
+lookupRule :: [Var] -> EvalM (Maybe (Rule SourceSpan))
 lookupRule [root] = do
     env0 <- ask
     return $ Package.lookup root (env0 ^. package)
@@ -189,7 +190,7 @@ evalTerm (RefT _ _ v args) = do
         -- an argument, i.e. it is not a complete rule.
         [RefBrackArg x]
                 | Just crule <- mbCompiledRule
-                , Package.CompleteRule /= (crule ^. Package.cruleKind) -> do
+                , CompleteRule /= (crule ^. ruleKind) -> do
             y <- evalTerm x
             -- Remember to unify the index back with the argument that was
             -- given.
@@ -333,12 +334,12 @@ evalRefArg indexee refArg = do
 -- | Returns the value of the index value (if given) as well as the result of
 -- the rule.
 evalCompiledRule
-    :: Package.CompiledRule -> Maybe Value
+    :: Rule SourceSpan -> Maybe Value
     -> EvalM (Maybe Value, Value)
-evalCompiledRule crule mbIndex = case crule ^. Package.cruleKind of
+evalCompiledRule crule mbIndex = case crule ^. ruleKind of
     -- Complete definitions
-    Package.CompleteRule -> requireComplete $
-        case crule ^. Package.cruleDefault of
+    CompleteRule -> requireComplete $
+        case crule ^. ruleDefault of
             -- If there is a default, then we fill it in if the rule yields no
             -- rows.
             Just def -> withDefault ((,) Nothing <$> evalTerm def) branches
@@ -358,21 +359,21 @@ evalCompiledRule crule mbIndex = case crule ^. Package.cruleKind of
     -- Standard branching evaluation of rule definitions.
     branches = branch
         [ evalRuleDefinition def mbIndex
-        | def <- crule ^. Package.cruleDefs
+        | def <- crule ^. ruleDefs
         ]
 
 evalUserFunction
-    :: Package.CompiledRule -> [Value] -> EvalM ([Value], Value)
+    :: Rule SourceSpan -> [Value] -> EvalM ([Value], Value)
 evalUserFunction crule _args
-    | crule ^. Package.cruleKind /= Package.FunctionRule = fail
+    | crule ^. ruleKind /= FunctionRule = fail
         "Non-function called as function"
     | otherwise = fail "todo: evalUserFunction"
 
 evalRuleDefinition
-    :: Package.RuleDefinition -> Maybe Value
+    :: RuleDefinition SourceSpan -> Maybe Value
     -> EvalM (Maybe Value, Value)
-evalRuleDefinition ruleDef mbIndex = clearContext $ do
-    case (mbIndex, rule ^. ruleHead . ruleIndex) of
+evalRuleDefinition rule mbIndex = clearContext $ do
+    case (mbIndex, rule ^. ruleIndex) of
         (Nothing, Nothing)   -> evalRuleBody (rule ^. ruleBody) final
         (Just arg, Just tpl) -> do
             tplv <- evalTerm tpl
@@ -380,16 +381,15 @@ evalRuleDefinition ruleDef mbIndex = clearContext $ do
             evalRuleBody (rule ^. ruleBody) final
         (Just _, Nothing) -> fail $
             "evalRuleDefinition: got argument for rule " ++
-            show (PP.pretty (rule ^. ruleHead . ruleName)) ++
+            show (PP.pretty (rule ^. ruleDefName)) ++
             " but didn't expect one"
 
         -- If the rule definition has an argument, but we didn't give any, we
         -- want to evaluate things anyway.
         (Nothing, Just _) -> evalRuleBody (rule ^. ruleBody) final
   where
-    rule  = ruleDef ^. Package.ruleDefRule
     final = do
-        res <- case rule ^. ruleHead . ruleValue of
+        res <- case rule ^. ruleValue of
             Nothing   -> return (BoolV True)
             Just term -> evalTerm term
 
