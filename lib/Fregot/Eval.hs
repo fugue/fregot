@@ -22,7 +22,7 @@ module Fregot.Eval
 import           Control.Lens               (use, view, (%=), (&), (.~), (^.),
                                              _3)
 import           Control.Lens.TH            (makeLenses)
-import           Control.Monad.Extended     (foldM, forM, forM_)
+import           Control.Monad.Extended     (foldM, forM, forM_, zipWithM_)
 import           Control.Monad.Reader       (MonadReader (..), ask)
 import           Control.Monad.State        (MonadState (..))
 import qualified Data.DisjointSets          as DJ
@@ -142,10 +142,11 @@ unsafeBind root (FreeV alpha) =
 unsafeBind v val =
     scope %= Scope . HMS.insert v val . unScope
 
-lookupRule :: Var -> EvalM (Maybe Package.CompiledRule)
-lookupRule root = do
+lookupRule :: [Var] -> EvalM (Maybe Package.CompiledRule)
+lookupRule [root] = do
     env0 <- ask
     return $ Package.lookup root (env0 ^. package)
+lookupRule _ = fail "todo: lookup rules in other packages"
 
 clearContext :: EvalM a -> EvalM a
 clearContext mx = do
@@ -182,8 +183,7 @@ evalExpr (ParensE _ e) = evalExpr e
 
 evalTerm :: Term a -> EvalM Value
 evalTerm (RefT _ _ v args) = do
-
-    mbCompiledRule <- lookupRule v
+    mbCompiledRule <- lookupRule [v]
     case args of
         -- Using a rule with an index.  This only triggers if the rule requires
         -- an argument, i.e. it is not a complete rule.
@@ -207,7 +207,18 @@ evalTerm (CallT _ f args)
         case vargs of
             [ArrayV a] -> return $ NumberV $ fromIntegral $ V.length a
             _          -> fail $ "Bad parameter for count"
-    | otherwise = fail $ "Not implemented: function call: " ++ show f
+    | otherwise = do
+        mbCompiledRule <- lookupRule f
+        case mbCompiledRule of
+            Just cr -> do
+                vargs <- mapM evalTerm args
+                (vargs', res) <- evalUserFunction cr vargs
+                -- TODO(jaspervdj): We really only need to unify "output
+                -- arguments", but we don't have code to detect the output
+                -- arguments at this point.
+                zipWithM_ unify vargs vargs'
+                return res
+            Nothing -> fail $ "Not implemented: function call: " ++ show f
 
 evalTerm (VarT _ v)
     | unVar v == "_" = return WildcardV
@@ -244,7 +255,7 @@ evalVar v = do
     case HMS.lookup rv (unScope scop) of
         Just val -> return val
         Nothing -> do
-            mbCompiledRule <- lookupRule rv
+            mbCompiledRule <- lookupRule [rv]
             case mbCompiledRule of
                 Nothing    -> return (FreeV rv)
                 Just crule -> do
@@ -350,6 +361,13 @@ evalCompiledRule crule mbIndex = case crule ^. Package.cruleKind of
         | def <- crule ^. Package.cruleDefs
         ]
 
+evalUserFunction
+    :: Package.CompiledRule -> [Value] -> EvalM ([Value], Value)
+evalUserFunction crule _args
+    | crule ^. Package.cruleKind /= Package.FunctionRule = fail
+        "Non-function called as function"
+    | otherwise = fail "todo: evalUserFunction"
+
 evalRuleDefinition
     :: Package.RuleDefinition -> Maybe Value
     -> EvalM (Maybe Value, Value)
@@ -375,11 +393,7 @@ evalRuleDefinition ruleDef mbIndex = clearContext $ do
             Nothing   -> return (BoolV True)
             Just term -> evalTerm term
 
-        idx <- case mbIndex of
-            Nothing        -> return Nothing
-            Just (FreeV v) -> Just <$> evalVar v
-            Just val       -> return $ Just val
-
+        idx <- traverse evalFree mbIndex
         return (idx, res)
 
 -- | Evaluate the rule body, then perform a continuation.
@@ -398,6 +412,10 @@ evalRuleBody lits0 final = go lits0
 
     trueish (BoolV False) = False
     trueish _             = True
+
+evalFree :: Value -> EvalM Value
+evalFree (FreeV v) = evalVar v
+evalFree val       = return val
 
 evalScalar :: Scalar a -> EvalM Value
 evalScalar (String t) = return $ StringV t

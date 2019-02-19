@@ -197,7 +197,7 @@ trim_and_split(s) = x {
     split(t, ".", x)
 }
 
-test_trim_and_split {
+todo_test_trim_and_split {
     x := trim_and_split("   foo.bar ")
     x == ["foo", "bar"]
 }
