@@ -99,17 +99,9 @@ blockOrSemi linep =
 literal :: FregotParser (Literal SourceSpan)
 literal = do
     _literalNegation <- Parsec.option False $ Tok.symbol Tok.TNot $> True
-    _literalExpr <- unificationExpr
+    _literalExpr <- expr
     _literalWith <- Parsec.many parseWith
     return Literal {..}
-
-unificationExpr :: FregotParser (Expr SourceSpan)
-unificationExpr = toUnification <$> expr
-  where
-    -- TODO(jaspervdj): This needs to happen in the 'Fregot.Prepare' module.
-    toUnification (BinOpE a x UnifyO y)                     = UnifyE a x y
-    toUnification (BinOpE a (TermE _ (VarT _ v)) AssignO x) = AssignE a v x
-    toUnification e                                         = e
 
 expr :: FregotParser (Expr SourceSpan)
 expr = Parsec.buildExpressionParser

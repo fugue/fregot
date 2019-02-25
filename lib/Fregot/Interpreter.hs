@@ -26,6 +26,7 @@ import qualified Fregot.Eval                as Eval
 import           Fregot.Interpreter.Package (Package)
 import qualified Fregot.Interpreter.Package as Package
 import qualified Fregot.Parser              as Parser
+import qualified Fregot.Prepare             as Prepare
 import qualified Fregot.PrettyPrint         as PP
 import qualified Fregot.Sources             as Sources
 import           Fregot.Sources.SourceSpan  (SourceSpan)
@@ -117,7 +118,9 @@ eval h pkgname mx = do
 evalExpr
     :: Handle -> PackageName -> Sugar.Expr SourceSpan
     -> InterpreterM (Eval.Document Eval.Value)
-evalExpr h pkgname = eval h pkgname . Eval.evalExpr
+evalExpr h pkgname expr = do
+    prep <- Prepare.prepareExpr expr
+    eval h pkgname (Eval.evalExpr prep)
 
 evalVar
     :: Handle -> PackageName -> Var

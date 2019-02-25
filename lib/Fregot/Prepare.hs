@@ -3,29 +3,24 @@
 module Fregot.Prepare
     ( prepareRule
     , mergeRules
+
+    , prepareExpr
     ) where
 
 
 import           Control.Applicative       ((<|>))
 import           Control.Lens              (view, (%~), (&), (^.))
-import           Control.Monad.Extended    (unless, when)
+import           Control.Monad.Extended    (foldM, unless, when)
 import           Control.Monad.Parachute   (ParachuteT, tellError)
 import           Data.Maybe                (isJust, isNothing, mapMaybe)
 import           Fregot.Error              (Error)
 import qualified Fregot.Error              as Error
 import           Fregot.Prepare.AST
+import           Fregot.PrettyPrint        ((<+>))
 import           Fregot.Sources.SourceSpan (SourceSpan)
 import qualified Fregot.Sugar              as Sugar
 import           Prelude                   hiding (head)
 
-{-
-toUnification :: Sugar.Expr a -> Expr a
-toUnification (Sugar.BinOpE a x Sugar.UnifyO y) =
-    UnifyE a x y
-toUnification (Sugar.BinOpE a (Sugar.TermE _ (Sugar.VarT _ v)) Sugar.AssignO x) =
-    AssignE a v x
-toUnification e                                         = fail "wat"
--}
 -- | Create a new compiled rule from a sugared rule.
 prepareRule
     :: Monad m
@@ -51,10 +46,11 @@ prepareRule imports rule
         --     The term may be any scalar, composite, or comprehension value but
         --     it may not be a variable or reference. If the value is a
         --     composite then it may not contain variables or references.
+        def <- traverse prepareTerm (head ^. Sugar.ruleValue)
         pure Rule
             { _ruleName    = head ^. Sugar.ruleName
             , _ruleAnn     = head ^. Sugar.ruleAnn
-            , _ruleDefault = head ^. Sugar.ruleValue
+            , _ruleDefault = def
             , _ruleKind    = CompleteRule
             , _ruleDefs    = []
             }
@@ -68,6 +64,10 @@ prepareRule imports rule
             "Rule should have function arguments, " <>
             "or regular arguments, but not both."
 
+        body  <- prepareRuleBody (rule ^. Sugar.ruleBody)
+        args  <- traverse (traverse prepareTerm) (head ^. Sugar.ruleArgs)
+        index <- traverse prepareTerm (head ^. Sugar.ruleIndex)
+        value <- traverse prepareTerm (head ^. Sugar.ruleValue)
         pure Rule
             { _ruleName    = head ^. Sugar.ruleName
             , _ruleAnn     = head ^. Sugar.ruleAnn
@@ -78,10 +78,10 @@ prepareRule imports rule
                     { _ruleDefName    = head ^. Sugar.ruleName
                     , _ruleDefImports = imports
                     , _ruleDefAnn     = head ^. Sugar.ruleAnn
-                    , _ruleArgs       = head ^. Sugar.ruleArgs
-                    , _ruleIndex      = head ^. Sugar.ruleIndex
-                    , _ruleValue      = head ^. Sugar.ruleValue
-                    , _ruleBody       = rule ^. Sugar.ruleBody
+                    , _ruleArgs       = args
+                    , _ruleIndex      = index
+                    , _ruleValue      = value
+                    , _ruleBody       = body
                     }
                 ]
             }
@@ -93,6 +93,10 @@ prepareRule imports rule
                 | otherwise                          = GenObjectRule
 
         -- NOTE(jaspervdj): Perform sanity checks on rules.
+        body  <- prepareRuleBody (rule ^. Sugar.ruleBody)
+        args  <- traverse (traverse prepareTerm) (head ^. Sugar.ruleArgs)
+        index <- traverse prepareTerm (head ^. Sugar.ruleIndex)
+        value <- traverse prepareTerm (head ^. Sugar.ruleValue)
         pure Rule
             { _ruleName    = head ^. Sugar.ruleName
             , _ruleAnn     = head ^. Sugar.ruleAnn
@@ -103,10 +107,10 @@ prepareRule imports rule
                     { _ruleDefName    = head ^. Sugar.ruleName
                     , _ruleDefImports = imports
                     , _ruleDefAnn     = head ^. Sugar.ruleAnn
-                    , _ruleArgs       = head ^. Sugar.ruleArgs
-                    , _ruleIndex      = head ^. Sugar.ruleIndex
-                    , _ruleValue      = head ^. Sugar.ruleValue
-                    , _ruleBody       = rule ^. Sugar.ruleBody
+                    , _ruleArgs       = args
+                    , _ruleIndex      = index
+                    , _ruleValue      = value
+                    , _ruleBody       = body
                     }
                 ]
             }
@@ -146,3 +150,113 @@ mergeRules x y = do
         GenObjectRule -> "generates an object"
         FunctionRule  -> "is a function"
 
+--------------------------------------------------------------------------------
+
+prepareRuleBody
+    :: Monad m
+    => Sugar.RuleBody SourceSpan
+    -> ParachuteT Error m (RuleBody SourceSpan)
+prepareRuleBody = mapM prepareLiteral
+
+prepareLiteral
+    :: Monad m
+    => Sugar.Literal SourceSpan
+    -> ParachuteT Error m (Literal SourceSpan)
+prepareLiteral slit = do
+    statement <- case slit ^. Sugar.literalExpr of
+        Sugar.BinOpE ann x Sugar.UnifyO y ->
+            UnifyS ann <$> prepareExpr x <*> prepareExpr y
+        Sugar.BinOpE ann (Sugar.TermE _ (Sugar.VarT _ v)) Sugar.AssignO y ->
+            AssignS ann v <$> prepareExpr y
+        expr -> ExprS <$> prepareExpr expr
+
+    pure Literal
+        { _literalNegation  = slit ^. Sugar.literalNegation
+        , _literalStatement = statement
+        , _literalWith      = slit ^. Sugar.literalWith
+        }
+
+prepareExpr
+    :: Monad m
+    => Sugar.Expr SourceSpan
+    -> ParachuteT Error m (Expr SourceSpan)
+prepareExpr = \case
+    Sugar.TermE source t -> TermE source <$> prepareTerm t
+    Sugar.BinOpE source x o y -> BinOpE source
+        <$> prepareExpr x
+        <*> prepareBinOp source o
+        <*> prepareExpr y
+    Sugar.ParensE _source e -> prepareExpr e
+
+prepareTerm
+    :: Monad m
+    => Sugar.Term SourceSpan
+    -> ParachuteT Error m (Term SourceSpan)
+prepareTerm = \case
+    Sugar.RefT source varSource var0 refs -> foldM
+        (\acc refArg -> case refArg of
+            Sugar.RefDotArg ann (Var v) -> return $
+                RefT source acc (ScalarT ann (Sugar.String v))
+            Sugar.RefBrackArg k -> do
+                k' <- prepareTerm k
+                return $ RefT source acc k')
+        (VarT varSource var0)
+        refs
+
+    Sugar.CallT source vars args ->
+        CallT source vars <$> traverse prepareTerm args
+    Sugar.VarT source v -> pure $ VarT source v
+    Sugar.ScalarT source s -> pure $ ScalarT source s
+
+    Sugar.ArrayT source a -> ArrayT source <$> traverse prepareExpr a
+    Sugar.SetT source a -> SetT source <$> traverse prepareExpr a
+    Sugar.ObjectT source o -> ObjectT source <$> traverse prepareObjectItem o
+
+    Sugar.ArrayCompT ann h b ->
+        ArrayCompT ann <$> prepareTerm h <*> prepareRuleBody b
+    Sugar.SetCompT ann h b ->
+        SetCompT ann <$> prepareTerm h <*> prepareRuleBody b
+    Sugar.ObjectCompT ann k h b ->
+        ObjectCompT ann (prepareObjectKey k) <$> prepareTerm h <*> prepareRuleBody b
+
+prepareObjectItem
+    :: Monad m
+    => (Sugar.ObjectKey SourceSpan, Sugar.Expr SourceSpan)
+    -> ParachuteT Error m (ObjectKey SourceSpan, Expr SourceSpan)
+prepareObjectItem (k, e) = (,) (prepareObjectKey k) <$> prepareExpr e
+
+prepareObjectKey
+    :: Sugar.ObjectKey k
+    -> ObjectKey k
+prepareObjectKey = \case
+    Sugar.ScalarK ann s -> ScalarK ann s
+    Sugar.VarK    ann v -> VarK ann v
+
+prepareBinOp
+    :: Monad m
+    => SourceSpan
+    -> Sugar.BinOp
+    -> ParachuteT Error m BinOp
+prepareBinOp source = \case
+    Sugar.EqualO              -> pure EqualO
+    Sugar.NotEqualO           -> pure NotEqualO
+    Sugar.LessThanO           -> pure LessThanO
+    Sugar.LessThanOrEqualO    -> pure LessThanOrEqualO
+    Sugar.GreaterThanO        -> pure GreaterThanO
+    Sugar.GreaterThanOrEqualO -> pure GreaterThanOrEqualO
+    Sugar.PlusO               -> pure PlusO
+    Sugar.MinusO              -> pure MinusO
+    Sugar.TimesO              -> pure TimesO
+    Sugar.DivideO             -> pure DivideO
+    Sugar.UnifyO              -> do
+        tellError $ Error.mkError "compile" source
+            "invalid unification" $
+            "The `=` operator should not appear in this context, perhaps" <+>
+            "you meant to write `==`?"
+        pure EqualO
+    Sugar.AssignO             -> do
+        tellError $ Error.mkError "compile" source
+            "invalid unification" $
+            "The `:=` operator should not appear in this context, perhaps" <+>
+            "you meant to write `==`?"
+        pure EqualO

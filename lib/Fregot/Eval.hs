@@ -22,7 +22,7 @@ module Fregot.Eval
 import           Control.Lens               (use, view, (%=), (&), (.~), (^.),
                                              _3)
 import           Control.Lens.TH            (makeLenses)
-import           Control.Monad.Extended     (foldM, forM, forM_, zipWithM_)
+import           Control.Monad.Extended     (forM, forM_, zipWithM_)
 import           Control.Monad.Reader       (MonadReader (..), ask)
 import           Control.Monad.State        (MonadState (..))
 import qualified Data.DisjointSets          as DJ
@@ -169,37 +169,26 @@ ground mval = do
 
 evalExpr :: Expr a -> EvalM Value
 evalExpr (TermE _ t) = evalTerm t
-evalExpr (UnifyE _ x y) = do
-    xv <- evalExpr x
-    yv <- evalExpr y
-    unify xv yv
-    return $ BoolV True
-evalExpr (AssignE _ v x) = do
-    xv <- evalExpr x
-    -- TODO(jaspervdj): Do we need to check that 'v' is indeed free?
-    unsafeBind v xv
-    return xv
 evalExpr (BinOpE _ x o y) = evalBinOp x o y
-evalExpr (ParensE _ e) = evalExpr e
 
 evalTerm :: Term a -> EvalM Value
-evalTerm (RefT _ _ v args) = do
-    mbCompiledRule <- lookupRule [v]
-    case args of
+evalTerm (RefT _ lhs arg) = do
+    mbCompiledRule <- case lhs of
+        VarT _ v -> lookupRule [v]
+        _        -> return Nothing
+    case mbCompiledRule of
         -- Using a rule with an index.  This only triggers if the rule requires
         -- an argument, i.e. it is not a complete rule.
-        [RefBrackArg x]
-                | Just crule <- mbCompiledRule
-                , CompleteRule /= (crule ^. ruleKind) -> do
-            y <- evalTerm x
+        Just crule | CompleteRule /= (crule ^. ruleKind) -> do
+            arg' <- evalTerm arg
             -- Remember to unify the index back with the argument that was
             -- given.
-            (mbIndex, res) <- evalCompiledRule crule (Just y)
-            forM_ mbIndex $ unify y
+            (mbIndex, res) <- evalCompiledRule crule (Just arg')
+            forM_ mbIndex $ unify arg'
             return res
         _ -> do
-            val <- evalVar v
-            foldM evalRefArg val args
+            val <- evalTerm lhs
+            evalRefArg val arg
 
 evalTerm (CallT _ f args)
     -- TODO(jaspervdj): Use a more reliable system to register FFI functions.
@@ -269,9 +258,9 @@ evalVar v = do
 -- * indexing rules
 -- * indexing "cached/precomputed" rules
 -- * indexing actual values, i.e. objects and arrays
-evalRefArg :: Value -> RefArg a -> EvalM Value
+evalRefArg :: Value -> Term a -> EvalM Value
 evalRefArg indexee refArg = do
-    idx <- evalTerm (getRefArgTerm refArg)
+    idx <- evalTerm refArg
     case idx of
         WildcardV -> case indexee of
             ArrayV a  -> branch [return val | val <- V.toList a]
@@ -327,9 +316,6 @@ evalRefArg indexee refArg = do
         _ -> fail $
             "evalRefArg: cannot index " ++ describeValue indexee ++
             " with a " ++ describeValue idx
-  where
-    getRefArgTerm (RefBrackArg t)       = t
-    getRefArgTerm (RefDotArg a (Var k)) = ScalarT a (String k)
 
 -- | Returns the value of the index value (if given) as well as the result of
 -- the rule.
@@ -404,14 +390,27 @@ evalRuleBody lits0 final = go lits0
 
     go (lit : lits)
         | lit ^. literalNegation = do
-            negation trueish $ ground $ evalExpr $ lit ^. literalExpr
+            negation trueish $ ground $ evalStatement $ lit ^. literalStatement
             go lits
         | otherwise = do
-            r <- ground $ evalExpr $ lit ^. literalExpr
+            r <- ground $ evalStatement $ lit ^. literalStatement
             if trueish r then go lits else cut
 
     trueish (BoolV False) = False
     trueish _             = True
+
+evalStatement :: Statement a -> EvalM Value
+evalStatement (UnifyS _ x y) = do
+    xv <- evalExpr x
+    yv <- evalExpr y
+    unify xv yv
+    return $ BoolV True
+evalStatement (AssignS _ v x) = do
+    xv <- evalExpr x
+    -- TODO(jaspervdj): Do we need to check that 'v' is indeed free?
+    unsafeBind v xv
+    return xv
+evalStatement (ExprS e) = evalExpr e
 
 evalFree :: Value -> EvalM Value
 evalFree (FreeV v) = evalVar v
@@ -432,7 +431,6 @@ evalBinOp x op y = do
     xv <- evalExpr x
     yv <- evalExpr y
     case (xv, op, yv) of
-        (_, AssignO, _)   -> return $! BoolV $! xv == yv
         (_, EqualO, _)    -> return $! BoolV $! xv == yv
         (_, NotEqualO, _) -> return $! BoolV $! xv /= yv
         (NumberV xn, LessThanO, NumberV yn) ->
@@ -452,7 +450,7 @@ evalBinOp x op y = do
         (NumberV xn, DivideO, NumberV yn) ->
             return $! NumberV $! xn / yn
         _ -> fail $
-            "evalBinOp: invalid arguments for " ++ show (PP.pretty' op) ++
+            "evalBinOp: invalid arguments for " ++ show op ++
             ": " ++ describeValue xv ++ ", " ++ describeValue yv
 
 unify :: Value -> Value -> EvalM ()
