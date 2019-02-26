@@ -24,7 +24,7 @@ module Fregot.Eval
 import           Control.Lens               (use, view, (%=), (&), (.=), (.~),
                                              (^.))
 import           Control.Lens.TH            (makeLenses)
-import           Control.Monad.Extended     (forM, forM_, zipWithM_)
+import           Control.Monad.Extended     (forM)
 import           Control.Monad.Reader       (MonadReader (..), ask)
 import           Control.Monad.State        (MonadState (..), modify)
 import qualified Data.HashMap.Strict        as HMS
@@ -187,11 +187,7 @@ evalTerm (RefT _ lhs arg) = do
         -- an argument, i.e. it is not a complete rule.
         Just crule | CompleteRule /= (crule ^. ruleKind) -> do
             arg' <- evalTerm arg
-            -- Remember to unify the index back with the argument that was
-            -- given.
-            (mbIndex, res) <- evalCompiledRule crule (Just arg')
-            forM_ mbIndex $ unify arg'
-            return res
+            evalCompiledRule crule (Just arg')
         _ -> do
             val <- evalTerm lhs
             evalRefArg val arg
@@ -208,12 +204,7 @@ evalTerm (CallT _ f args)
         case mbCompiledRule of
             Just cr -> do
                 vargs <- mapM evalTerm args
-                (vargs', res) <- evalUserFunction cr vargs
-                -- TODO(jaspervdj): We really only need to unify "output
-                -- arguments", but we don't have code to detect the output
-                -- arguments at this point.
-                zipWithM_ unify vargs vargs'
-                return res
+                evalUserFunction cr vargs
             Nothing -> fail $ "Not implemented: function call: " ++ show f
 
 evalTerm (VarT _ v)
@@ -254,25 +245,7 @@ evalVar v = do
             mbCompiledRule <- lookupRule [v]
             case mbCompiledRule of
                 Nothing    -> FreeV <$> toInstVar v
-                Just crule -> do
-                    (_mbIndex, res) <- evalCompiledRule crule Nothing
-                    return res
-
-{-
-evalVar v = do
-    uni  <- use unification
-    scop <- use scope
-    let (rv, ()) = DJ.root v uni
-    case HMS.lookup rv (unScope scop) of
-        Just val -> return val
-        Nothing -> do
-            mbCompiledRule <- lookupRule [rv]
-            case mbCompiledRule of
-                Nothing    -> return (FreeV rv)
-                Just crule -> do
-                    (_mbIndex, res) <- evalCompiledRule crule Nothing
-                    return res
--}
+                Just crule -> evalCompiledRule crule Nothing
 
 -- NOTE (jaspervdj): I suspect these are roughly the cases we want to care
 -- about:
@@ -343,14 +316,14 @@ evalRefArg indexee refArg = do
 -- the rule.
 evalCompiledRule
     :: Rule SourceSpan -> Maybe Value
-    -> EvalM (Maybe Value, Value)
+    -> EvalM Value
 evalCompiledRule crule mbIndex = case crule ^. ruleKind of
     -- Complete definitions
     CompleteRule -> requireComplete $
         case crule ^. ruleDefault of
             -- If there is a default, then we fill it in if the rule yields no
             -- rows.
-            Just def -> withDefault ((,) Nothing <$> evalTerm def) branches
+            Just def -> withDefault (evalTerm def) branches
             Nothing  -> branches
 
     -- TODO(jaspervdj): We currently treat objects and sets the same.  This is
@@ -360,7 +333,7 @@ evalCompiledRule crule mbIndex = case crule ^. ruleKind of
         -- it without argument, e.g. `count(resources)`, we want to evaluate the
         -- document to an array again.
         (if isNothing mbIndex
-            then fmap ((,) Nothing . ArrayV . V.fromList . map snd) . unbranch
+            then fmap (ArrayV . V.fromList) . unbranch
             else id) $
         branches
   where
@@ -371,15 +344,14 @@ evalCompiledRule crule mbIndex = case crule ^. ruleKind of
         ]
 
 evalUserFunction
-    :: Rule SourceSpan -> [Value] -> EvalM ([Value], Value)
+    :: Rule SourceSpan -> [Value] -> EvalM Value
 evalUserFunction crule _args
     | crule ^. ruleKind /= FunctionRule = fail
         "Non-function called as function"
     | otherwise = fail "todo: evalUserFunction"
 
 evalRuleDefinition
-    :: RuleDefinition SourceSpan -> Maybe Value
-    -> EvalM (Maybe Value, Value)
+    :: RuleDefinition SourceSpan -> Maybe Value -> EvalM Value
 evalRuleDefinition rule mbIndex = clearLocals $ do
     case (mbIndex, rule ^. ruleIndex) of
         (Nothing, Nothing)   -> evalRuleBody (rule ^. ruleBody) final
@@ -396,13 +368,9 @@ evalRuleDefinition rule mbIndex = clearLocals $ do
         -- want to evaluate things anyway.
         (Nothing, Just _) -> evalRuleBody (rule ^. ruleBody) final
   where
-    final = do
-        res <- case rule ^. ruleValue of
-            Nothing   -> return (BoolV True)
-            Just term -> evalTerm term
-
-        idx <- traverse evalFree mbIndex
-        return (idx, res)
+    final = case rule ^. ruleValue of
+        Nothing   -> return (BoolV True)
+        Just term -> evalTerm term
 
 -- | Evaluate the rule body, then perform a continuation.
 evalRuleBody :: RuleBody s -> EvalM a -> EvalM a
@@ -433,12 +401,6 @@ evalStatement (AssignS _ v x) = do
     unify (FreeV iv) xv
     return xv
 evalStatement (ExprS e) = evalExpr e
-
--- | TODO(jaspervdj): With the new unficiation, I don't think we need this
--- anymore.
-evalFree :: Value -> EvalM Value
-evalFree (FreeV v) = fromMaybe (FreeV v) <$> Unification.lookup v
-evalFree val       = return val
 
 evalScalar :: Scalar a -> EvalM Value
 evalScalar (String t) = return $ StringV t
