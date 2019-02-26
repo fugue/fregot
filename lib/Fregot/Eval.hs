@@ -1,5 +1,7 @@
+{-# LANGUAGE BangPatterns               #-}
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE OverloadedStrings          #-}
@@ -19,16 +21,17 @@ module Fregot.Eval
     , evalTerm
     ) where
 
-import           Control.Lens               (use, view, (%=), (&), (.~), (^.),
-                                             _3)
+import           Control.Lens               (use, view, (%=), (&), (.=), (.~),
+                                             (^.))
 import           Control.Lens.TH            (makeLenses)
 import           Control.Monad.Extended     (forM, forM_, zipWithM_)
 import           Control.Monad.Reader       (MonadReader (..), ask)
-import           Control.Monad.State        (MonadState (..))
-import qualified Data.DisjointSets          as DJ
+import           Control.Monad.State        (MonadState (..), modify)
 import qualified Data.HashMap.Strict        as HMS
-import           Data.Maybe                 (isNothing)
+import           Data.Maybe                 (fromMaybe, isNothing)
 import qualified Data.Scientific            as Scientific
+import           Data.Unification           (Unification)
+import qualified Data.Unification           as Unification
 import qualified Data.Vector                as V
 import           Fregot.Eval.Value
 import           Fregot.Interpreter.Package (Package)
@@ -37,20 +40,19 @@ import           Fregot.Prepare.AST
 import qualified Fregot.PrettyPrint         as PP
 import           Fregot.Sources.SourceSpan  (SourceSpan)
 
-newtype Scope = Scope {unScope :: HMS.HashMap Var Value}
-    deriving (Monoid, Semigroup)
-
 data Context = Context
-    { _unification :: !(DJ.DisjointSets Var ())
-    , _scope       :: !Scope
+    { _unification :: !(Unification InstVar Value)
+    , _locals      :: !(HMS.HashMap Var InstVar)
+    , _nextInstVar :: !Int
     }
 
 $(makeLenses ''Context)
 
 emptyContext :: Context
 emptyContext = Context
-    { _unification = DJ.empty
-    , _scope       = mempty
+    { _unification = Unification.empty
+    , _locals      = mempty
+    , _nextInstVar = 0
     }
 
 data Row a = Row
@@ -136,12 +138,17 @@ requireComplete (EvalM f) = EvalM $ \env ctx ->
                 "requireComplete: inconsistent result for complete rule"
         _          -> rows
 
--- | Note that 'v' MUST be a root in the DisjointSets.
-unsafeBind :: Var -> Value -> EvalM ()
-unsafeBind root (FreeV alpha) =
-    unification %= view _3 . DJ.union root alpha
-unsafeBind v val =
-    scope %= Scope . HMS.insert v val . unScope
+-- | Turn a variable into an instantiated variable.
+--
+-- * If it's a local variable and already instantiated, we return that.
+-- * Otherwise, we instantiate a new one.
+toInstVar :: Var -> EvalM InstVar
+toInstVar v = state $ \ctx -> case HMS.lookup v (ctx ^. locals) of
+    Just iv -> (iv, ctx)
+    Nothing ->
+        let !iv   = InstVar (ctx ^. nextInstVar) v
+            !lcls = HMS.insert v iv (ctx ^. locals) in
+        (iv, ctx {_nextInstVar = _nextInstVar ctx + 1, _locals = lcls})
 
 lookupRule :: [Var] -> EvalM (Maybe (Rule SourceSpan))
 lookupRule [root] = do
@@ -149,12 +156,11 @@ lookupRule [root] = do
     return $ Package.lookup root (env0 ^. package)
 lookupRule _ = fail "todo: lookup rules in other packages"
 
-clearContext :: EvalM a -> EvalM a
-clearContext mx = do
-    ctx <- get
-    put emptyContext
-    x  <- mx
-    put ctx
+clearLocals :: EvalM a -> EvalM a
+clearLocals mx = do
+    oldLocals <- state $ \ctx -> (_locals ctx, ctx {_locals = mempty})
+    x         <- mx
+    modify $ \ctx -> ctx {_locals = oldLocals}
     return x
 
 --------------------------------------------------------------------------------
@@ -168,7 +174,7 @@ ground mval = do
         _         -> return val
 
 evalExpr :: Expr a -> EvalM Value
-evalExpr (TermE _ t) = evalTerm t
+evalExpr (TermE _ t)      = evalTerm t
 evalExpr (BinOpE _ x o y) = evalBinOp x o y
 
 evalTerm :: Term a -> EvalM Value
@@ -239,6 +245,21 @@ evalTerm (ObjectCompT _ _ _ _) = fail "object comprehensions not supported"
 
 evalVar :: Var -> EvalM Value
 evalVar v = do
+    lcls <- use locals
+    case HMS.lookup v lcls of
+        Just iv -> do
+            mbVal <- Unification.lookup iv
+            return $ fromMaybe (FreeV iv) mbVal
+        Nothing  -> do
+            mbCompiledRule <- lookupRule [v]
+            case mbCompiledRule of
+                Nothing    -> FreeV <$> toInstVar v
+                Just crule -> do
+                    (_mbIndex, res) <- evalCompiledRule crule Nothing
+                    return res
+
+{-
+evalVar v = do
     uni  <- use unification
     scop <- use scope
     let (rv, ()) = DJ.root v uni
@@ -251,6 +272,7 @@ evalVar v = do
                 Just crule -> do
                     (_mbIndex, res) <- evalCompiledRule crule Nothing
                     return res
+-}
 
 -- NOTE (jaspervdj): I suspect these are roughly the cases we want to care
 -- about:
@@ -272,7 +294,7 @@ evalRefArg indexee refArg = do
 
         FreeV unbound -> case indexee of
             ArrayV a -> branch
-                [ unsafeBind unbound (NumberV $ fromIntegral i) >> return val
+                [ Unification.bindTerm unbound (NumberV $ fromIntegral i) >> return val
                 | (i, val) <- zip [0 :: Int ..] (V.toList a)
                 ]
             SetV s -> branch
@@ -280,11 +302,11 @@ evalRefArg indexee refArg = do
                 -- that rules always return true if they don't have a return
                 -- value.  We bind the index to the thing in the list so the
                 -- user should use that.
-                [ unsafeBind unbound val >> return (BoolV True)
+                [ Unification.bindTerm unbound val >> return (BoolV True)
                 | val <- V.toList s
                 ]
             ObjectV o -> branch
-                [ unsafeBind unbound (StringV key) >> return val
+                [ Unification.bindTerm unbound (StringV key) >> return val
                 | (key, val) <- HMS.toList o
                 ]
             _ -> fail $
@@ -358,12 +380,12 @@ evalUserFunction crule _args
 evalRuleDefinition
     :: RuleDefinition SourceSpan -> Maybe Value
     -> EvalM (Maybe Value, Value)
-evalRuleDefinition rule mbIndex = clearContext $ do
+evalRuleDefinition rule mbIndex = clearLocals $ do
     case (mbIndex, rule ^. ruleIndex) of
         (Nothing, Nothing)   -> evalRuleBody (rule ^. ruleBody) final
         (Just arg, Just tpl) -> do
             tplv <- evalTerm tpl
-            unify arg tplv
+            _    <- unify arg tplv
             evalRuleBody (rule ^. ruleBody) final
         (Just _, Nothing) -> fail $
             "evalRuleDefinition: got argument for rule " ++
@@ -403,17 +425,19 @@ evalStatement :: Statement a -> EvalM Value
 evalStatement (UnifyS _ x y) = do
     xv <- evalExpr x
     yv <- evalExpr y
-    unify xv yv
+    _  <- unify xv yv
     return $ BoolV True
 evalStatement (AssignS _ v x) = do
     xv <- evalExpr x
-    -- TODO(jaspervdj): Do we need to check that 'v' is indeed free?
-    unsafeBind v xv
+    iv <- toInstVar v
+    unify (FreeV iv) xv
     return xv
 evalStatement (ExprS e) = evalExpr e
 
+-- | TODO(jaspervdj): With the new unficiation, I don't think we need this
+-- anymore.
 evalFree :: Value -> EvalM Value
-evalFree (FreeV v) = evalVar v
+evalFree (FreeV v) = fromMaybe (FreeV v) <$> Unification.lookup v
 evalFree val       = return val
 
 evalScalar :: Scalar a -> EvalM Value
@@ -456,7 +480,16 @@ evalBinOp x op y = do
 unify :: Value -> Value -> EvalM ()
 unify WildcardV _     = return ()
 unify _ WildcardV     = return ()
-unify (FreeV alpha) v = unsafeBind alpha v
-unify v (FreeV alpha) = unsafeBind alpha v
-unify lhs rhs         | lhs == rhs = return ()
+unify (FreeV alpha) (FreeV beta) = Unification.bindVar alpha beta
+unify (FreeV alpha) v = Unification.bindTerm alpha v
+unify v (FreeV alpha) = Unification.bindTerm alpha v
+unify lhs rhs
+    | lhs == rhs      = return ()
 unify _ _             = cut
+
+instance Unification.MonadUnify InstVar Value EvalM where
+    unify = unify
+
+    getUnification      = use unification
+    putUnification u    = unification .= u
+    modifyUnification f = unification %= f

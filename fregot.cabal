@@ -43,7 +43,7 @@ Library
     Fregot.Test
 
     Control.Monad.Parachute
-    Data.DisjointSets
+    Data.Unification
 
     Control.Monad.Extended
     Data.Aeson.TH.Extended

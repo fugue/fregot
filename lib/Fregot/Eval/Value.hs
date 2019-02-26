@@ -1,15 +1,18 @@
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE TemplateHaskell            #-}
 module Fregot.Eval.Value
-    ( Value (..)
+    ( InstVar (..)
+    , Value (..)
     , describeValue
     ) where
 
+import           Data.Hashable       (Hashable (..))
 import qualified Data.HashMap.Strict as HMS
 import qualified Data.Scientific     as Scientific
 import qualified Data.Text           as T
@@ -17,8 +20,28 @@ import qualified Data.Vector         as V
 import qualified Fregot.PrettyPrint  as PP
 import           Fregot.Sugar
 
+-- | An instantiated variable.  These have a unique (within the evaluation
+-- context) number identifying them.  The var is just there for debugging
+-- purposes.
+data InstVar = InstVar Int Var
+
+instance Show InstVar where
+    show (InstVar n v) = T.unpack (unVar v) ++ "_" ++ show n
+
+instance Eq InstVar where
+    InstVar x _ == InstVar y _ = x == y
+
+instance Ord InstVar where
+    compare (InstVar x _) (InstVar y _) = compare x y
+
+instance Hashable InstVar where
+    hashWithSalt salt (InstVar n _) = hashWithSalt salt n
+
+instance PP.Pretty a InstVar where
+    pretty = PP.pretty . show
+
 data Value
-    = FreeV   !Var
+    = FreeV   !InstVar
     | WildcardV
     | StringV !T.Text
     -- TODO(jaspervdj): This would be cleaner using `IntV` and `DoubleV`.
