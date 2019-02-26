@@ -24,7 +24,7 @@ module Fregot.Eval
 import           Control.Lens               (use, view, (%=), (&), (.=), (.~),
                                              (^.))
 import           Control.Lens.TH            (makeLenses)
-import           Control.Monad.Extended     (forM)
+import           Control.Monad.Extended     (forM, zipWithM_)
 import           Control.Monad.Reader       (MonadReader (..), ask)
 import           Control.Monad.State        (MonadState (..), modify)
 import qualified Data.HashMap.Strict        as HMS
@@ -343,13 +343,6 @@ evalCompiledRule crule mbIndex = case crule ^. ruleKind of
         | def <- crule ^. ruleDefs
         ]
 
-evalUserFunction
-    :: Rule SourceSpan -> [Value] -> EvalM Value
-evalUserFunction crule _args
-    | crule ^. ruleKind /= FunctionRule = fail
-        "Non-function called as function"
-    | otherwise = fail "todo: evalUserFunction"
-
 evalRuleDefinition
     :: RuleDefinition SourceSpan -> Maybe Value -> EvalM Value
 evalRuleDefinition rule mbIndex = clearLocals $ do
@@ -371,6 +364,24 @@ evalRuleDefinition rule mbIndex = clearLocals $ do
     final = case rule ^. ruleValue of
         Nothing   -> return (BoolV True)
         Just term -> evalTerm term
+
+evalUserFunction
+    :: Rule SourceSpan -> [Value] -> EvalM Value
+evalUserFunction crule callerArgs
+    | crule ^. ruleKind /= FunctionRule = fail
+        "Non-function called as function"
+    | otherwise = requireComplete $ branch
+        [ evalFunctionDefinition def
+        | def <- crule ^. ruleDefs
+        ]
+  where
+    evalFunctionDefinition def = clearLocals $ do
+        -- TODO(jaspervdj): Check arity.
+        calleeArgs <- mapM evalTerm $ fromMaybe [] (def ^. ruleArgs)
+        zipWithM_ unify callerArgs calleeArgs
+        evalRuleBody (def ^. ruleBody) $ case def ^. ruleValue of
+            Nothing   -> return (BoolV True)
+            Just term -> evalTerm term
 
 -- | Evaluate the rule body, then perform a continuation.
 evalRuleBody :: RuleBody s -> EvalM a -> EvalM a

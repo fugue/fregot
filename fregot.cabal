@@ -18,6 +18,7 @@ Library
   Exposed-modules:
     Fregot.Error
     Fregot.Eval
+    Fregot.Eval.Builtins
     Fregot.Eval.Value
     Fregot.Interpreter
     Fregot.Interpreter.Package
