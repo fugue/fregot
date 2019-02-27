@@ -18,6 +18,7 @@ module Fregot.Prepare.AST
     , Sugar.Var (..)
     , Sugar.varToString, Sugar.varToText
 
+    , Imports
     , RuleBody
     , Literal (..), literalNegation, literalStatement, literalWith
     , Statement (..)
@@ -32,6 +33,7 @@ module Fregot.Prepare.AST
 
 import           Control.Lens              (Lens', lens)
 import           Control.Lens.TH           (makeLenses)
+import qualified Data.HashMap.Strict       as HMS
 import           Fregot.Sources.SourceSpan (SourceSpan)
 import           Fregot.Sugar              (Var (..))
 import qualified Fregot.Sugar              as Sugar
@@ -53,13 +55,15 @@ data Rule a = Rule
 
 data RuleDefinition a = RuleDefinition
     { _ruleDefName    :: !Var
-    , _ruleDefImports :: ![Sugar.Import a]
+    , _ruleDefImports :: !(Imports a)
     , _ruleDefAnn     :: !a
     , _ruleArgs       :: !(Maybe [Term a])
     , _ruleIndex      :: !(Maybe (Term a))
     , _ruleValue      :: !(Maybe (Term a))
     , _ruleBody       :: !(RuleBody a)
     } deriving (Show)
+
+type Imports a = HMS.HashMap Var (a, Sugar.PackageName)
 
 type RuleBody a = [Literal a]
 

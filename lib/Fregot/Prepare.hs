@@ -4,6 +4,7 @@ module Fregot.Prepare
     ( prepareRule
     , mergeRules
 
+    , prepareImports
     , prepareExpr
     ) where
 
@@ -11,8 +12,12 @@ module Fregot.Prepare
 import           Control.Applicative       ((<|>))
 import           Control.Lens              (view, (%~), (&), (^.))
 import           Control.Monad.Extended    (foldM, unless, when)
-import           Control.Monad.Parachute   (ParachuteT, tellError, fatal)
+import           Control.Monad.Parachute   (ParachuteT, fatal, tellError)
+import qualified Data.HashMap.Strict       as HMS
 import qualified Data.List                 as L
+import           Data.List.NonEmpty        (NonEmpty (..))
+import qualified Data.List.NonEmpty        as NonEmpty
+import           Data.Maybe                (catMaybes, fromMaybe)
 import           Data.Maybe                (isJust, isNothing, mapMaybe)
 import           Fregot.Error              (Error)
 import qualified Fregot.Error              as Error
@@ -25,7 +30,7 @@ import           Prelude                   hiding (head)
 -- | Create a new compiled rule from a sugared rule.
 prepareRule
     :: Monad m
-    => [Sugar.Import SourceSpan] -> Sugar.Rule SourceSpan
+    => Imports SourceSpan -> Sugar.Rule SourceSpan
     -> ParachuteT Error m (Rule SourceSpan)
 prepareRule imports rule
     | head ^. Sugar.ruleDefault = do
@@ -152,6 +157,31 @@ mergeRules x y = do
         FunctionRule  -> "is a function"
 
 --------------------------------------------------------------------------------
+
+prepareImports
+    :: Monad m
+    => [Sugar.Import SourceSpan]
+    -> ParachuteT Error m (Imports SourceSpan)
+prepareImports =
+    fmap (HMS.fromList . catMaybes) . traverse prepareImport
+  where
+    prepareImport imp = do
+        let alias = fromMaybe
+                (Var $ NonEmpty.last (unPackageName (imp ^. Sugar.importPackage)))
+                (imp ^. Sugar.importAs)
+
+        mbStripped <- case unPackageName (imp ^. Sugar.importPackage) of
+            "data" :| x : xs -> return $ Just $ PackageName $ x :| xs
+            "data" :| []     -> return Nothing
+            _                -> do
+                tellError $ Error.mkError "compile" (imp ^. Sugar.importAnn)
+                    "invalid import"
+                    "Import should start with `data`"
+                return Nothing
+
+        case mbStripped of
+            Nothing -> return Nothing
+            Just stripped -> return $ Just (alias, (imp ^. Sugar.importAnn, stripped))
 
 prepareRuleBody
     :: Monad m

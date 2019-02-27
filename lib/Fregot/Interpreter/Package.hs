@@ -36,7 +36,7 @@ empty name = Package
 -- | Add a new rule.
 insert
     :: Monad m
-    => [Sugar.Import SourceSpan]
+    => Imports SourceSpan
     -> Sugar.Rule SourceSpan
     -> Package
     -> ParachuteT Error m Package

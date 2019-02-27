@@ -57,32 +57,37 @@ data Value
     -- TODO(jaspervdj): Low-hanging optimization fruit here.
     | ObjectV !(V.Vector (Value, Value))
     | NullV
+    -- | Packages are definitely not first-class values but we can pretend that
+    -- they are.
+    | PackageV !PackageName
     deriving (Eq, Generic, Show)
 
 instance Hashable Value
 
 instance PP.Pretty PP.Sem Value where
-    pretty (FreeV   v) = PP.pretty v
-    pretty WildcardV   = "_"
-    pretty (StringV t) = PP.literal $ PP.pretty $ show $ T.unpack t
-    pretty (NumberV s) = PP.literal $ PP.pretty s
-    pretty (BoolV   b) = PP.literal $ if b then "true" else "false"
-    pretty (ArrayV  a) = PP.array (V.toList a)
-    pretty (SetV    s) = PP.set (HS.toList s)
-    pretty (ObjectV o) = PP.object [(k, v) | (k, v) <- V.toList o]
-    pretty NullV       = PP.literal "null"
+    pretty (FreeV   v)  = PP.pretty v
+    pretty WildcardV    = "_"
+    pretty (StringV t)  = PP.literal $ PP.pretty $ show $ T.unpack t
+    pretty (NumberV s)  = PP.literal $ PP.pretty s
+    pretty (BoolV   b)  = PP.literal $ if b then "true" else "false"
+    pretty (ArrayV  a)  = PP.array (V.toList a)
+    pretty (SetV    s)  = PP.set (HS.toList s)
+    pretty (ObjectV o)  = PP.object [(k, v) | (k, v) <- V.toList o]
+    pretty NullV        = PP.literal "null"
+    pretty (PackageV p) = PP.pretty p
 
 describeValue :: Value -> String
 describeValue = \case
-    FreeV   v -> "free variable (" ++ show v ++ ")"
-    WildcardV -> "wildcard"
-    StringV _ -> "string"
-    NumberV _ -> "number"
-    BoolV   _ -> "boolean"
-    ArrayV  _ -> "array"
-    SetV    _ -> "set"
-    ObjectV _ -> "object"
-    NullV     -> "null"
+    FreeV   v  -> "free variable (" ++ show v ++ ")"
+    WildcardV  -> "wildcard"
+    StringV  _ -> "string"
+    NumberV  _ -> "number"
+    BoolV    _ -> "boolean"
+    ArrayV   _ -> "array"
+    SetV     _ -> "set"
+    ObjectV  _ -> "object"
+    NullV      -> "null"
+    PackageV p -> "package " ++ packageNameToString p
 
 emptyObject :: Value
 emptyObject = ObjectV V.empty

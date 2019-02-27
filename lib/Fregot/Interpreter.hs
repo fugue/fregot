@@ -89,8 +89,9 @@ insertModule h modul = do
     package0 <- readPackage h pkgname
 
     -- One by one, add the rules in the sugared module to the package.
+    imports <- Prepare.prepareImports (modul ^. Sugar.moduleImports)
     package1 <- foldM
-        (\pkg rule -> Package.insert (modul ^. Sugar.moduleImports) rule pkg)
+        (\pkg rule -> Package.insert imports rule pkg)
         package0
         (modul ^. Sugar.modulePolicy)
 
@@ -104,7 +105,7 @@ insertRule
     :: Handle -> PackageName -> Sugar.Rule SourceSpan -> InterpreterM ()
 insertRule h pkgname rule = do
     package0 <- readPackage h pkgname
-    package1 <- Package.insert [] rule package0
+    package1 <- Package.insert mempty rule package0
     liftIO $ IORef.atomicModifyIORef_ (h ^. packages) $
         HMS.insert pkgname package1
 
@@ -112,7 +113,7 @@ eval :: Handle -> PackageName -> Eval.EvalM a -> InterpreterM (Eval.Document a)
 eval h pkgname mx = do
     pkgs <- liftIO $ IORef.readIORef (h ^. packages)
     pkg  <- readPackage h pkgname
-    let env = Eval.Environment pkgs pkg emptyObject
+    let env = Eval.Environment pkgs pkg emptyObject mempty
         x   = Eval.runEvalM env mx
     return x
 

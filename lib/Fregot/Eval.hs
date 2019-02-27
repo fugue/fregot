@@ -7,7 +7,7 @@
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE TemplateHaskell            #-}
 module Fregot.Eval
-    ( Environment (..), packages, package, inputDoc
+    ( Environment (..), packages, package, inputDoc, imports
 
     , Value
     , Document
@@ -73,8 +73,12 @@ type Document a = [Row a]
 
 data Environment = Environment
     { _packages :: !(HMS.HashMap PackageName Package)
+
+    -- NOTE(jaspervdj): We'll need to update package as well if call a rule from
+    -- another package.
     , _package  :: !Package
     , _inputDoc :: !Value
+    , _imports  :: !(Imports SourceSpan)
     } deriving (Show)
 
 $(makeLenses ''Environment)
@@ -166,6 +170,18 @@ clearLocals mx = do
     modify $ \ctx -> ctx {_locals = oldLocals}
     return x
 
+withImports :: Imports SourceSpan -> EvalM a -> EvalM a
+withImports imps = local (imports .~ imps)
+
+withPackage :: PackageName -> EvalM a -> EvalM a
+withPackage pkgname mx = do
+    pkgs <- view packages
+    case HMS.lookup pkgname pkgs of
+        Just pkg -> local (package .~ pkg) mx
+        Nothing  -> fail $
+            "Unknown package: " ++ show pkgname ++ ", known packages: " ++
+            show (HMS.keys pkgs)
+
 --------------------------------------------------------------------------------
 
 ground :: EvalM Value -> EvalM Value
@@ -242,16 +258,19 @@ evalVar :: Var -> EvalM Value
 evalVar "_"     = return WildcardV
 evalVar "input" = view inputDoc
 evalVar v       = do
+    imps <- view imports
     lcls <- use locals
-    case HMS.lookup v lcls of
-        Just iv -> do
-            mbVal <- Unification.lookup iv
-            return $ fromMaybe (FreeV iv) mbVal
-        Nothing  -> do
-            mbCompiledRule <- lookupRule [v]
-            case mbCompiledRule of
-                Nothing    -> FreeV <$> toInstVar v
-                Just crule -> evalCompiledRule crule Nothing
+    case HMS.lookup v imps of
+        Just (_ann, pkgname) -> return $ PackageV pkgname
+        Nothing  -> case HMS.lookup v lcls of
+            Just iv -> do
+                mbVal <- Unification.lookup iv
+                return $ fromMaybe (FreeV iv) mbVal
+            Nothing  -> do
+                mbCompiledRule <- lookupRule [v]
+                case mbCompiledRule of
+                    Nothing    -> FreeV <$> toInstVar v
+                    Just crule -> evalCompiledRule crule Nothing
 
 evalBuiltin :: Builtin -> [Value] -> EvalM Value
 evalBuiltin (Builtin sig impl) args0 = do
@@ -270,7 +289,9 @@ evalBuiltin (Builtin sig impl) args0 = do
 
     -- Call the function.  This is currently pure business but it will
     -- definitely involve IO at some point.
-    let result = toVal $! impl args1
+    result <- case impl args1 of
+        Left err -> fail $ "evalBuiltin: failed: " ++ show err
+        Right x  -> return $ toVal x
 
     -- Return value depends on supplied arguments.
     case mbFinalArg of
@@ -289,6 +310,9 @@ evalRefArg :: Value -> Term a -> EvalM Value
 evalRefArg indexee refArg = do
     idx <- evalTerm refArg
     case idx of
+        StringV k | PackageV pkgname <- indexee ->
+            withPackage pkgname $ evalVar (Var k)
+
         WildcardV -> case indexee of
             ArrayV a  -> branch [return val | val <- V.toList a]
             SetV s -> branch [return val | val <- HS.toList s]
@@ -377,7 +401,9 @@ evalCompiledRule crule mbIndex = case crule ^. ruleKind of
 
 evalRuleDefinition
     :: RuleDefinition SourceSpan -> Maybe Value -> EvalM Value
-evalRuleDefinition rule mbIndex = clearLocals $ do
+evalRuleDefinition rule mbIndex =
+    withImports (rule ^. ruleDefImports) $
+    clearLocals $
     case (mbIndex, rule ^. ruleIndex) of
         (Nothing, Nothing)   -> evalRuleBody (rule ^. ruleBody) final
         (Just arg, Just tpl) -> do
@@ -407,13 +433,14 @@ evalUserFunction crule callerArgs
         | def <- crule ^. ruleDefs
         ]
   where
-    evalFunctionDefinition def = clearLocals $ do
-        -- TODO(jaspervdj): Check arity.
-        calleeArgs <- mapM evalTerm $ fromMaybe [] (def ^. ruleArgs)
-        zipWithM_ unify callerArgs calleeArgs
-        evalRuleBody (def ^. ruleBody) $ case def ^. ruleValue of
-            Nothing   -> return (BoolV True)
-            Just term -> evalTerm term
+    evalFunctionDefinition def =
+        withImports (def ^. ruleDefImports) $ clearLocals $ do
+            -- TODO(jaspervdj): Check arity.
+            calleeArgs <- mapM evalTerm $ fromMaybe [] (def ^. ruleArgs)
+            zipWithM_ unify callerArgs calleeArgs
+            evalRuleBody (def ^. ruleBody) $ case def ^. ruleValue of
+                Nothing   -> return (BoolV True)
+                Just term -> evalTerm term
 
 -- | Evaluate the rule body, then perform a continuation.
 evalRuleBody :: RuleBody s -> EvalM a -> EvalM a
