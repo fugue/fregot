@@ -193,6 +193,16 @@ test_app_to_hostnames {
 }
 
 ################################################################################
+# Set comprehensions
+
+set_comprehension_a = [1, 2, 3, 4, 3, 4, 3, 4, 5]
+set_comprehension_b = {x | x = set_comprehension_a[_]}
+
+test_set_comprehension_b {
+    set_comprehension_b == {1, 2, 3, 4, 5}
+}
+
+################################################################################
 # Functions
 
 trim_and_split(s) = x {

@@ -28,6 +28,7 @@ import           Control.Monad.Extended     (forM, zipWithM_)
 import           Control.Monad.Reader       (MonadReader (..), ask)
 import           Control.Monad.State        (MonadState (..), modify)
 import qualified Data.HashMap.Strict        as HMS
+import qualified Data.HashSet               as HS
 import           Data.Maybe                 (fromMaybe, isNothing)
 import qualified Data.Scientific            as Scientific
 import           Data.Unification           (Unification)
@@ -215,7 +216,7 @@ evalTerm (ArrayT _ a) = do
     return $ ArrayV $ V.fromList bs
 evalTerm (SetT _ s) = do
     bs <- mapM evalExpr s
-    return $ SetV $ V.fromList bs
+    return $ SetV $ HS.fromList bs
 evalTerm (ObjectT _ o) = do
     obj <- forM o $ \(kt, vt) -> do
         key <- evalTerm kt
@@ -229,7 +230,10 @@ evalTerm (ArrayCompT _ chead cbody) = do
     rows <- unbranch $ evalRuleBody cbody (evalTerm chead)
     return $ ArrayV $ V.fromList rows
 
-evalTerm (SetCompT _ _ _)      = fail "set comprehensions not supported"
+evalTerm (SetCompT _ shead cbody) = do
+    rows <- unbranch $ evalRuleBody cbody (evalTerm shead)
+    return $ SetV $ HS.fromList rows
+
 evalTerm (ObjectCompT _ khead vhead cbody) = do
     rows <- unbranch $ evalRuleBody cbody $
         (,) <$> evalTerm khead <*> evalTerm vhead
@@ -286,7 +290,7 @@ evalRefArg indexee refArg = do
     case idx of
         WildcardV -> case indexee of
             ArrayV a  -> branch [return val | val <- V.toList a]
-            SetV s -> branch [return val | val <- V.toList s]
+            SetV s -> branch [return val | val <- HS.toList s]
             ObjectV o -> branch [return val | (_, val) <- V.toList o]
             _ -> fail $
                 "evalRefArg: cannot index " ++ describeValue indexee ++
@@ -303,7 +307,7 @@ evalRefArg indexee refArg = do
                 -- value.  We bind the index to the thing in the list so the
                 -- user should use that.
                 [ Unification.bindTerm unbound val >> return (BoolV True)
-                | val <- V.toList s
+                | val <- HS.toList s
                 ]
             ObjectV o -> branch
                 [ Unification.bindTerm unbound key >> return val
@@ -331,7 +335,7 @@ evalRefArg indexee refArg = do
             -- NOTE(jaspervdj): Another implementation would be to loop over
             -- all elements in the set, and try to unify `idx` with those.
             -- However, the opa interpreter doesn't seem to do this.
-            if idx `V.elem` set
+            if idx `HS.member` set
                 then return (BoolV True)
                 else cut
 

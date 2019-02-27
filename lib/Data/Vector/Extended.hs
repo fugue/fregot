@@ -7,8 +7,9 @@ module Data.Vector.Extended
     ) where
 
 import           Data.Vector
-import qualified Data.Vector.Mutable as VM
-import           Prelude             hiding (length, lookup)
+import           Data.Vector.Instances ()
+import qualified Data.Vector.Mutable   as VM
+import           Prelude               hiding (length, lookup)
 
 catMaybes :: Vector (Maybe a) -> Vector a
 catMaybes vec0 = create $ do

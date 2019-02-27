@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveFunctor              #-}
+{-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -12,12 +13,14 @@ module Fregot.Eval.Value
     , describeValue
     ) where
 
-import           Data.Hashable       (Hashable (..))
-import qualified Data.Scientific     as Scientific
-import qualified Data.Text           as T
-import qualified Data.Vector         as V
-import qualified Fregot.PrettyPrint  as PP
+import           Data.Hashable        (Hashable (..))
+import qualified Data.HashSet         as HS
+import qualified Data.Scientific      as Scientific
+import qualified Data.Text            as T
+import qualified Data.Vector.Extended as V
+import qualified Fregot.PrettyPrint   as PP
 import           Fregot.Sugar
+import           GHC.Generics         (Generic)
 
 -- | An instantiated variable.  These have a unique (within the evaluation
 -- context) number identifying them.  The var is just there for debugging
@@ -47,11 +50,13 @@ data Value
     | NumberV !Scientific.Scientific
     | BoolV   !Bool
     | ArrayV  !(V.Vector Value)
-    | SetV    !(V.Vector Value)
+    | SetV    !(HS.HashSet Value)
     -- TODO(jaspervdj): Low-hanging optimization fruit here.
     | ObjectV !(V.Vector (Value, Value))
     | NullV
-    deriving (Eq, Show)
+    deriving (Eq, Generic, Show)
+
+instance Hashable Value
 
 instance PP.Pretty PP.Sem Value where
     pretty (FreeV   v) = PP.pretty v
@@ -60,7 +65,7 @@ instance PP.Pretty PP.Sem Value where
     pretty (NumberV s) = PP.literal $ PP.pretty s
     pretty (BoolV   b) = PP.literal $ if b then "true" else "false"
     pretty (ArrayV  a) = PP.array (V.toList a)
-    pretty (SetV    s) = PP.set (V.toList s)
+    pretty (SetV    s) = PP.set (HS.toList s)
     pretty (ObjectV o) = PP.object [(k, v) | (k, v) <- V.toList o]
     pretty NullV       = PP.literal "null"
 
