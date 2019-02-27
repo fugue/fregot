@@ -177,8 +177,10 @@ withPackage :: PackageName -> EvalM a -> EvalM a
 withPackage pkgname mx = do
     pkgs <- view packages
     case HMS.lookup pkgname pkgs of
-        Nothing  -> fail $ "Unknown package: " ++ show pkgname
         Just pkg -> local (package .~ pkg) mx
+        Nothing  -> fail $
+            "Unknown package: " ++ show pkgname ++ ", known packages: " ++
+            show (HMS.keys pkgs)
 
 --------------------------------------------------------------------------------
 
@@ -287,7 +289,9 @@ evalBuiltin (Builtin sig impl) args0 = do
 
     -- Call the function.  This is currently pure business but it will
     -- definitely involve IO at some point.
-    let result = toVal $! impl args1
+    result <- case impl args1 of
+        Left err -> fail $ "evalBuiltin: failed: " ++ show err
+        Right x  -> return $ toVal x
 
     -- Return value depends on supplied arguments.
     case mbFinalArg of

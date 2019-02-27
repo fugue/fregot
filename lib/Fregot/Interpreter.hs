@@ -89,6 +89,7 @@ insertModule h modul = do
     package0 <- readPackage h pkgname
 
     -- One by one, add the rules in the sugared module to the package.
+    imports <- Prepare.prepareImports (modul ^. Sugar.moduleImports)
     package1 <- foldM
         (\pkg rule -> Package.insert imports rule pkg)
         package0
@@ -99,7 +100,6 @@ insertModule h modul = do
         HMS.insert pkgname package1
   where
     pkgname = modul ^. Sugar.modulePackage
-    imports = Prepare.prepareImports (modul ^. Sugar.moduleImports)
 
 insertRule
     :: Handle -> PackageName -> Sugar.Rule SourceSpan -> InterpreterM ()
