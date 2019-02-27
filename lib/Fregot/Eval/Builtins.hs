@@ -6,8 +6,14 @@
 {-# LANGUAGE PolyKinds         #-}
 {-# LANGUAGE TypeOperators     #-}
 module Fregot.Eval.Builtins
-    ( Sig (..)
+    ( ToVal (..)
+    , FromVal (..)
+
+    , Sig (..)
+
     , Args (..)
+    , toArgs
+
     , Builtin (..)
     , arity
 
@@ -63,8 +69,18 @@ data Args (a :: [t]) where
     Nil  :: Args '[]
     Cons :: a -> Args as -> Args (a ': as)
 
+toArgs :: Sig t o -> [Value] -> Either String (Args t, Maybe Value)
+toArgs Out      []       = return (Nil, Nothing)
+toArgs Out      [final]  = return (Nil, Just final)
+toArgs Out      _        = Left "too many arguments supplied"
+toArgs (In _)   []       = Left "not enough arguments supplied"
+toArgs (In sig) (x : xs) = do
+    arg           <- fromVal x
+    (args, final) <- toArgs sig xs
+    return (Cons arg args, final)
+
 data Builtin where
-    Builtin :: Sig i o -> (Args i -> o) -> Builtin
+    Builtin :: ToVal o => Sig i o -> (Args i -> o) -> Builtin
 
 builtins :: HMS.HashMap [Var] Builtin
 builtins = HMS.fromList

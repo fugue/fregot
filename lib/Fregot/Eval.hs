@@ -194,12 +194,10 @@ evalTerm (RefT _ lhs arg) = do
             evalRefArg val arg
 
 evalTerm (CallT _ f args)
-    -- TODO(jaspervdj): Use a more reliable system to register FFI functions.
-    | builtin <- HMS.lookup f builtins = do
+    | Just builtin <- HMS.lookup f builtins = do
         vargs <- mapM evalTerm args
-        case vargs of
-            [ArrayV a] -> return $ NumberV $ fromIntegral $ V.length a
-            _          -> fail $ "Bad parameter for count"
+        evalBuiltin builtin vargs
+
     | otherwise = do
         mbCompiledRule <- lookupRule f
         case mbCompiledRule of
@@ -247,6 +245,32 @@ evalVar v = do
             case mbCompiledRule of
                 Nothing    -> FreeV <$> toInstVar v
                 Just crule -> evalCompiledRule crule Nothing
+
+evalBuiltin :: Builtin -> [Value] -> EvalM Value
+evalBuiltin (Builtin sig impl) args0 = do
+    -- There are two possible scenarios if we have an N-ary function, e.g.:
+    --
+    --     add(x, y) = z {
+    --       z := x + y
+    --     }
+    --
+    -- Either the user supplies 2 arguments, and we return the return value
+    -- (`z` in the example), or the user supplies 3 arguments, and we unify
+    -- the return value with the last argument.
+    (args1, mbFinalArg) <- case toArgs sig args0 of
+        Left err -> fail $ "evalBuiltin: argument problem: " ++ err
+        Right x  -> return x
+
+    -- Call the function.  This is currently pure business but it will
+    -- definitely involve IO at some point.
+    let result = toVal $! impl args1
+
+    -- Return value depends on supplied arguments.
+    case mbFinalArg of
+        Nothing -> return result
+        Just fa -> do
+            unify result fa
+            return $ BoolV True
 
 -- NOTE (jaspervdj): I suspect these are roughly the cases we want to care
 -- about:
