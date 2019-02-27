@@ -1,5 +1,5 @@
 # Tests for the default keyword.
-package fregot.tests.default01
+package fregot.tests.default_01
 
 default def1 = 1
 def1 = 2 {false}

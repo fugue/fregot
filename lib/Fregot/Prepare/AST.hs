@@ -25,6 +25,8 @@ module Fregot.Prepare.AST
     , Term (..), termAnn
     , BinOp (..)
 
+    , With (..), withPath, withAs
+
     , Sugar.Scalar (..)
     ) where
 
@@ -64,7 +66,7 @@ type RuleBody a = [Literal a]
 data Literal a = Literal
     { _literalNegation  :: !Bool
     , _literalStatement :: !(Statement a)
-    , _literalWith      :: ![Sugar.With a]
+    , _literalWith      :: ![With a]
     } deriving (Show)
 
 data Statement a
@@ -106,9 +108,16 @@ data BinOp
     | DivideO
     deriving (Show)
 
+data With a = With
+    { withAnn   :: !a
+    , _withPath :: [Var]
+    , _withAs   :: !(Term a)
+    } deriving (Show)
+
 $(makeLenses ''Rule)
 $(makeLenses ''RuleDefinition)
 $(makeLenses ''Literal)
+$(makeLenses ''With)
 
 exprAnn :: Lens' (Expr a) a
 exprAnn = lens getAnn setAnn

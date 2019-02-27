@@ -11,7 +11,8 @@ module Fregot.Prepare
 import           Control.Applicative       ((<|>))
 import           Control.Lens              (view, (%~), (&), (^.))
 import           Control.Monad.Extended    (foldM, unless, when)
-import           Control.Monad.Parachute   (ParachuteT, tellError)
+import           Control.Monad.Parachute   (ParachuteT, tellError, fatal)
+import qualified Data.List                 as L
 import           Data.Maybe                (isJust, isNothing, mapMaybe)
 import           Fregot.Error              (Error)
 import qualified Fregot.Error              as Error
@@ -170,10 +171,11 @@ prepareLiteral slit = do
             AssignS ann v <$> prepareExpr y
         expr -> ExprS <$> prepareExpr expr
 
+    with <- traverse prepareWith $ slit ^. Sugar.literalWith
     pure Literal
         { _literalNegation  = slit ^. Sugar.literalNegation
         , _literalStatement = statement
-        , _literalWith      = slit ^. Sugar.literalWith
+        , _literalWith      = with
         }
 
 prepareExpr
@@ -278,3 +280,16 @@ prepareBinOp source = \case
             "The `:=` operator should not appear in this context, perhaps" <+>
             "you meant to write `==`?"
         pure EqualO
+
+prepareWith
+    :: Monad m
+    => Sugar.With SourceSpan
+    -> ParachuteT Error m (With SourceSpan)
+prepareWith with = do
+    path <- case L.stripPrefix ["input"] (with ^. Sugar.withWith) of
+        Just p  -> return p
+        Nothing -> fatal $ Error.mkError "compile" (with ^. Sugar.withAnn)
+            "invalid with"
+            "The path for the with modifier should start with `input`."
+    term <- prepareTerm (with ^. Sugar.withAs)
+    return $ With (with ^. Sugar.withAnn) path term

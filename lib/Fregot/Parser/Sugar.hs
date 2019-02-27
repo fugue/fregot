@@ -244,12 +244,12 @@ objectKey = withSourceSpan $
             _  -> RefK ss v refArgs)
 
 parseWith :: FregotParser (With SourceSpan)
-parseWith = do
+parseWith = withSourceSpan $ do
     Tok.symbol Tok.TWith
-    _withWith <- term
+    _withWith <- Parsec.sepBy1 var (Tok.symbol Tok.TPeriod)
     Tok.symbol Tok.TAs
     _withAs <- term
-    return With {..}
+    return $ \_withAnn -> With {..}
 
 -- | Parse a comprehension.  These use 'Parsec.try' and should be tried before
 -- parsing regular arrays/objects etc.

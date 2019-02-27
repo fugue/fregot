@@ -7,7 +7,7 @@
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE TemplateHaskell            #-}
 module Fregot.Eval
-    ( Environment (..), packages, package
+    ( Environment (..), packages, package, inputDoc
 
     , Value
     , Document
@@ -74,6 +74,7 @@ type Document a = [Row a]
 data Environment = Environment
     { _packages :: !(HMS.HashMap PackageName Package)
     , _package  :: !Package
+    , _inputDoc :: !Value
     } deriving (Show)
 
 $(makeLenses ''Environment)
@@ -207,9 +208,7 @@ evalTerm (CallT _ f args)
                 evalUserFunction cr vargs
             Nothing -> fail $ "Not implemented: function call: " ++ show f
 
-evalTerm (VarT _ v)
-    | unVar v == "_" = return WildcardV
-    | otherwise      = evalVar v
+evalTerm (VarT _ v) = evalVar v
 evalTerm (ScalarT _ s) = evalScalar s
 evalTerm (ArrayT _ a) = do
     bs <- mapM evalExpr a
@@ -240,7 +239,9 @@ evalTerm (ObjectCompT _ khead vhead cbody) = do
     return $ ObjectV $ V.fromList rows
 
 evalVar :: Var -> EvalM Value
-evalVar v = do
+evalVar "_"     = return WildcardV
+evalVar "input" = view inputDoc
+evalVar v       = do
     lcls <- use locals
     case HMS.lookup v lcls of
         Just iv -> do
@@ -421,15 +422,25 @@ evalRuleBody lits0 final = go lits0
     go [] = final
 
     go (lit : lits)
-        | lit ^. literalNegation = do
+        | lit ^. literalNegation = localWiths (lit ^. literalWith) $ do
             negation trueish $ ground $ evalStatement $ lit ^. literalStatement
             go lits
-        | otherwise = do
+        | otherwise = localWiths (lit ^. literalWith) $ do
             r <- ground $ evalStatement $ lit ^. literalStatement
             if trueish r then go lits else cut
 
     trueish (BoolV False) = False
     trueish _             = True
+
+    localWiths []       mx = mx
+    localWiths (w : ws) mx = do
+        val    <- evalTerm (w ^. withAs)
+        input  <- view inputDoc
+        input' <- case updateObject (w ^. withPath) val input of
+            Nothing -> fail $ "Issue updating input doc"
+            Just i  -> return i
+
+        local (inputDoc .~ input') $ localWiths ws mx
 
 evalStatement :: Statement a -> EvalM Value
 evalStatement (UnifyS _ x y) = do

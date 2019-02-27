@@ -23,6 +23,7 @@ import           Data.Maybe                 (fromMaybe)
 import qualified Data.Text.IO               as T
 import           Fregot.Error               (Error)
 import qualified Fregot.Eval                as Eval
+import           Fregot.Eval.Value          (emptyObject)
 import           Fregot.Interpreter.Package (Package)
 import qualified Fregot.Interpreter.Package as Package
 import qualified Fregot.Parser              as Parser
@@ -111,7 +112,7 @@ eval :: Handle -> PackageName -> Eval.EvalM a -> InterpreterM (Eval.Document a)
 eval h pkgname mx = do
     pkgs <- liftIO $ IORef.readIORef (h ^. packages)
     pkg  <- readPackage h pkgname
-    let env = Eval.Environment pkgs pkg
+    let env = Eval.Environment pkgs pkg emptyObject
         x   = Eval.runEvalM env mx
     return x
 

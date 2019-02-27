@@ -26,7 +26,7 @@ module Fregot.Sugar
     , Object
     , ObjectKey (..)
     , BinOp (..)
-    , With (..), withWith, withAs
+    , With (..), withAnn, withWith, withAs
     ) where
 
 import           Control.Lens       (Lens', lens, (^.))
@@ -159,7 +159,8 @@ data BinOp
     deriving (Show)
 
 data With a = With
-    { _withWith :: !(Term a)
+    { _withAnn  :: !a
+    , _withWith :: ![Var]
     , _withAs   :: !(Term a)
     } deriving (Show)
 
@@ -300,8 +301,10 @@ instance PP.Pretty PP.Sem BinOp where
         DivideO             -> "/"
 
 instance PP.Pretty PP.Sem (With a) where
-    pretty with =
-        PP.keyword "with" <+> PP.pretty (with ^. withWith) <+>
+    pretty with = PP.keyword "with" <+>
+        (mconcat $ L.intersperse
+            (PP.punctuation ".")
+            (map PP.pretty (with ^. withWith))) <+>
         PP.keyword "as" <+> PP.pretty (with ^. withAs)
 
 exprAnn :: Lens' (Expr a) a
