@@ -218,7 +218,7 @@ evalTerm (SetT _ s) = do
     return $ SetV $ V.fromList bs
 evalTerm (ObjectT _ o) = do
     obj <- forM o $ \(kt, vt) -> do
-        key <- evalObjectKey kt
+        key <- evalTerm kt
         case key of
             StringV txt -> do
                 val <- evalExpr vt
@@ -443,10 +443,6 @@ evalScalar (String t) = return $ StringV t
 evalScalar (Number t) = return $ NumberV t
 evalScalar (Bool   b) = return $ BoolV   b
 evalScalar Null       = return $ NullV
-
-evalObjectKey :: ObjectKey a -> EvalM Value
-evalObjectKey (ScalarK _ s) = evalScalar s
-evalObjectKey (VarK _ v)    = evalVar v
 
 evalBinOp :: Expr a -> BinOp -> Expr a -> EvalM Value
 evalBinOp x op y = do
