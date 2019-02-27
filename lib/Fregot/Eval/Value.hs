@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns               #-}
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE FlexibleContexts           #-}
@@ -11,6 +12,8 @@ module Fregot.Eval.Value
     ( InstVar (..)
     , Value (..)
     , describeValue
+    , emptyObject
+    , updateObject
     ) where
 
 import           Data.Hashable        (Hashable (..))
@@ -71,7 +74,7 @@ instance PP.Pretty PP.Sem Value where
 
 describeValue :: Value -> String
 describeValue = \case
-    FreeV   _ -> "free variable"
+    FreeV   v -> "free variable (" ++ show v ++ ")"
     WildcardV -> "wildcard"
     StringV _ -> "string"
     NumberV _ -> "number"
@@ -80,3 +83,25 @@ describeValue = \case
     SetV    _ -> "set"
     ObjectV _ -> "object"
     NullV     -> "null"
+
+emptyObject :: Value
+emptyObject = ObjectV V.empty
+
+-- | Updates a path in the object.  This is mainly used to implement the `with`
+-- modifier.
+updateObject :: [Var] -> Value -> Value -> Maybe Value
+updateObject []       insertee _           = Just insertee
+updateObject (v : vs) insertee (ObjectV o) =
+    case V.findIndex ((== k) . fst) o of
+        Nothing -> do
+            nest <- updateObject vs insertee emptyObject
+            return $ ObjectV $ V.cons (k, nest) o
+        Just idx -> do
+            let (_, val) = o V.! idx
+            nest <- updateObject vs insertee val
+            return $ ObjectV $ o V.// [(idx, (k, nest))]
+  where
+    k = StringV (unVar v)
+
+-- TODO(jaspervdj): Better error
+updateObject _ _ _ = Nothing
