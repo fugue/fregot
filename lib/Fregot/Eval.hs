@@ -24,7 +24,7 @@ module Fregot.Eval
 import           Control.Lens               (use, view, (%=), (&), (.=), (.~),
                                              (^.))
 import           Control.Lens.TH            (makeLenses)
-import           Control.Monad.Extended     (forM)
+import           Control.Monad.Extended     (forM, zipWithM_)
 import           Control.Monad.Reader       (MonadReader (..), ask)
 import           Control.Monad.State        (MonadState (..), modify)
 import qualified Data.HashMap.Strict        as HMS
@@ -33,6 +33,7 @@ import qualified Data.Scientific            as Scientific
 import           Data.Unification           (Unification)
 import qualified Data.Unification           as Unification
 import qualified Data.Vector                as V
+import           Fregot.Eval.Builtins
 import           Fregot.Eval.Value
 import           Fregot.Interpreter.Package (Package)
 import qualified Fregot.Interpreter.Package as Package
@@ -193,12 +194,10 @@ evalTerm (RefT _ lhs arg) = do
             evalRefArg val arg
 
 evalTerm (CallT _ f args)
-    -- TODO(jaspervdj): Use a more reliable system to register FFI functions.
-    | f == ["count"] = do
+    | Just builtin <- HMS.lookup f builtins = do
         vargs <- mapM evalTerm args
-        case vargs of
-            [ArrayV a] -> return $ NumberV $ fromIntegral $ V.length a
-            _          -> fail $ "Bad parameter for count"
+        evalBuiltin builtin vargs
+
     | otherwise = do
         mbCompiledRule <- lookupRule f
         case mbCompiledRule of
@@ -246,6 +245,32 @@ evalVar v = do
             case mbCompiledRule of
                 Nothing    -> FreeV <$> toInstVar v
                 Just crule -> evalCompiledRule crule Nothing
+
+evalBuiltin :: Builtin -> [Value] -> EvalM Value
+evalBuiltin (Builtin sig impl) args0 = do
+    -- There are two possible scenarios if we have an N-ary function, e.g.:
+    --
+    --     add(x, y) = z {
+    --       z := x + y
+    --     }
+    --
+    -- Either the user supplies 2 arguments, and we return the return value
+    -- (`z` in the example), or the user supplies 3 arguments, and we unify
+    -- the return value with the last argument.
+    (args1, mbFinalArg) <- case toArgs sig args0 of
+        Left err -> fail $ "evalBuiltin: argument problem: " ++ err
+        Right x  -> return x
+
+    -- Call the function.  This is currently pure business but it will
+    -- definitely involve IO at some point.
+    let result = toVal $! impl args1
+
+    -- Return value depends on supplied arguments.
+    case mbFinalArg of
+        Nothing -> return result
+        Just fa -> do
+            unify result fa
+            return $ BoolV True
 
 -- NOTE (jaspervdj): I suspect these are roughly the cases we want to care
 -- about:
@@ -343,13 +368,6 @@ evalCompiledRule crule mbIndex = case crule ^. ruleKind of
         | def <- crule ^. ruleDefs
         ]
 
-evalUserFunction
-    :: Rule SourceSpan -> [Value] -> EvalM Value
-evalUserFunction crule _args
-    | crule ^. ruleKind /= FunctionRule = fail
-        "Non-function called as function"
-    | otherwise = fail "todo: evalUserFunction"
-
 evalRuleDefinition
     :: RuleDefinition SourceSpan -> Maybe Value -> EvalM Value
 evalRuleDefinition rule mbIndex = clearLocals $ do
@@ -371,6 +389,24 @@ evalRuleDefinition rule mbIndex = clearLocals $ do
     final = case rule ^. ruleValue of
         Nothing   -> return (BoolV True)
         Just term -> evalTerm term
+
+evalUserFunction
+    :: Rule SourceSpan -> [Value] -> EvalM Value
+evalUserFunction crule callerArgs
+    | crule ^. ruleKind /= FunctionRule = fail
+        "Non-function called as function"
+    | otherwise = requireComplete $ branch
+        [ evalFunctionDefinition def
+        | def <- crule ^. ruleDefs
+        ]
+  where
+    evalFunctionDefinition def = clearLocals $ do
+        -- TODO(jaspervdj): Check arity.
+        calleeArgs <- mapM evalTerm $ fromMaybe [] (def ^. ruleArgs)
+        zipWithM_ unify callerArgs calleeArgs
+        evalRuleBody (def ^. ruleBody) $ case def ^. ruleValue of
+            Nothing   -> return (BoolV True)
+            Just term -> evalTerm term
 
 -- | Evaluate the rule body, then perform a continuation.
 evalRuleBody :: RuleBody s -> EvalM a -> EvalM a
