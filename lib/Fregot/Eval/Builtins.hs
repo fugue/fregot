@@ -38,6 +38,9 @@ instance ToVal T.Text where
 instance ToVal Int where
     toVal = NumberV . fromIntegral
 
+instance ToVal Bool where
+    toVal = BoolV
+
 instance ToVal a => ToVal (V.Vector a) where
     toVal = ArrayV . fmap toVal
 
@@ -53,6 +56,10 @@ instance FromVal Value where
 instance FromVal T.Text where
     fromVal (StringV t) = Right t
     fromVal v           = Left $ "Expected string but got " ++ describeValue v
+
+instance FromVal Bool where
+    fromVal (BoolV b) = Right b
+    fromVal v         = Left $ "Expected bool but got " ++ describeValue v
 
 instance FromVal a => FromVal (V.Vector a) where
     fromVal (ArrayV v) = traverse fromVal v
@@ -82,19 +89,25 @@ toArgs (In sig) (x : xs) = do
 data Builtin where
     Builtin :: ToVal o => Sig i o -> (Args i -> o) -> Builtin
 
-builtins :: HMS.HashMap [Var] Builtin
-builtins = HMS.fromList
-    [ (["count"], builtin_count)
-    , (["trim"], builtin_trim)
-    , (["split"], builtin_split)
-    ]
-
 arity :: Builtin -> Int
 arity (Builtin sig _) = go 0 sig
   where
     go :: Int -> Sig i o -> Int
     go !acc Out    = acc
     go !acc (In s) = go (acc + 1) s
+
+builtins :: HMS.HashMap [Var] Builtin
+builtins = HMS.fromList
+    [ (["all"], builtin_all)
+    , (["count"], builtin_count)
+    , (["trim"], builtin_trim)
+    , (["split"], builtin_split)
+    ]
+
+builtin_all :: Builtin
+builtin_all = Builtin
+    (In Out)
+    (\(Cons arr Nil) -> V.and (arr :: V.Vector Bool))
 
 builtin_count :: Builtin
 builtin_count = Builtin
