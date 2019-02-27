@@ -237,8 +237,11 @@ objectKey = withSourceSpan $
         s <- scalar
         return $ \ss -> ScalarK ss s) <|>
     (do
-        v <- var
-        return $ \ss -> VarK ss v)
+        v       <- var
+        refArgs <- Parsec.many refArg
+        return $ \ss -> case refArgs of
+            [] -> VarK ss v
+            _  -> RefK ss v refArgs)
 
 parseWith :: FregotParser (With SourceSpan)
 parseWith = do

@@ -140,6 +140,7 @@ type Object a = [(ObjectKey a, Expr a)]
 data ObjectKey a
     = ScalarK a (Scalar a)
     | VarK    a Var
+    | RefK    a Var [RefArg a]
     deriving (Show)
 
 data BinOp
@@ -281,6 +282,7 @@ instance PP.Pretty PP.Sem (Scalar a) where
 instance PP.Pretty PP.Sem (ObjectKey a) where
     pretty (ScalarK _ s) = PP.pretty s
     pretty (VarK _ v)    = PP.pretty v
+    pretty (RefK _ v a)  = PP.pretty v <> mconcat (map PP.pretty a)
 
 instance PP.Pretty PP.Sem BinOp where
     pretty bo = PP.punctuation $ case bo of

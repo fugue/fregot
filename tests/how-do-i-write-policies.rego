@@ -174,6 +174,25 @@ test_array_comprehensions {
 }
 
 ################################################################################
+# Object comprehensions
+
+app_to_hostnames = {app.name: app_hostnames |
+    apps[_] = app
+    # TODO(jaspervdj): I manually re-ordered these statements.
+    app_hostnames = [hostname |
+                    name = app.servers[_]
+                    sites[_].servers[_] = s
+                    s.name = name
+                    hostname = s.hostname]
+}
+
+test_app_to_hostnames {
+    app_to_hostnames["web"] == ["hydrogen","helium","beryllium","boron","nitrogen"]
+    app_to_hostnames["mysql"] == ["lithium", "carbon"]
+    app_to_hostnames["mongodb"] == ["oxygen"]
+}
+
+################################################################################
 # Functions
 
 trim_and_split(s) = x {

@@ -216,21 +216,39 @@ prepareTerm = \case
         ArrayCompT ann <$> prepareTerm h <*> prepareRuleBody b
     Sugar.SetCompT ann h b ->
         SetCompT ann <$> prepareTerm h <*> prepareRuleBody b
-    Sugar.ObjectCompT ann k h b ->
-        ObjectCompT ann (prepareObjectKey k) <$> prepareTerm h <*> prepareRuleBody b
+    Sugar.ObjectCompT ann k h b -> ObjectCompT ann
+        <$> prepareObjectKey k
+        <*> prepareTerm h
+        <*> prepareRuleBody b
+
+prepareRef
+    :: Monad m
+    => SourceSpan -> SourceSpan -> Var -> [Sugar.RefArg SourceSpan]
+    -> ParachuteT Error m (Term SourceSpan)
+prepareRef source varSource var0 refs = foldM
+    (\acc refArg -> case refArg of
+        Sugar.RefDotArg ann (Var v) -> return $
+            RefT source acc (ScalarT ann (Sugar.String v))
+        Sugar.RefBrackArg k -> do
+            k' <- prepareTerm k
+            return $ RefT source acc k')
+    (VarT varSource var0)
+    refs
 
 prepareObjectItem
     :: Monad m
     => (Sugar.ObjectKey SourceSpan, Sugar.Expr SourceSpan)
-    -> ParachuteT Error m (ObjectKey SourceSpan, Expr SourceSpan)
-prepareObjectItem (k, e) = (,) (prepareObjectKey k) <$> prepareExpr e
+    -> ParachuteT Error m (Term SourceSpan, Expr SourceSpan)
+prepareObjectItem (k, e) = (,) <$> prepareObjectKey k <*> prepareExpr e
 
 prepareObjectKey
-    :: Sugar.ObjectKey k
-    -> ObjectKey k
+    :: Monad m
+    => Sugar.ObjectKey SourceSpan
+    -> ParachuteT Error m (Term SourceSpan)
 prepareObjectKey = \case
-    Sugar.ScalarK ann s -> ScalarK ann s
-    Sugar.VarK    ann v -> VarK ann v
+    Sugar.ScalarK ann s      -> return $! ScalarT ann s
+    Sugar.VarK    ann v      -> return $! VarT ann v
+    Sugar.RefK    ann v args -> prepareRef ann ann v args
 
 prepareBinOp
     :: Monad m

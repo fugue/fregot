@@ -23,7 +23,6 @@ module Fregot.Prepare.AST
     , Statement (..)
     , Expr (..), exprAnn
     , Term (..), termAnn
-    , ObjectKey (..)
     , BinOp (..)
 
     , Sugar.Scalar (..)
@@ -89,15 +88,10 @@ data Term a
     | ObjectT     a (Object a)
     | ArrayCompT  a (Term a) (RuleBody a)
     | SetCompT    a (Term a) (RuleBody a)
-    | ObjectCompT a (ObjectKey a) (Term a) (RuleBody a)
+    | ObjectCompT a (Term a) (Term a) (RuleBody a)
     deriving (Show)
 
-type Object a = [(ObjectKey a, Expr a)]
-
-data ObjectKey a
-    = ScalarK a (Sugar.Scalar a)
-    | VarK    a Var
-    deriving (Show)
+type Object a = [(Term a, Expr a)]
 
 data BinOp
     = EqualO
