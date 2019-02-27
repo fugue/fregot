@@ -149,6 +149,22 @@ test_max_memory {
 }
 
 ################################################################################
+# Self-Joins
+
+same_site[apps[k].name] = apps[k].name {
+    apps[i].name = "mysql"
+    apps[i].servers[_] = server
+    sites[j].servers[_].name = server
+    sites[j].servers[_].name = other_server
+    server != other_server
+    apps[k].servers[_] = other_server
+}
+
+test_same_site {
+    same_site["web"]
+}
+
+################################################################################
 # Array comprehensions
 
 test_array_comprehensions {
@@ -156,6 +172,22 @@ test_array_comprehensions {
     west_names = [name | sites[i].region = region; sites[i].name = name]
     west_names == ["smoke", "dev"]
 }
+
+################################################################################
+# Functions
+
+trim_and_split(s) = x {
+    trim(s, " ", t)
+    split(t, ".", x)
+}
+
+test_trim_and_split {
+    x := trim_and_split("   foo.bar ")
+    x == ["foo", "bar"]
+}
+
+################################################################################
+# Negation
 
 prod_servers[name] = name {
     sites[_] = site
@@ -178,26 +210,4 @@ apps_not_in_prod[name] = name {
 test_apps_in_prod {
     apps_in_prod["web"]
     apps_in_prod["mysql"]
-}
-
-same_site[apps[k].name] = apps[k].name {
-    apps[i].name = "mysql"
-    apps[i].servers[_] = server
-    sites[j].servers[_].name = server
-    sites[j].servers[_].name = other_server
-    server != other_server
-    apps[k].servers[_] = other_server
-}
-
-################################################################################
-# Functions
-
-trim_and_split(s) = x {
-    trim(s, " ", t)
-    split(t, ".", x)
-}
-
-test_trim_and_split {
-    x := trim_and_split("   foo.bar ")
-    x == ["foo", "bar"]
 }
