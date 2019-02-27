@@ -33,6 +33,7 @@ import qualified Data.Scientific            as Scientific
 import           Data.Unification           (Unification)
 import qualified Data.Unification           as Unification
 import qualified Data.Vector                as V
+import           Fregot.Eval.Builtins
 import           Fregot.Eval.Value
 import           Fregot.Interpreter.Package (Package)
 import qualified Fregot.Interpreter.Package as Package
@@ -194,7 +195,7 @@ evalTerm (RefT _ lhs arg) = do
 
 evalTerm (CallT _ f args)
     -- TODO(jaspervdj): Use a more reliable system to register FFI functions.
-    | f == ["count"] = do
+    | builtin <- HMS.lookup f builtins = do
         vargs <- mapM evalTerm args
         case vargs of
             [ArrayV a] -> return $ NumberV $ fromIntegral $ V.length a
