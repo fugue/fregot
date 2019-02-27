@@ -20,8 +20,10 @@ module Fregot.Eval.Builtins
     , builtins
     ) where
 
+import           Control.Monad       (unless)
 import qualified Data.HashMap.Strict as HMS
 import qualified Data.Text           as T
+import qualified Data.Text.Read      as TR
 import qualified Data.Vector         as V
 import           Fregot.Eval.Value
 import           Fregot.Sugar        (Var)
@@ -38,6 +40,9 @@ instance ToVal T.Text where
 instance ToVal Int where
     toVal = NumberV . fromIntegral
 
+instance ToVal Bool where
+    toVal = BoolV
+
 instance ToVal a => ToVal (V.Vector a) where
     toVal = ArrayV . fmap toVal
 
@@ -53,6 +58,10 @@ instance FromVal Value where
 instance FromVal T.Text where
     fromVal (StringV t) = Right t
     fromVal v           = Left $ "Expected string but got " ++ describeValue v
+
+instance FromVal Bool where
+    fromVal (BoolV b) = Right b
+    fromVal v         = Left $ "Expected bool but got " ++ describeValue v
 
 instance FromVal a => FromVal (V.Vector a) where
     fromVal (ArrayV v) = traverse fromVal v
@@ -80,14 +89,7 @@ toArgs (In sig) (x : xs) = do
     return (Cons arg args, final)
 
 data Builtin where
-    Builtin :: ToVal o => Sig i o -> (Args i -> o) -> Builtin
-
-builtins :: HMS.HashMap [Var] Builtin
-builtins = HMS.fromList
-    [ (["count"], builtin_count)
-    , (["trim"], builtin_trim)
-    , (["split"], builtin_split)
-    ]
+    Builtin :: ToVal o => Sig i o -> (Args i -> Either String o) -> Builtin
 
 arity :: Builtin -> Int
 arity (Builtin sig _) = go 0 sig
@@ -96,18 +98,48 @@ arity (Builtin sig _) = go 0 sig
     go !acc Out    = acc
     go !acc (In s) = go (acc + 1) s
 
+builtins :: HMS.HashMap [Var] Builtin
+builtins = HMS.fromList
+    [ (["all"], builtin_all)
+    , (["count"], builtin_count)
+    , (["endswith"], builtin_endswith)
+    , (["to_number"], builtin_to_number)
+    , (["trim"], builtin_trim)
+    , (["split"], builtin_split)
+    ]
+
+builtin_all :: Builtin
+builtin_all = Builtin
+    (In Out)
+    (\(Cons arr Nil) -> return $! V.and (arr :: V.Vector Bool))
+
 builtin_count :: Builtin
 builtin_count = Builtin
     (In Out)
-    (\(Cons arr Nil) -> V.length (arr :: V.Vector Value))
+    (\(Cons arr Nil) -> return $! V.length (arr :: V.Vector Value))
+
+builtin_endswith :: Builtin
+builtin_endswith = Builtin
+    (In (In Out))
+    (\(Cons str (Cons suffix Nil)) -> return $! suffix `T.isSuffixOf` str)
+
+builtin_to_number :: Builtin
+builtin_to_number = Builtin
+    (In Out)
+    -- TODO(jaspervdj): read floating points
+    (\(Cons str Nil) -> do
+        (x, remainder) <- TR.decimal str
+        unless (T.null remainder) $ Left $
+            "to_number: couldn't read " ++ T.unpack str
+        return $! NumberV $! fromIntegral (x :: Int))
 
 builtin_trim :: Builtin
 builtin_trim = Builtin
     (In (In Out))
     (\(Cons str (Cons cutset Nil)) ->
-        T.dropAround (\c -> T.any (== c) cutset) str)
+        return $! T.dropAround (\c -> T.any (== c) cutset) str)
 
 builtin_split :: Builtin
 builtin_split = Builtin
     (In (In Out))
-    (\(Cons str (Cons delim Nil)) -> T.splitOn delim str)
+    (\(Cons str (Cons delim Nil)) -> return $! T.splitOn delim str)

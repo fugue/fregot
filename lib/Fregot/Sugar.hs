@@ -33,23 +33,27 @@ import           Control.Lens       (Lens', lens, (^.))
 import           Control.Lens.TH    (makeLenses)
 import           Data.Hashable      (Hashable (..))
 import qualified Data.List          as L
+import           Data.List.NonEmpty (NonEmpty)
+import qualified Data.List.NonEmpty as NonEmpty
 import           Data.Scientific    (Scientific)
 import           Data.String        (IsString (..))
 import qualified Data.Text          as T
 import           Fregot.PrettyPrint ((<$$>), (<+>), (<+>?), (?<+>))
 import qualified Fregot.PrettyPrint as PP
 
-newtype PackageName = PackageName {unPackageName :: [T.Text]}
+newtype PackageName = PackageName {unPackageName :: NonEmpty T.Text}
     deriving (Hashable, Eq, Ord, Show)
 
 instance IsString PackageName where
-    fromString = PackageName . T.split (== '.') . fromString
+    fromString str = case T.split (== '.') (T.pack str) of
+        []       -> error $ "fromString PackageName: empty package name"
+        (x : xs) -> PackageName (x NonEmpty.:| xs)
 
 packageNameToString :: PackageName -> String
 packageNameToString = T.unpack . packageNameToText
 
 packageNameToText :: PackageName -> T.Text
-packageNameToText = T.intercalate "." . unPackageName
+packageNameToText = T.intercalate "." . NonEmpty.toList . unPackageName
 
 data Import a = Import
     { _importAnn     :: !a
@@ -172,7 +176,7 @@ $(makeLenses ''Literal)
 $(makeLenses ''With)
 
 instance PP.Pretty a PackageName where
-    pretty = PP.pretty . T.intercalate "." . unPackageName
+    pretty = PP.pretty . packageNameToString
 
 instance PP.Pretty PP.Sem (Import a) where
     pretty imp =
