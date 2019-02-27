@@ -4,6 +4,7 @@ module Fregot.Prepare
     ( prepareRule
     , mergeRules
 
+    , prepareImports
     , prepareExpr
     ) where
 
@@ -11,8 +12,11 @@ module Fregot.Prepare
 import           Control.Applicative       ((<|>))
 import           Control.Lens              (view, (%~), (&), (^.))
 import           Control.Monad.Extended    (foldM, unless, when)
-import           Control.Monad.Parachute   (ParachuteT, tellError, fatal)
+import           Control.Monad.Parachute   (ParachuteT, fatal, tellError)
+import qualified Data.HashMap.Strict       as HMS
 import qualified Data.List                 as L
+import qualified Data.List.NonEmpty        as NonEmpty
+import           Data.Maybe                (fromMaybe)
 import           Data.Maybe                (isJust, isNothing, mapMaybe)
 import           Fregot.Error              (Error)
 import qualified Fregot.Error              as Error
@@ -25,7 +29,7 @@ import           Prelude                   hiding (head)
 -- | Create a new compiled rule from a sugared rule.
 prepareRule
     :: Monad m
-    => [Sugar.Import SourceSpan] -> Sugar.Rule SourceSpan
+    => Imports SourceSpan -> Sugar.Rule SourceSpan
     -> ParachuteT Error m (Rule SourceSpan)
 prepareRule imports rule
     | head ^. Sugar.ruleDefault = do
@@ -152,6 +156,15 @@ mergeRules x y = do
         FunctionRule  -> "is a function"
 
 --------------------------------------------------------------------------------
+
+-- | TODO(jaspervdj): We are calling this a bunch of times, whe
+prepareImports :: [Sugar.Import a] -> Imports a
+prepareImports imports = HMS.fromList $do
+    imp <- imports
+    let alias = fromMaybe
+            (Var $ NonEmpty.last (unPackageName (imp ^. Sugar.importPackage)))
+            (imp ^. Sugar.importAs)
+    return (alias, (imp ^. Sugar.importAnn, imp ^. Sugar.importPackage))
 
 prepareRuleBody
     :: Monad m
