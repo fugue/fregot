@@ -13,7 +13,6 @@ module Fregot.Eval.Value
     ) where
 
 import           Data.Hashable       (Hashable (..))
-import qualified Data.HashMap.Strict as HMS
 import qualified Data.Scientific     as Scientific
 import qualified Data.Text           as T
 import qualified Data.Vector         as V
@@ -49,7 +48,8 @@ data Value
     | BoolV   !Bool
     | ArrayV  !(V.Vector Value)
     | SetV    !(V.Vector Value)
-    | ObjectV !(HMS.HashMap T.Text Value)
+    -- TODO(jaspervdj): Low-hanging optimization fruit here.
+    | ObjectV !(V.Vector (Value, Value))
     | NullV
     deriving (Eq, Show)
 
@@ -61,10 +61,7 @@ instance PP.Pretty PP.Sem Value where
     pretty (BoolV   b) = PP.literal $ if b then "true" else "false"
     pretty (ArrayV  a) = PP.array (V.toList a)
     pretty (SetV    s) = PP.set (V.toList s)
-    pretty (ObjectV o) = PP.object
-        [ (StringV k, v)
-        | (k, v) <- HMS.toList o
-        ]
+    pretty (ObjectV o) = PP.object [(k, v) | (k, v) <- V.toList o]
     pretty NullV       = PP.literal "null"
 
 describeValue :: Value -> String

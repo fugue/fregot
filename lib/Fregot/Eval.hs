@@ -32,7 +32,7 @@ import           Data.Maybe                 (fromMaybe, isNothing)
 import qualified Data.Scientific            as Scientific
 import           Data.Unification           (Unification)
 import qualified Data.Unification           as Unification
-import qualified Data.Vector                as V
+import qualified Data.Vector.Extended       as V
 import           Fregot.Eval.Builtins
 import           Fregot.Eval.Value
 import           Fregot.Interpreter.Package (Package)
@@ -219,19 +219,21 @@ evalTerm (SetT _ s) = do
 evalTerm (ObjectT _ o) = do
     obj <- forM o $ \(kt, vt) -> do
         key <- evalTerm kt
-        case key of
-            StringV txt -> do
-                val <- evalExpr vt
-                return (txt, val)
-            _ -> fail "Unsupported object key type"
-    return $ ObjectV $ HMS.fromList obj
+        val <- evalExpr vt
+        return (key, val)
+
+    -- TODO(jaspervdj): Check for key consistency and optimizations.
+    return $ ObjectV $ V.fromList obj
 
 evalTerm (ArrayCompT _ chead cbody) = do
     rows <- unbranch $ evalRuleBody cbody (evalTerm chead)
     return $ ArrayV $ V.fromList rows
 
 evalTerm (SetCompT _ _ _)      = fail "set comprehensions not supported"
-evalTerm (ObjectCompT _ _ _ _) = fail "object comprehensions not supported"
+evalTerm (ObjectCompT _ khead vhead cbody) = do
+    rows <- unbranch $ evalRuleBody cbody $
+        (,) <$> evalTerm khead <*> evalTerm vhead
+    return $ ObjectV $ V.fromList rows
 
 evalVar :: Var -> EvalM Value
 evalVar v = do
@@ -285,7 +287,7 @@ evalRefArg indexee refArg = do
         WildcardV -> case indexee of
             ArrayV a  -> branch [return val | val <- V.toList a]
             SetV s -> branch [return val | val <- V.toList s]
-            ObjectV o -> branch [return val | (_, val) <- HMS.toList o]
+            ObjectV o -> branch [return val | (_, val) <- V.toList o]
             _ -> fail $
                 "evalRefArg: cannot index " ++ describeValue indexee ++
                 " with a free variable"
@@ -304,16 +306,16 @@ evalRefArg indexee refArg = do
                 | val <- V.toList s
                 ]
             ObjectV o -> branch
-                [ Unification.bindTerm unbound (StringV key) >> return val
-                | (key, val) <- HMS.toList o
+                [ Unification.bindTerm unbound key >> return val
+                | (key, val) <- V.toList o
                 ]
             _ -> fail $
                 "evalRefArg: cannot index " ++ describeValue indexee ++
                 " with a free variable"
 
-        StringV txt | ObjectV o <- indexee -> case HMS.lookup txt o of
-            Nothing -> fail "evalRefArg: key not found"
-            Just f  -> return f
+        k | ObjectV o <- indexee ->
+            -- NOTE(jaspervdj): We can omit some warning here.
+            maybe cut return $! V.lookup k o
 
         NumberV n
                 | Right i <- Scientific.floatingOrInteger n :: Either Double Int
