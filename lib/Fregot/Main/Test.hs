@@ -7,18 +7,16 @@ module Fregot.Main.Test
     , main
     ) where
 
-import           Control.Lens            (view, (^.))
+import           Control.Lens            (view, (&), (.~), (^.))
 import           Control.Lens.TH         (makeLenses)
-import           Control.Monad           (forM_)
+import           Control.Monad.Extended  (foldMapM, forM_)
 import           Control.Monad.Parachute
-import           Control.Monad.Trans     (liftIO)
 import qualified Data.IORef              as IORef
 import qualified Data.Text               as T
 import qualified Fregot.Error            as Error
 import qualified Fregot.Eval             as Eval
 import qualified Fregot.Eval.Value       as Value
 import qualified Fregot.Interpreter      as Interpreter
-import qualified Fregot.PrettyPrint      as PP
 import qualified Fregot.Sources          as Sources
 import           Fregot.Sugar            (PackageName, Var)
 import qualified Fregot.Sugar            as Sugar
@@ -37,20 +35,33 @@ parseOptions = Options
             OA.metavar "PATHS" <>
             OA.help    "Rego files or directories to test")
 
+type TestName = (PackageName, Var)
+
+data TestResults = TestResults
+    { _passed :: [TestName]
+    , _failed :: [TestName]
+    -- TODO(jaspervdj): add errors
+    }
+
+$(makeLenses ''TestResults)
+
+instance Semigroup TestResults where
+    TestResults p1 f1 <> TestResults p2 f2 = TestResults (p1 <> p2) (f1 <> f2)
+
+instance Monoid TestResults where
+    mempty = TestResults [] []
+
 runTest
-    :: Interpreter.Handle -> PackageName -> Var -> Interpreter.InterpreterM ()
+    :: Interpreter.Handle -> PackageName -> Var
+    -> Interpreter.InterpreterM TestResults
 runTest h pkgname rule = do
-    liftIO $ IO.hPutStrLn IO.stderr $
-        "Running test " <> Sugar.packageNameToString pkgname <>
-        "." <> Sugar.varToString rule <> "..."
     doc <- Interpreter.evalVar h pkgname rule
 
-    forM_ doc $ \row -> liftIO $
-        PP.hPutSemDoc IO.stderr $ "=" PP.<+> PP.pretty row
-    liftIO $ IO.hPutStrLn IO.stderr $
-        case doc of
-            (_ : _) | all (isTrue . view Eval.rowValue) doc -> "OK"
-            _                                               -> "FAIL"
+    let pass = case doc of
+            (_ : _) | all (isTrue . view Eval.rowValue) doc -> True
+            _                                               -> False
+
+    return $ mempty & (if pass then passed else failed) .~ [(pkgname, rule)]
   where
     isTrue (Value.BoolV b) = b
     isTrue _               = False
@@ -59,10 +70,15 @@ main :: Options -> IO ()
 main opts = do
     sources <- Sources.newHandle
     interpreter <- Interpreter.newHandle sources
-    (errors, _mbResult) <- runParachuteT $ do
+    (errors, mbResult) <- runParachuteT $ do
         forM_ (opts ^. paths) $ \path -> Interpreter.loadModule interpreter path
         tests <- filter isTest <$> Interpreter.readRules interpreter
-        forM_ tests $ \(pkg, rule) -> runTest interpreter pkg rule
+        foldMapM (\(pkg, rule) -> runTest interpreter pkg rule) tests
+
+    forM_ mbResult $ \tr ->
+        putStrLn $
+            "passed: " ++ show (length (tr ^. passed)) ++
+            ", failed: " ++ show (length (tr ^. failed))
 
     sources' <- IORef.readIORef sources
     Error.hPutErrors IO.stderr sources' Error.TextFmt errors

@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 module Control.Monad.Extended
     ( module Control.Monad
 
@@ -5,6 +6,7 @@ module Control.Monad.Extended
     , whenM
     , unlessM
     , unzipWithM
+    , foldMapM
     ) where
 
 import           Control.Monad
@@ -22,3 +24,11 @@ unlessM x = whenM (not <$> x)
 
 unzipWithM :: Monad m => (a -> m (b, c)) -> [a] -> m ([b], [c])
 unzipWithM f = fmap unzip . mapM f
+
+foldMapM :: (Monoid s, Monad m) => (a -> m s) -> [a] -> m s
+foldMapM f = go mempty
+  where
+    go !acc []       = return acc
+    go !acc (x : xs) = do
+        s <- f x
+        go (acc <> s) xs

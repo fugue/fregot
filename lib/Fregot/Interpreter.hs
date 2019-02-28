@@ -28,12 +28,10 @@ import           Fregot.Interpreter.Package (Package)
 import qualified Fregot.Interpreter.Package as Package
 import qualified Fregot.Parser              as Parser
 import qualified Fregot.Prepare             as Prepare
-import qualified Fregot.PrettyPrint         as PP
 import qualified Fregot.Sources             as Sources
 import           Fregot.Sources.SourceSpan  (SourceSpan)
 import           Fregot.Sugar               (PackageName, Var)
 import qualified Fregot.Sugar               as Sugar
-import qualified System.IO                  as IO
 
 type InterpreterM a = ParachuteT Error IO a
 
@@ -58,7 +56,6 @@ loadModule h path = do
     liftIO $ IORef.atomicModifyIORef_ (h ^. sources) $
         Sources.insert sourcep input
     modul <- Parser.lexAndParse Parser.parseModule sourcep input
-    liftIO $ PP.hPutSemDoc IO.stdout $ PP.pretty modul
 
     -- Insert the module into the packages system.
     insertModule h modul
