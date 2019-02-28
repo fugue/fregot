@@ -188,7 +188,11 @@ ground :: EvalM Value -> EvalM Value
 ground mval = do
     val <- mval
     case val of
-        FreeV v   -> fail $ "Unknown variable: " ++ show (PP.pretty v)
+        FreeV v   -> do
+            mbVal <- Unification.lookup v
+            case mbVal of
+                Nothing -> fail $ "Unknown variable: " ++ show (PP.pretty v)
+                Just b  -> return b
         WildcardV -> fail $ "Unknown variable: _"
         _         -> return val
 
@@ -327,11 +331,7 @@ evalRefArg indexee refArg = do
                 | (i, val) <- zip [0 :: Int ..] (V.toList a)
                 ]
             SetV s -> branch
-                -- | NOTE(jaspervdj): Returning true below is based on the idea
-                -- that rules always return true if they don't have a return
-                -- value.  We bind the index to the thing in the list so the
-                -- user should use that.
-                [ Unification.bindTerm unbound val >> return (BoolV True)
+                [ Unification.bindTerm unbound val >> return val
                 | val <- HS.toList s
                 ]
             ObjectV o -> branch
@@ -361,7 +361,7 @@ evalRefArg indexee refArg = do
             -- all elements in the set, and try to unify `idx` with those.
             -- However, the opa interpreter doesn't seem to do this.
             if idx `HS.member` set
-                then return (BoolV True)
+                then return idx
                 else cut
 
         _ -> fail $
@@ -405,11 +405,11 @@ evalRuleDefinition rule mbIndex =
     withImports (rule ^. ruleDefImports) $
     clearLocals $
     case (mbIndex, rule ^. ruleIndex) of
-        (Nothing, Nothing)   -> evalRuleBody (rule ^. ruleBody) final
+        (Nothing, Nothing)   -> evalRuleBody (rule ^. ruleBody) (final Nothing)
         (Just arg, Just tpl) -> do
             tplv <- evalTerm tpl
             _    <- unify arg tplv
-            evalRuleBody (rule ^. ruleBody) final
+            evalRuleBody (rule ^. ruleBody) (final $ Just tplv)
         (Just _, Nothing) -> fail $
             "evalRuleDefinition: got argument for rule " ++
             show (PP.pretty (rule ^. ruleDefName)) ++
@@ -417,10 +417,12 @@ evalRuleDefinition rule mbIndex =
 
         -- If the rule definition has an argument, but we didn't give any, we
         -- want to evaluate things anyway.
-        (Nothing, Just _) -> evalRuleBody (rule ^. ruleBody) final
+        (Nothing, Just _) -> evalRuleBody (rule ^. ruleBody) (final Nothing)
   where
-    final = case rule ^. ruleValue of
-        Nothing   -> return (BoolV True)
+    -- NOTE(jasperdj): We are using `mbIdxVal` here rather than `mbIndex` since
+    -- the index might be a wildcard.
+    final mbIdxVal = case rule ^. ruleValue of
+        Nothing   -> ground $ return $ fromMaybe (BoolV True) mbIdxVal
         Just term -> evalTerm term
 
 evalUserFunction
