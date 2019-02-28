@@ -106,6 +106,7 @@ builtins = HMS.fromList
     , (["to_number"], builtin_to_number)
     , (["trim"], builtin_trim)
     , (["split"], builtin_split)
+    , (["startswith"], builtin_startswith)
     ]
 
 builtin_all :: Builtin
@@ -143,3 +144,8 @@ builtin_split :: Builtin
 builtin_split = Builtin
     (In (In Out))
     (\(Cons str (Cons delim Nil)) -> return $! T.splitOn delim str)
+
+builtin_startswith :: Builtin
+builtin_startswith = Builtin
+    (In (In Out))
+    (\(Cons str (Cons prefix Nil)) -> return $! prefix `T.isPrefixOf` str)
