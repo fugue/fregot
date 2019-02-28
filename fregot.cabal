@@ -27,6 +27,9 @@ Library
     Fregot.Lexer.Internal
     Fregot.Lexer.Position
     Fregot.Lexer.String
+    Fregot.Main
+    Fregot.Main.Repl
+    Fregot.Main.Test
     Fregot.Parser
     Fregot.Parser.Internal
     Fregot.Parser.Sugar
@@ -41,7 +44,6 @@ Library
     Fregot.Sources
     Fregot.Sources.SourceSpan
     Fregot.Sugar
-    Fregot.Test
 
     Control.Monad.Parachute
     Data.Unification
@@ -53,6 +55,8 @@ Library
     System.IO.Extended
     Text.Parsec.Extended
 
+    Paths_fregot
+
   Build-depends:
     aeson                >= 1.4  && < 1.5,
     annotated-wl-pprint  >= 0.7  && < 0.8,
@@ -61,24 +65,18 @@ Library
     blaze-html           >= 0.9  && < 0.10,
     hashable             >= 1.2  && < 1.3,
     haskeline            >= 0.7  && < 0.8,
-    text                 >= 1.2  && < 1.3,
     lens                 >= 4.17 && < 4.18,
     mtl                  >= 2.2  && < 2.3,
+    optparse-applicative >= 0.14 && < 0.15,
     parsec               >= 3.1  && < 4.2,
     scientific           >= 0.3  && < 0.4,
+    text                 >= 1.2  && < 1.3,
     unordered-containers >= 0.2  && < 0.3,
     vector               >= 0.12 && < 0.13,
     vector-instances     >= 3.4  && < 3.5
 
-Executable fregot-repl
-  Hs-source-dirs:    src/fregot-repl
-  Main-is:           Main.hs
-  Default-language:  Haskell2010
-  Ghc-options:       -Wall -Werror -rtsopts -threaded
-  build-depends:     base, fregot
-
-Executable fregot-test
-  Hs-source-dirs:    src/fregot-test
+Executable fregot
+  Hs-source-dirs:    src
   Main-is:           Main.hs
   Default-language:  Haskell2010
   Ghc-options:       -Wall -Werror -rtsopts -threaded
