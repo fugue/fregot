@@ -282,13 +282,13 @@ parseSomeOperator = do
         '<' -> do
             n <- Parsec.lookAhead Parsec.anyChar
             case n of
-                '=' -> Parsec.anyChar *> return TGreaterThanOrEqual
-                _   -> return TGreaterThan
+                '=' -> Parsec.anyChar *> return TLessThanOrEqual
+                _   -> return TLessThan
         '>' -> do
             n <- Parsec.lookAhead Parsec.anyChar
             case n of
-                '=' -> Parsec.anyChar *> return TLessThanOrEqual
-                _   -> return TLessThan
+                '=' -> Parsec.anyChar *> return TGreaterThanOrEqual
+                _   -> return TGreaterThan
         _   -> Parsec.unexpectedAt spos ("character " ++ show x0)
 
 prettyToken :: Token -> String
