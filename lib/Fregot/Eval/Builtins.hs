@@ -101,6 +101,7 @@ arity (Builtin sig _) = go 0 sig
 builtins :: HMS.HashMap [Var] Builtin
 builtins = HMS.fromList
     [ (["all"], builtin_all)
+    , (["any"], builtin_any)
     , (["count"], builtin_count)
     , (["endswith"], builtin_endswith)
     , (["is_string"], builtin_is_string)
@@ -111,18 +112,19 @@ builtins = HMS.fromList
     ]
 
 builtin_all :: Builtin
-builtin_all = Builtin
-    (In Out)
+builtin_all = Builtin (In Out)
     (\(Cons arr Nil) -> return $! V.and (arr :: V.Vector Bool))
 
+builtin_any :: Builtin
+builtin_any = Builtin (In Out)
+    (\(Cons arr Nil) -> return $! V.or (arr :: V.Vector Bool))
+
 builtin_count :: Builtin
-builtin_count = Builtin
-    (In Out)
+builtin_count = Builtin (In Out)
     (\(Cons arr Nil) -> return $! V.length (arr :: V.Vector Value))
 
 builtin_endswith :: Builtin
-builtin_endswith = Builtin
-    (In (In Out))
+builtin_endswith = Builtin (In (In Out))
     (\(Cons str (Cons suffix Nil)) -> return $! suffix `T.isSuffixOf` str)
 
 builtin_is_string :: Builtin
@@ -130,28 +132,24 @@ builtin_is_string = Builtin (In Out) $ \(Cons val Nil) -> case val of
     StringV _ -> return True
     _         -> return False
 
+builtin_trim :: Builtin
+builtin_trim = Builtin (In (In Out))
+    (\(Cons str (Cons cutset Nil)) ->
+        return $! T.dropAround (\c -> T.any (== c) cutset) str)
+
+builtin_split :: Builtin
+builtin_split = Builtin (In (In Out))
+    (\(Cons str (Cons delim Nil)) -> return $! T.splitOn delim str)
+
+builtin_startswith :: Builtin
+builtin_startswith = Builtin (In (In Out))
+    (\(Cons str (Cons prefix Nil)) -> return $! prefix `T.isPrefixOf` str)
+
 builtin_to_number :: Builtin
-builtin_to_number = Builtin
-    (In Out)
+builtin_to_number = Builtin (In Out)
     -- TODO(jaspervdj): read floating points
     (\(Cons str Nil) -> do
         (x, remainder) <- TR.decimal str
         unless (T.null remainder) $ Left $
             "to_number: couldn't read " ++ T.unpack str
         return $! NumberV $! fromIntegral (x :: Int))
-
-builtin_trim :: Builtin
-builtin_trim = Builtin
-    (In (In Out))
-    (\(Cons str (Cons cutset Nil)) ->
-        return $! T.dropAround (\c -> T.any (== c) cutset) str)
-
-builtin_split :: Builtin
-builtin_split = Builtin
-    (In (In Out))
-    (\(Cons str (Cons delim Nil)) -> return $! T.splitOn delim str)
-
-builtin_startswith :: Builtin
-builtin_startswith = Builtin
-    (In (In Out))
-    (\(Cons str (Cons prefix Nil)) -> return $! prefix `T.isPrefixOf` str)
