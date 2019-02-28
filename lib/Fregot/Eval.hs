@@ -327,11 +327,7 @@ evalRefArg indexee refArg = do
                 | (i, val) <- zip [0 :: Int ..] (V.toList a)
                 ]
             SetV s -> branch
-                -- | NOTE(jaspervdj): Returning true below is based on the idea
-                -- that rules always return true if they don't have a return
-                -- value.  We bind the index to the thing in the list so the
-                -- user should use that.
-                [ Unification.bindTerm unbound val >> return (BoolV True)
+                [ Unification.bindTerm unbound val >> return val
                 | val <- HS.toList s
                 ]
             ObjectV o -> branch
@@ -361,7 +357,7 @@ evalRefArg indexee refArg = do
             -- all elements in the set, and try to unify `idx` with those.
             -- However, the opa interpreter doesn't seem to do this.
             if idx `HS.member` set
-                then return (BoolV True)
+                then return idx
                 else cut
 
         _ -> fail $
@@ -420,7 +416,7 @@ evalRuleDefinition rule mbIndex =
         (Nothing, Just _) -> evalRuleBody (rule ^. ruleBody) final
   where
     final = case rule ^. ruleValue of
-        Nothing   -> return (BoolV True)
+        Nothing   -> return $ fromMaybe (BoolV True) mbIndex
         Just term -> evalTerm term
 
 evalUserFunction

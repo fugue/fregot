@@ -33,3 +33,9 @@ test_set_03 {
     key == "Hello"
     val == "Hello"
 }
+
+# 4. Straight indexing
+
+test_set_04 {
+    set_01["Hello"] == "Hello"
+}
