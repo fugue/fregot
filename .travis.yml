@@ -12,4 +12,5 @@ before_install:
 - travis_retry curl -L https://get.haskellstack.org/stable/linux-x86_64.tar.gz | tar xz --wildcards --strip-components=1 -C ~/.local/bin '*/stack'
 
 script:
-- travis_wait stack --no-terminal --skip-ghc-check build
+- travis_wait stack --no-terminal --skip-ghc-check --copy-bins build
+- find tests/ -name '*.rego' | xargs fregot test
