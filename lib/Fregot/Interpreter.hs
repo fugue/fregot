@@ -111,7 +111,7 @@ eval h pkgname mx = do
     pkgs <- liftIO $ IORef.readIORef (h ^. packages)
     pkg  <- readPackage h pkgname
     let env = Eval.Environment pkgs pkg emptyObject mempty
-        x   = Eval.runEvalM env mx
+    x <- liftIO $ Eval.runEvalM env mx
     return x
 
 evalExpr
