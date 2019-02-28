@@ -103,10 +103,11 @@ builtins = HMS.fromList
     [ (["all"], builtin_all)
     , (["count"], builtin_count)
     , (["endswith"], builtin_endswith)
-    , (["to_number"], builtin_to_number)
-    , (["trim"], builtin_trim)
+    , (["is_string"], builtin_is_string)
     , (["split"], builtin_split)
     , (["startswith"], builtin_startswith)
+    , (["to_number"], builtin_to_number)
+    , (["trim"], builtin_trim)
     ]
 
 builtin_all :: Builtin
@@ -123,6 +124,11 @@ builtin_endswith :: Builtin
 builtin_endswith = Builtin
     (In (In Out))
     (\(Cons str (Cons suffix Nil)) -> return $! suffix `T.isSuffixOf` str)
+
+builtin_is_string :: Builtin
+builtin_is_string = Builtin (In Out) $ \(Cons val Nil) -> case val of
+    StringV _ -> return True
+    _         -> return False
 
 builtin_to_number :: Builtin
 builtin_to_number = Builtin
