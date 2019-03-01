@@ -74,7 +74,7 @@ parseRuleOrExpr h input = do
             return $ fmap Right mbExpr
   where
     ruleToExpr r
-        | null (r ^. ruleBody)
+        | null (r ^. ruleBodies)
         , isNothing (r ^. ruleHead . ruleValue) =
             case r ^. ruleHead . ruleIndex of
                 -- TODO (jaspervdj): undefined

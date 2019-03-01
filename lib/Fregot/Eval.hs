@@ -269,11 +269,17 @@ evalRuleDefinition rule mbIndex =
     withImports (rule ^. ruleDefImports) $
     clearLocals $
     case (mbIndex, rule ^. ruleIndex) of
-        (Nothing, Nothing)   -> evalRuleBody (rule ^. ruleBody) (final Nothing)
+        (Nothing, Nothing) -> branch
+            [ evalRuleBody body (final Nothing)
+            | body <- rule ^. ruleBodies
+            ]
         (Just arg, Just tpl) -> do
             tplv <- evalTerm tpl
             _    <- unify arg tplv
-            evalRuleBody (rule ^. ruleBody) (final $ Just tplv)
+            branch
+                [ evalRuleBody body (final $ Just tplv)
+                | body <- rule ^. ruleBodies
+                ]
         (Just _, Nothing) -> fail $
             "evalRuleDefinition: got argument for rule " ++
             show (PP.pretty (rule ^. ruleDefName)) ++
@@ -283,7 +289,10 @@ evalRuleDefinition rule mbIndex =
         -- want to evaluate things anyway, converting the result to a set.
         (Nothing, Just tpl) -> do
             tplv <- evalTerm tpl
-            evalRuleBody (rule ^. ruleBody) (final $ Just tplv)
+            branch
+                [ evalRuleBody body (final $ Just tplv)
+                | body <- rule ^. ruleBodies
+                ]
   where
     -- NOTE(jasperdj): We are using `mbIdxVal` here rather than `mbIndex` since
     -- the index might be a wildcard.
@@ -306,9 +315,12 @@ evalUserFunction crule callerArgs
             -- TODO(jaspervdj): Check arity.
             calleeArgs <- mapM evalTerm $ fromMaybe [] (def ^. ruleArgs)
             zipWithM_ unify callerArgs calleeArgs
-            evalRuleBody (def ^. ruleBody) $ case def ^. ruleValue of
-                Nothing   -> return (BoolV True)
-                Just term -> evalTerm term
+            branch
+                [ evalRuleBody body $ case def ^. ruleValue of
+                    Nothing   -> return (BoolV True)
+                    Just term -> evalTerm term
+                | body <- def ^. ruleBodies
+                ]
 
 -- | Evaluate the rule body, then perform a continuation.
 evalRuleBody :: RuleBody SourceSpan -> EvalM a -> EvalM a

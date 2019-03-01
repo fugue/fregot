@@ -14,7 +14,7 @@ module Fregot.Sugar
     , Var (..)
     , varToString, varToText
 
-    , Rule (..), ruleHead, ruleBody
+    , Rule (..), ruleHead, ruleBodies
     , RuleHead (..), ruleAnn, ruleDefault, ruleName, ruleArgs, ruleIndex, ruleValue
     , RuleBody
     , Literal (..), literalNegation, literalExpr, literalWith
@@ -76,8 +76,8 @@ varToText :: Var -> T.Text
 varToText = unVar
 
 data Rule a = Rule
-    { _ruleHead :: !(RuleHead a)
-    , _ruleBody :: !(RuleBody a)
+    { _ruleHead   :: !(RuleHead a)
+    , _ruleBodies :: ![RuleBody a]
     } deriving (Show)
 
 data RuleHead a = RuleHead
@@ -190,15 +190,18 @@ instance PP.Pretty PP.Sem (Module a) where
 instance PP.Pretty a Var where
     pretty = PP.pretty . unVar
 
+prettyRuleBody :: RuleBody a -> PP.SemDoc
+prettyRuleBody bs =
+    PP.punctuation "{" <$$>
+    PP.ind (PP.vcat $ map (\b -> PP.pretty b) bs) <$$>
+    PP.punctuation "}"
+
 instance PP.Pretty PP.Sem (Rule a) where
     pretty r =
         PP.pretty (r ^. ruleHead) <+>?
-        (case r ^. ruleBody of
+        (case r ^. ruleBodies of
             [] -> Nothing
-            bs -> Just $
-                PP.punctuation "{" <$$>
-                PP.ind (PP.vcat $ map (\b -> PP.pretty b) bs) <$$>
-                PP.punctuation "}")
+            bs -> Just $ mconcat $ L.intersperse " " $ map prettyRuleBody bs)
 
 instance PP.Pretty PP.Sem (RuleHead a) where
     pretty r =
