@@ -19,6 +19,7 @@ Library
     Fregot.Error
     Fregot.Eval
     Fregot.Eval.Builtins
+    Fregot.Eval.Monad
     Fregot.Eval.Value
     Fregot.Interpreter
     Fregot.Interpreter.Package

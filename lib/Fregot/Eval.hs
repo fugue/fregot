@@ -1,4 +1,3 @@
-{-# LANGUAGE BangPatterns               #-}
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
@@ -6,12 +5,15 @@
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE TemplateHaskell            #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}  -- for the MonadUnify instance...
 module Fregot.Eval
     ( Environment (..), packages, package, inputDoc, imports
 
     , Value
     , Document
     , Row, rowValue
+
+    , EvalException (..)
 
     , EvalM
     , runEvalM
@@ -21,168 +23,21 @@ module Fregot.Eval
     , evalTerm
     ) where
 
-import           Control.Lens               (use, view, (%=), (&), (.=), (.~),
-                                             (^.))
-import           Control.Lens.TH            (makeLenses)
-import           Control.Monad.Extended     (forM, zipWithM_)
-import           Control.Monad.Reader       (MonadReader (..), ask)
-import           Control.Monad.State        (MonadState (..), modify)
-import qualified Data.HashMap.Strict        as HMS
-import qualified Data.HashSet               as HS
-import           Data.Maybe                 (fromMaybe, isNothing)
-import qualified Data.Scientific            as Scientific
-import           Data.Unification           (Unification)
-import qualified Data.Unification           as Unification
-import qualified Data.Vector.Extended       as V
+import           Control.Lens              (use, view, (%=), (.=), (.~), (^.))
+import           Control.Monad.Extended    (forM, zipWithM_)
+import           Control.Monad.Reader      (local)
+import qualified Data.HashMap.Strict       as HMS
+import qualified Data.HashSet              as HS
+import           Data.Maybe                (fromMaybe, isNothing)
+import qualified Data.Scientific           as Scientific
+import qualified Data.Unification          as Unification
+import qualified Data.Vector.Extended      as V
 import           Fregot.Eval.Builtins
+import           Fregot.Eval.Monad
 import           Fregot.Eval.Value
-import           Fregot.Interpreter.Package (Package)
-import qualified Fregot.Interpreter.Package as Package
 import           Fregot.Prepare.AST
-import qualified Fregot.PrettyPrint         as PP
-import           Fregot.Sources.SourceSpan  (SourceSpan)
-
-data Context = Context
-    { _unification :: !(Unification InstVar Value)
-    , _locals      :: !(HMS.HashMap Var InstVar)
-    , _nextInstVar :: !Int
-    }
-
-$(makeLenses ''Context)
-
-emptyContext :: Context
-emptyContext = Context
-    { _unification = Unification.empty
-    , _locals      = mempty
-    , _nextInstVar = 0
-    }
-
-data Row a = Row
-    { _rowContext :: !Context
-    , _rowValue   :: !a
-    } deriving (Functor)
-
-$(makeLenses ''Row)
-
-instance PP.Pretty PP.Sem a => PP.Pretty PP.Sem (Row a) where
-    pretty (Row _ v) = PP.pretty v
-
-type Document a = [Row a]
-
---------------------------------------------------------------------------------
-
-data Environment = Environment
-    { _packages :: !(HMS.HashMap PackageName Package)
-
-    -- NOTE(jaspervdj): We'll need to update package as well if call a rule from
-    -- another package.
-    , _package  :: !Package
-    , _inputDoc :: !Value
-    , _imports  :: !(Imports SourceSpan)
-    } deriving (Show)
-
-$(makeLenses ''Environment)
-
-newtype EvalM a = EvalM {unBranchM :: Environment -> Context -> [Row a]}
-    deriving (Functor)
-
-instance Applicative EvalM where
-    pure x = EvalM $ \_ ctx -> [Row ctx x]
-    EvalM mf <*> EvalM mx = EvalM $ \rs ctx0 -> do
-        row1 <- mf rs ctx0
-        row2 <- mx rs (row1 ^. rowContext)
-        return $! row2 & rowValue .~ (row1 ^. rowValue) (row2 ^. rowValue)
-
-instance Monad EvalM where
-    EvalM mx >>= f = EvalM $ \rs ctx0 -> do
-        Row ctx1 x <- mx rs ctx0
-        unBranchM (f x) rs ctx1
-
-instance MonadReader Environment EvalM where
-    ask = EvalM $ \rs ctx -> pure $! Row ctx rs
-    local l (EvalM f) = EvalM $ \rs ctx -> f (l rs) ctx
-
-instance MonadState Context EvalM where
-    get     = EvalM $ \_ ctx  -> [Row ctx ctx]
-    put ctx = EvalM $ \_ _    -> [Row ctx ()]
-    state f = EvalM $ \_ ctx0 -> let (x, ctx1) = f ctx0 in [Row ctx1 x]
-
-runEvalM :: Environment -> EvalM a -> Document a
-runEvalM rules0 (EvalM f) = f rules0 emptyContext
-
-branch :: [EvalM a] -> EvalM a
-branch options = EvalM $ \rs ctx -> do
-    EvalM opt <- options
-    opt rs ctx
-
-unbranch :: EvalM a -> EvalM [a]
-unbranch (EvalM f) = EvalM $ \rs ctx ->
-    let rows = f rs ctx in
-    [Row ctx (map (view rowValue) rows)]
-
-cut :: EvalM a
-cut = EvalM $ \_ _ -> []
-
-negation :: (a -> Bool) -> EvalM a -> EvalM ()
-negation trueish (EvalM f) = EvalM $ \rs ctx ->
-    let rows = filter (\(Row _ x) -> trueish x) (f rs ctx) in
-    if null rows then [Row ctx ()] else []
-
-withDefault :: EvalM a -> EvalM a -> EvalM a
-withDefault (EvalM def) (EvalM f) = EvalM $ \env ctx ->
-    case f env ctx of
-        [] -> def env emptyContext
-        xs -> xs
-
-requireComplete :: Eq a => EvalM a -> EvalM a
-requireComplete (EvalM f) = EvalM $ \env ctx ->
-    let rows = f env ctx in
-    case rows of
-        (r : more)
-            | all ((== r ^. rowValue) . view rowValue) more -> [r]
-            | otherwise -> fail
-                -- TODO(jaspervdj): Better error message.
-                "requireComplete: inconsistent result for complete rule"
-        _          -> rows
-
--- | Turn a variable into an instantiated variable.
---
--- * If it's a local variable and already instantiated, we return that.
--- * Otherwise, we instantiate a new one.
-toInstVar :: Var -> EvalM InstVar
-toInstVar v = state $ \ctx -> case HMS.lookup v (ctx ^. locals) of
-    Just iv -> (iv, ctx)
-    Nothing ->
-        let !iv   = InstVar (ctx ^. nextInstVar) v
-            !lcls = HMS.insert v iv (ctx ^. locals) in
-        (iv, ctx {_nextInstVar = _nextInstVar ctx + 1, _locals = lcls})
-
-lookupRule :: [Var] -> EvalM (Maybe (Rule SourceSpan))
-lookupRule [root] = do
-    env0 <- ask
-    return $ Package.lookup root (env0 ^. package)
-lookupRule _ = fail "todo: lookup rules in other packages"
-
-clearLocals :: EvalM a -> EvalM a
-clearLocals mx = do
-    oldLocals <- state $ \ctx -> (_locals ctx, ctx {_locals = mempty})
-    x         <- mx
-    modify $ \ctx -> ctx {_locals = oldLocals}
-    return x
-
-withImports :: Imports SourceSpan -> EvalM a -> EvalM a
-withImports imps = local (imports .~ imps)
-
-withPackage :: PackageName -> EvalM a -> EvalM a
-withPackage pkgname mx = do
-    pkgs <- view packages
-    case HMS.lookup pkgname pkgs of
-        Just pkg -> local (package .~ pkg) mx
-        Nothing  -> fail $
-            "Unknown package: " ++ show pkgname ++ ", known packages: " ++
-            show (HMS.keys pkgs)
-
---------------------------------------------------------------------------------
+import qualified Fregot.PrettyPrint        as PP
+import           Fregot.Sources.SourceSpan (SourceSpan)
 
 ground :: EvalM Value -> EvalM Value
 ground mval = do
@@ -196,11 +51,11 @@ ground mval = do
         WildcardV -> fail $ "Unknown variable: _"
         _         -> return val
 
-evalExpr :: Expr a -> EvalM Value
+evalExpr :: Expr SourceSpan -> EvalM Value
 evalExpr (TermE _ t)      = evalTerm t
 evalExpr (BinOpE _ x o y) = evalBinOp x o y
 
-evalTerm :: Term a -> EvalM Value
+evalTerm :: Term SourceSpan -> EvalM Value
 evalTerm (RefT _ lhs arg) = do
     mbCompiledRule <- case lhs of
         VarT _ v -> lookupRule [v]
@@ -215,10 +70,10 @@ evalTerm (RefT _ lhs arg) = do
             val <- evalTerm lhs
             evalRefArg val arg
 
-evalTerm (CallT _ f args)
+evalTerm (CallT source f args)
     | Just builtin <- HMS.lookup f builtins = do
         vargs <- mapM evalTerm args
-        evalBuiltin builtin vargs
+        evalBuiltin source builtin vargs
 
     | otherwise = do
         mbCompiledRule <- lookupRule f
@@ -276,8 +131,8 @@ evalVar v       = do
                     Nothing    -> FreeV <$> toInstVar v
                     Just crule -> evalCompiledRule crule Nothing
 
-evalBuiltin :: Builtin -> [Value] -> EvalM Value
-evalBuiltin (Builtin sig impl) args0 = do
+evalBuiltin :: SourceSpan -> Builtin -> [Value] -> EvalM Value
+evalBuiltin source (Builtin sig impl) args0 = do
     -- There are two possible scenarios if we have an N-ary function, e.g.:
     --
     --     add(x, y) = z {
@@ -288,7 +143,7 @@ evalBuiltin (Builtin sig impl) args0 = do
     -- (`z` in the example), or the user supplies 3 arguments, and we unify
     -- the return value with the last argument.
     (args1, mbFinalArg) <- case toArgs sig args0 of
-        Left err -> fail $ "evalBuiltin: argument problem: " ++ err
+        Left err -> raise' source "builtin type error" $ PP.pretty err
         Right x  -> return x
 
     -- Call the function.  This is currently pure business but it will
@@ -310,7 +165,7 @@ evalBuiltin (Builtin sig impl) args0 = do
 -- * indexing rules
 -- * indexing "cached/precomputed" rules
 -- * indexing actual values, i.e. objects and arrays
-evalRefArg :: Value -> Term a -> EvalM Value
+evalRefArg :: Value -> Term SourceSpan -> EvalM Value
 evalRefArg indexee refArg = do
     idx <- evalTerm refArg
     case idx of
@@ -445,7 +300,7 @@ evalUserFunction crule callerArgs
                 Just term -> evalTerm term
 
 -- | Evaluate the rule body, then perform a continuation.
-evalRuleBody :: RuleBody s -> EvalM a -> EvalM a
+evalRuleBody :: RuleBody SourceSpan -> EvalM a -> EvalM a
 evalRuleBody lits0 final = go lits0
   where
     go [] = final
@@ -471,7 +326,7 @@ evalRuleBody lits0 final = go lits0
 
         local (inputDoc .~ input') $ localWiths ws mx
 
-evalStatement :: Statement a -> EvalM Value
+evalStatement :: Statement SourceSpan -> EvalM Value
 evalStatement (UnifyS _ x y) = do
     xv <- evalExpr x
     yv <- evalExpr y
@@ -490,7 +345,7 @@ evalScalar (Number t) = return $ NumberV t
 evalScalar (Bool   b) = return $ BoolV   b
 evalScalar Null       = return $ NullV
 
-evalBinOp :: Expr a -> BinOp -> Expr a -> EvalM Value
+evalBinOp :: Expr SourceSpan -> BinOp -> Expr SourceSpan -> EvalM Value
 evalBinOp x op y = do
     xv <- evalExpr x
     yv <- evalExpr y

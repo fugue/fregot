@@ -14,7 +14,7 @@ module Fregot.Interpreter
 import           Control.Lens               ((^.))
 import           Control.Lens.TH            (makeLenses)
 import           Control.Monad              (foldM)
-import           Control.Monad.Parachute    (ParachuteT)
+import           Control.Monad.Parachute    (ParachuteT, fatal)
 import           Control.Monad.Trans        (liftIO)
 import qualified Data.HashMap.Strict        as HMS
 import           Data.IORef.Extended        (IORef)
@@ -106,13 +106,14 @@ insertRule h pkgname rule = do
     liftIO $ IORef.atomicModifyIORef_ (h ^. packages) $
         HMS.insert pkgname package1
 
-eval :: Handle -> PackageName -> Eval.EvalM a -> InterpreterM (Eval.Document a)
+eval
+    :: Handle -> PackageName -> Eval.EvalM a
+    -> InterpreterM (Eval.Document a)
 eval h pkgname mx = do
     pkgs <- liftIO $ IORef.readIORef (h ^. packages)
     pkg  <- readPackage h pkgname
     let env = Eval.Environment pkgs pkg emptyObject mempty
-        x   = Eval.runEvalM env mx
-    return x
+    either fatal return =<< liftIO (Eval.runEvalM env mx)
 
 evalExpr
     :: Handle -> PackageName -> Sugar.Expr SourceSpan
