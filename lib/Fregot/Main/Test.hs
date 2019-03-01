@@ -9,7 +9,7 @@ module Fregot.Main.Test
 
 import           Control.Lens            (view, (&), (.~), (^.))
 import           Control.Lens.TH         (makeLenses)
-import           Control.Monad.Extended  (foldMapM, forM_)
+import           Control.Monad.Extended  (foldMapM, forM_, unless)
 import qualified Control.Monad.Parachute as Parachute
 import qualified Data.IORef              as IORef
 import qualified Data.Text               as T
@@ -93,6 +93,13 @@ main opts = do
             IO.hPutStrLn IO.stderr $ Sugar.packageNameToString pkg <> "." <>
                 Sugar.varToString rule <> ":"
             Error.hPutErrors IO.stderr sources' Error.TextFmt terrs
+
+        unless (null (tr ^. failed)) $ do
+            IO.hPutStrLn IO.stderr "Failed tests:"
+            forM_ (tr ^. failed) $ \(pkg, rule) -> do
+                IO.hPutStrLn IO.stderr $
+                    "- " <> Sugar.packageNameToString pkg <> "." <>
+                    Sugar.varToString rule
 
     Error.hPutErrors IO.stderr sources' Error.TextFmt errors
   where
