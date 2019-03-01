@@ -85,7 +85,7 @@ data Expr a
     deriving (Show)
 
 data Term a
-    = RefT        a (Term a) (Term a)
+    = RefT        a (Term a) (Expr a)
     | CallT       a [Var] [Term a]
     | VarT        a Var
     | ScalarT     a (Sugar.Scalar a)

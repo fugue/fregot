@@ -65,7 +65,7 @@ evalTerm (RefT source lhs arg) = do
         -- Using a rule with an index.  This only triggers if the rule requires
         -- an argument, i.e. it is not a complete rule.
         Just crule | CompleteRule /= (crule ^. ruleKind) -> do
-            arg' <- evalTerm arg
+            arg' <- evalExpr arg
             evalCompiledRule crule (Just arg')
         _ -> do
             val <- evalTerm lhs
@@ -171,9 +171,9 @@ evalBuiltin source (Builtin sig impl) args0 = do
 -- * indexing rules
 -- * indexing "cached/precomputed" rules
 -- * indexing actual values, i.e. objects and arrays
-evalRefArg :: SourceSpan -> Value -> Term SourceSpan -> EvalM Value
+evalRefArg :: SourceSpan -> Value -> Expr SourceSpan -> EvalM Value
 evalRefArg source indexee refArg = do
-    idx <- evalTerm refArg
+    idx <- evalExpr refArg
     case idx of
         StringV k | PackageV pkgname <- indexee -> do
             mbPkg <- lookupPackage pkgname

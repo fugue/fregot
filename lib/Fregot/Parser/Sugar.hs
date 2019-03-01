@@ -192,9 +192,9 @@ refArg :: FregotParser (RefArg SourceSpan)
 refArg =
     (do
         Tok.symbol Tok.TLBracket
-        t <- term
+        e <- expr
         expectToken Tok.TRBracket
-        return $ RefBrackArg t) <|>
+        return $ RefBrackArg e) <|>
     (withSourceSpan $ do
         Tok.symbol Tok.TPeriod
         v <- var

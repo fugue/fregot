@@ -225,15 +225,8 @@ prepareTerm
     => Sugar.Term SourceSpan
     -> ParachuteT Error m (Term SourceSpan)
 prepareTerm = \case
-    Sugar.RefT source varSource var0 refs -> foldM
-        (\acc refArg -> case refArg of
-            Sugar.RefDotArg ann (Var v) -> return $
-                RefT source acc (ScalarT ann (Sugar.String v))
-            Sugar.RefBrackArg k -> do
-                k' <- prepareTerm k
-                return $ RefT source acc k')
-        (VarT varSource var0)
-        refs
+    Sugar.RefT source varSource var0 refs ->
+        prepareRef source varSource var0 refs
 
     Sugar.CallT source vars args ->
         CallT source vars <$> traverse prepareTerm args
@@ -260,9 +253,9 @@ prepareRef
 prepareRef source varSource var0 refs = foldM
     (\acc refArg -> case refArg of
         Sugar.RefDotArg ann (Var v) -> return $
-            RefT source acc (ScalarT ann (Sugar.String v))
+            RefT source acc (TermE ann (ScalarT ann (Sugar.String v)))
         Sugar.RefBrackArg k -> do
-            k' <- prepareTerm k
+            k' <- prepareExpr k
             return $ RefT source acc k')
     (VarT varSource var0)
     refs

@@ -82,7 +82,7 @@ parseRuleOrExpr h input = do
                     VarT undefined (r ^. ruleHead . ruleName)
                 Just idx -> Just $ TermE undefined $
                     RefT undefined undefined
-                        (r ^. ruleHead . ruleName) [RefBrackArg idx]
+                        (r ^. ruleHead . ruleName) [RefBrackArg (TermE undefined idx)]
 
         | otherwise = Nothing
 

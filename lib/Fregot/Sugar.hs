@@ -124,7 +124,7 @@ data Term a
     deriving (Show)
 
 data RefArg a
-    = RefBrackArg  !(Term a)
+    = RefBrackArg !(Expr a)
     | RefDotArg !a !Var
     deriving (Show)
 
