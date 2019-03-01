@@ -51,11 +51,11 @@ ground mval = do
         WildcardV -> fail $ "Unknown variable: _"
         _         -> return val
 
-evalExpr :: Expr a -> EvalM Value
+evalExpr :: Expr SourceSpan -> EvalM Value
 evalExpr (TermE _ t)      = evalTerm t
 evalExpr (BinOpE _ x o y) = evalBinOp x o y
 
-evalTerm :: Term a -> EvalM Value
+evalTerm :: Term SourceSpan -> EvalM Value
 evalTerm (RefT _ lhs arg) = do
     mbCompiledRule <- case lhs of
         VarT _ v -> lookupRule [v]
@@ -70,10 +70,10 @@ evalTerm (RefT _ lhs arg) = do
             val <- evalTerm lhs
             evalRefArg val arg
 
-evalTerm (CallT _ f args)
+evalTerm (CallT source f args)
     | Just builtin <- HMS.lookup f builtins = do
         vargs <- mapM evalTerm args
-        evalBuiltin builtin vargs
+        evalBuiltin source builtin vargs
 
     | otherwise = do
         mbCompiledRule <- lookupRule f
@@ -131,8 +131,8 @@ evalVar v       = do
                     Nothing    -> FreeV <$> toInstVar v
                     Just crule -> evalCompiledRule crule Nothing
 
-evalBuiltin :: Builtin -> [Value] -> EvalM Value
-evalBuiltin (Builtin sig impl) args0 = do
+evalBuiltin :: SourceSpan -> Builtin -> [Value] -> EvalM Value
+evalBuiltin source (Builtin sig impl) args0 = do
     -- There are two possible scenarios if we have an N-ary function, e.g.:
     --
     --     add(x, y) = z {
@@ -143,7 +143,7 @@ evalBuiltin (Builtin sig impl) args0 = do
     -- (`z` in the example), or the user supplies 3 arguments, and we unify
     -- the return value with the last argument.
     (args1, mbFinalArg) <- case toArgs sig args0 of
-        Left err -> fail $ "evalBuiltin: argument problem: " ++ err
+        Left err -> raise' source "builtin type error" $ PP.pretty err
         Right x  -> return x
 
     -- Call the function.  This is currently pure business but it will
@@ -165,7 +165,7 @@ evalBuiltin (Builtin sig impl) args0 = do
 -- * indexing rules
 -- * indexing "cached/precomputed" rules
 -- * indexing actual values, i.e. objects and arrays
-evalRefArg :: Value -> Term a -> EvalM Value
+evalRefArg :: Value -> Term SourceSpan -> EvalM Value
 evalRefArg indexee refArg = do
     idx <- evalTerm refArg
     case idx of
@@ -300,7 +300,7 @@ evalUserFunction crule callerArgs
                 Just term -> evalTerm term
 
 -- | Evaluate the rule body, then perform a continuation.
-evalRuleBody :: RuleBody s -> EvalM a -> EvalM a
+evalRuleBody :: RuleBody SourceSpan -> EvalM a -> EvalM a
 evalRuleBody lits0 final = go lits0
   where
     go [] = final
@@ -326,7 +326,7 @@ evalRuleBody lits0 final = go lits0
 
         local (inputDoc .~ input') $ localWiths ws mx
 
-evalStatement :: Statement a -> EvalM Value
+evalStatement :: Statement SourceSpan -> EvalM Value
 evalStatement (UnifyS _ x y) = do
     xv <- evalExpr x
     yv <- evalExpr y
@@ -345,7 +345,7 @@ evalScalar (Number t) = return $ NumberV t
 evalScalar (Bool   b) = return $ BoolV   b
 evalScalar Null       = return $ NullV
 
-evalBinOp :: Expr a -> BinOp -> Expr a -> EvalM Value
+evalBinOp :: Expr SourceSpan -> BinOp -> Expr SourceSpan -> EvalM Value
 evalBinOp x op y = do
     xv <- evalExpr x
     yv <- evalExpr y

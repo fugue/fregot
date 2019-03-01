@@ -33,9 +33,12 @@ module Fregot.Eval.Monad
     , clearLocals
     , withImports
     , withPackage
+
+    , raise
+    , raise'
     ) where
 
-import           Control.Exception          (Exception)
+import           Control.Exception          (Exception, catch, throwIO)
 import           Control.Lens               (view, (&), (.~), (^.))
 import           Control.Lens.TH            (makeLenses)
 import           Control.Monad.Extended     (forM)
@@ -45,6 +48,7 @@ import qualified Data.HashMap.Strict        as HMS
 import           Data.Unification           (Unification)
 import qualified Data.Unification           as Unification
 import           Fregot.Error               (Error)
+import qualified Fregot.Error               as Error
 import           Fregot.Eval.Value
 import           Fregot.Interpreter.Package (Package)
 import qualified Fregot.Interpreter.Package as Package
@@ -129,8 +133,10 @@ instance MonadState Context EvalM where
     put ctx = EvalM $ \_ _    -> return [Row ctx ()]
     state f = EvalM $ \_ ctx0 -> let (x, ctx1) = f ctx0 in return [Row ctx1 x]
 
-runEvalM :: Environment -> EvalM a -> IO (Document a)
-runEvalM rules0 (EvalM f) = f rules0 emptyContext
+runEvalM :: Environment -> EvalM a -> IO (Either Error (Document a))
+runEvalM rules0 (EvalM f) = catch
+    (Right <$> f rules0 emptyContext)
+    (\(EvalException err) -> return (Left err))
 
 branch :: [EvalM a] -> EvalM a
 branch options = EvalM $ \rs ctx ->
@@ -203,3 +209,11 @@ withPackage pkgname mx = do
         Nothing  -> fail $
             "Unknown package: " ++ show pkgname ++ ", known packages: " ++
             show (HMS.keys pkgs)
+
+-- | Raise an error.  We currently don't allow catching exceptions, but they are
+-- handled at the top level `runEvalM` and converted to an `Either`.
+raise :: Error -> EvalM a
+raise err = EvalM (\_ _ -> throwIO (EvalException err))
+
+raise' :: SourceSpan -> PP.SemDoc -> PP.SemDoc -> EvalM a
+raise' source title body = raise (Error.mkError "eval" source title body)
