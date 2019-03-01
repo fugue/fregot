@@ -39,3 +39,9 @@ test_set_03 {
 test_set_04 {
     set_01["Hello"] == "Hello"
 }
+
+# 5. Refering to generated sets without index.
+
+test_set_05 {
+    set_02 == {"Hello", "World"}
+}

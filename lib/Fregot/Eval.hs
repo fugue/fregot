@@ -117,6 +117,7 @@ evalTerm (ObjectCompT _ khead vhead cbody) = do
 evalVar :: Var -> EvalM Value
 evalVar "_"     = return WildcardV
 evalVar "input" = view inputDoc
+evalVar "data"  = return $! PackageV mempty
 evalVar v       = do
     imps <- view imports
     lcls <- use locals
@@ -174,8 +175,11 @@ evalRefArg :: SourceSpan -> Value -> Term SourceSpan -> EvalM Value
 evalRefArg source indexee refArg = do
     idx <- evalTerm refArg
     case idx of
-        StringV k | PackageV pkgname <- indexee ->
-            withPackage pkgname $ evalVar (Var k)
+        StringV k | PackageV pkgname <- indexee -> do
+            mbPkg <- lookupPackage pkgname
+            case mbPkg of
+                Nothing  -> return $! PackageV (pkgname <> PackageName [k])
+                Just pkg -> withPackage pkg $ evalVar (Var k)
 
         WildcardV -> case indexee of
             ArrayV a  -> branch [return val | val <- V.toList a]
@@ -247,9 +251,9 @@ evalCompiledRule crule mbIndex = case crule ^. ruleKind of
     _ ->
         -- If the rule takes an argument, e.g. `resources[id]`, but we refer to
         -- it without argument, e.g. `count(resources)`, we want to evaluate the
-        -- document to an array again.
+        -- document to an set again.
         (if isNothing mbIndex
-            then fmap (ArrayV . V.fromList) . unbranch
+            then fmap (SetV . HS.fromList) . unbranch
             else id) $
         branches
   where
@@ -276,8 +280,10 @@ evalRuleDefinition rule mbIndex =
             " but didn't expect one"
 
         -- If the rule definition has an argument, but we didn't give any, we
-        -- want to evaluate things anyway.
-        (Nothing, Just _) -> evalRuleBody (rule ^. ruleBody) (final Nothing)
+        -- want to evaluate things anyway, converting the result to a set.
+        (Nothing, Just tpl) -> do
+            tplv <- evalTerm tpl
+            evalRuleBody (rule ^. ruleBody) (final $ Just tplv)
   where
     -- NOTE(jasperdj): We are using `mbIdxVal` here rather than `mbIndex` since
     -- the index might be a wildcard.

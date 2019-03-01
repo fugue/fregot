@@ -32,6 +32,8 @@ module Fregot.Eval.Monad
     , lookupRule
     , clearLocals
     , withImports
+
+    , lookupPackage
     , withPackage
 
     , raise
@@ -201,14 +203,13 @@ clearLocals mx = do
 withImports :: Imports SourceSpan -> EvalM a -> EvalM a
 withImports imps = local (imports .~ imps)
 
-withPackage :: PackageName -> EvalM a -> EvalM a
-withPackage pkgname mx = do
+lookupPackage :: PackageName -> EvalM (Maybe Package)
+lookupPackage pkgname = do
     pkgs <- view packages
-    case HMS.lookup pkgname pkgs of
-        Just pkg -> local (package .~ pkg) mx
-        Nothing  -> fail $
-            "Unknown package: " ++ show pkgname ++ ", known packages: " ++
-            show (HMS.keys pkgs)
+    return $! HMS.lookup pkgname pkgs
+
+withPackage :: Package -> EvalM a -> EvalM a
+withPackage pkg = local (package .~ pkg)
 
 -- | Raise an error.  We currently don't allow catching exceptions, but they are
 -- handled at the top level `runEvalM` and converted to an `Either`.

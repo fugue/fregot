@@ -1,4 +1,3 @@
-{-# LANGUAGE BangPatterns               #-}
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE FlexibleContexts           #-}
@@ -21,6 +20,7 @@ import qualified Data.HashSet         as HS
 import qualified Data.Scientific      as Scientific
 import qualified Data.Text            as T
 import qualified Data.Vector.Extended as V
+import           Fregot.PrettyPrint   ((<+>))
 import qualified Fregot.PrettyPrint   as PP
 import           Fregot.Sugar
 import           GHC.Generics         (Generic)
@@ -74,7 +74,7 @@ instance PP.Pretty PP.Sem Value where
     pretty (SetV    s)  = PP.set (HS.toList s)
     pretty (ObjectV o)  = PP.object [(k, v) | (k, v) <- V.toList o]
     pretty NullV        = PP.literal "null"
-    pretty (PackageV p) = PP.pretty p
+    pretty (PackageV p) = PP.keyword "package" <+> PP.pretty p
 
 describeValue :: Value -> String
 describeValue = \case

@@ -9,7 +9,6 @@ import           Control.Applicative       ((<|>))
 import           Control.Lens              ((^.))
 import           Data.Either               (partitionEithers)
 import           Data.Functor              (($>))
-import qualified Data.List.NonEmpty        as NonEmpty
 import qualified Data.Scientific           as Scientific
 import           Fregot.Parser.Internal
 import qualified Fregot.Parser.Token       as Tok
@@ -21,9 +20,7 @@ import qualified Text.Parsec.Expr          as Parsec
 
 parsePackageName :: FregotParser PackageName
 parsePackageName =
-    -- Safe because of the `sepBy1`.
-    PackageName . NonEmpty.fromList <$>
-    Parsec.sepBy1 Tok.var (Tok.symbol Tok.TPeriod)
+    PackageName <$> Parsec.sepBy1 Tok.var (Tok.symbol Tok.TPeriod)
 
 parseModule :: FregotParser (Module SourceSpan)
 parseModule = Module

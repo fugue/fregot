@@ -33,27 +33,23 @@ import           Control.Lens       (Lens', lens, (^.))
 import           Control.Lens.TH    (makeLenses)
 import           Data.Hashable      (Hashable (..))
 import qualified Data.List          as L
-import           Data.List.NonEmpty (NonEmpty)
-import qualified Data.List.NonEmpty as NonEmpty
 import           Data.Scientific    (Scientific)
 import           Data.String        (IsString (..))
 import qualified Data.Text          as T
 import           Fregot.PrettyPrint ((<$$>), (<+>), (<+>?), (?<+>))
 import qualified Fregot.PrettyPrint as PP
 
-newtype PackageName = PackageName {unPackageName :: NonEmpty T.Text}
-    deriving (Hashable, Eq, Ord, Show)
+newtype PackageName = PackageName {unPackageName :: [T.Text]}
+    deriving (Eq, Hashable, Monoid, Ord, Semigroup, Show)
 
 instance IsString PackageName where
-    fromString str = case T.split (== '.') (T.pack str) of
-        []       -> error $ "fromString PackageName: empty package name"
-        (x : xs) -> PackageName (x NonEmpty.:| xs)
+    fromString = PackageName . T.split (== '.') . T.pack
 
 packageNameToString :: PackageName -> String
 packageNameToString = T.unpack . packageNameToText
 
 packageNameToText :: PackageName -> T.Text
-packageNameToText = T.intercalate "." . NonEmpty.toList . unPackageName
+packageNameToText = T.intercalate "." . unPackageName
 
 data Import a = Import
     { _importAnn     :: !a
