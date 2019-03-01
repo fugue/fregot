@@ -36,6 +36,7 @@ import           Fregot.Eval.Builtins
 import           Fregot.Eval.Monad
 import           Fregot.Eval.Value
 import           Fregot.Prepare.AST
+import           Fregot.PrettyPrint        ((<+>))
 import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources.SourceSpan (SourceSpan)
 
@@ -56,7 +57,7 @@ evalExpr (TermE _ t)      = evalTerm t
 evalExpr (BinOpE _ x o y) = evalBinOp x o y
 
 evalTerm :: Term SourceSpan -> EvalM Value
-evalTerm (RefT _ lhs arg) = do
+evalTerm (RefT source lhs arg) = do
     mbCompiledRule <- case lhs of
         VarT _ v -> lookupRule [v]
         _        -> return Nothing
@@ -68,7 +69,7 @@ evalTerm (RefT _ lhs arg) = do
             evalCompiledRule crule (Just arg')
         _ -> do
             val <- evalTerm lhs
-            evalRefArg val arg
+            evalRefArg source val arg
 
 evalTerm (CallT source f args)
     | Just builtin <- HMS.lookup f builtins = do
@@ -129,6 +130,10 @@ evalVar v       = do
                 mbCompiledRule <- lookupRule [v]
                 case mbCompiledRule of
                     Nothing    -> FreeV <$> toInstVar v
+                    Just crule | crule ^. ruleKind == FunctionRule ->
+                        -- We allow calling a null-ary function `report()` both
+                        -- as just `report` as well as `report()`
+                        evalUserFunction crule []
                     Just crule -> evalCompiledRule crule Nothing
 
 evalBuiltin :: SourceSpan -> Builtin -> [Value] -> EvalM Value
@@ -165,8 +170,8 @@ evalBuiltin source (Builtin sig impl) args0 = do
 -- * indexing rules
 -- * indexing "cached/precomputed" rules
 -- * indexing actual values, i.e. objects and arrays
-evalRefArg :: Value -> Term SourceSpan -> EvalM Value
-evalRefArg indexee refArg = do
+evalRefArg :: SourceSpan -> Value -> Term SourceSpan -> EvalM Value
+evalRefArg source indexee refArg = do
     idx <- evalTerm refArg
     case idx of
         StringV k | PackageV pkgname <- indexee ->
@@ -219,9 +224,9 @@ evalRefArg indexee refArg = do
                 then return idx
                 else cut
 
-        _ -> fail $
-            "evalRefArg: cannot index " ++ describeValue indexee ++
-            " with a " ++ describeValue idx
+        _ -> raise' source "index type error" $
+            "evalRefArg: cannot index" <+> PP.pretty (describeValue indexee) <+>
+            "with a" <+> PP.pretty (describeValue idx)
 
 -- | Returns the value of the index value (if given) as well as the result of
 -- the rule.
