@@ -22,6 +22,7 @@ module Fregot.Eval.Builtins
 
 import           Control.Monad       (unless)
 import qualified Data.HashMap.Strict as HMS
+import qualified Data.HashSet        as HS
 import qualified Data.Text           as T
 import qualified Data.Text.Read      as TR
 import qualified Data.Vector         as V
@@ -69,6 +70,17 @@ instance FromVal a => FromVal (V.Vector a) where
 
 instance FromVal a => FromVal [a] where
     fromVal = fmap V.toList . fromVal
+
+-- | Sometimes builtins (e.g. `count`) do not take a specific type, but any
+-- sort of collection.
+newtype Collection a = Collection [a]
+
+instance FromVal a => FromVal (Collection a) where
+    fromVal (ArrayV  c) = Collection <$> traverse fromVal (V.toList c)
+    fromVal (SetV    c) = Collection <$> traverse fromVal (HS.toList c)
+    fromVal (ObjectV c) = Collection <$> traverse (fromVal . snd) (V.toList c)
+    fromVal v           = Left $
+        "Expected collection but got " ++ describeValue v
 
 data Sig (i :: [t]) (o :: *) where
     In  :: FromVal a => Sig i o -> Sig (a ': i) o
@@ -121,7 +133,7 @@ builtin_any = Builtin (In Out)
 
 builtin_count :: Builtin
 builtin_count = Builtin (In Out)
-    (\(Cons arr Nil) -> return $! V.length (arr :: V.Vector Value))
+    (\(Cons (Collection c) Nil) -> return $! length (c :: [Value]))
 
 builtin_endswith :: Builtin
 builtin_endswith = Builtin (In (In Out))
