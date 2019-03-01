@@ -10,9 +10,10 @@ module Fregot.Main.Test
 import           Control.Lens            (view, (&), (.~), (^.))
 import           Control.Lens.TH         (makeLenses)
 import           Control.Monad.Extended  (foldMapM, forM_)
-import           Control.Monad.Parachute
+import qualified Control.Monad.Parachute as Parachute
 import qualified Data.IORef              as IORef
 import qualified Data.Text               as T
+import           Fregot.Error            (Error)
 import qualified Fregot.Error            as Error
 import qualified Fregot.Eval             as Eval
 import qualified Fregot.Eval.Value       as Value
@@ -38,30 +39,36 @@ parseOptions = Options
 type TestName = (PackageName, Var)
 
 data TestResults = TestResults
-    { _passed :: [TestName]
-    , _failed :: [TestName]
-    -- TODO(jaspervdj): add errors
+    { _passed  :: [TestName]
+    , _failed  :: [TestName]
+    , _errored :: [(TestName, [Error])]
     }
 
 $(makeLenses ''TestResults)
 
 instance Semigroup TestResults where
-    TestResults p1 f1 <> TestResults p2 f2 = TestResults (p1 <> p2) (f1 <> f2)
+    TestResults p1 f1 e1 <> TestResults p2 f2 e2 =
+        TestResults (p1 <> p2) (f1 <> f2) (e1 <> e2)
 
 instance Monoid TestResults where
-    mempty = TestResults [] []
+    mempty = TestResults [] [] []
 
 runTest
-    :: Interpreter.Handle -> PackageName -> Var
+    :: Interpreter.Handle -> TestName
     -> Interpreter.InterpreterM TestResults
-runTest h pkgname rule = do
-    doc <- Interpreter.evalVar h pkgname rule
+runTest h testname@(pkgname, rule) = do
+    errOrDoc <- Parachute.try $ Interpreter.evalVar h pkgname rule
 
-    let pass = case doc of
-            (_ : _) | all (isTrue . view Eval.rowValue) doc -> True
-            _                                               -> False
+    results <- case errOrDoc of
+        Right doc@(_ : _) | all (isTrue . view Eval.rowValue) doc -> return $
+            mempty & passed .~ [testname]
+        Right _ -> return $
+            mempty & failed .~ [testname]
+        Left errs -> return $
+            -- TODO(jaspervdj): Only print errors when running in verbose?
+            mempty & errored .~ [(testname, errs)]
 
-    return $ mempty & (if pass then passed else failed) .~ [(pkgname, rule)]
+    return results
   where
     isTrue (Value.BoolV b) = b
     isTrue _               = False
@@ -70,17 +77,23 @@ main :: Options -> IO ()
 main opts = do
     sources <- Sources.newHandle
     interpreter <- Interpreter.newHandle sources
-    (errors, mbResult) <- runParachuteT $ do
+    (errors, mbResult) <- Parachute.runParachuteT $ do
         forM_ (opts ^. paths) $ \path -> Interpreter.loadModule interpreter path
         tests <- filter isTest <$> Interpreter.readRules interpreter
-        foldMapM (\(pkg, rule) -> runTest interpreter pkg rule) tests
-
-    forM_ mbResult $ \tr ->
-        putStrLn $
-            "passed: " ++ show (length (tr ^. passed)) ++
-            ", failed: " ++ show (length (tr ^. failed))
+        foldMapM (\t -> runTest interpreter t) tests
 
     sources' <- IORef.readIORef sources
+    forM_ mbResult $ \tr -> do
+        putStrLn $
+            "passed: " ++ show (length (tr ^. passed)) ++
+            ", failed: " ++ show (length (tr ^. failed)) ++
+            ", errored: " ++ show (length (tr ^. errored))
+
+        forM_ (tr ^. errored) $ \((pkg, rule), terrs) -> do
+            IO.hPutStrLn IO.stderr $ Sugar.packageNameToString pkg <> "." <>
+                Sugar.varToString rule <> ":"
+            Error.hPutErrors IO.stderr sources' Error.TextFmt terrs
+
     Error.hPutErrors IO.stderr sources' Error.TextFmt errors
   where
     isTest (_pkgname, var) = "test_" `T.isPrefixOf` Sugar.varToText var

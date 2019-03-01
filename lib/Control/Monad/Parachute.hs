@@ -6,6 +6,9 @@ module Control.Monad.Parachute
     , fatal
     , tellErrors
     , tellError
+
+    , try
+    , catch
     ) where
 
 import           Control.Monad.Trans (MonadIO (..))
@@ -55,3 +58,18 @@ tellErrors es = ParachuteT $ \errors -> return (es ++ errors, Ok ())
 
 tellError :: Monad m => e -> ParachuteT e m ()
 tellError e = ParachuteT $ \errors -> return (e : errors, Ok ())
+
+try :: Monad m => ParachuteT e m a -> ParachuteT e m (Either [e] a)
+try (ParachuteT mx) = ParachuteT $ \originalErrors -> do
+    -- Execute `mx` in isolation.
+    (xerrs, xres) <- mx []
+
+    -- Catch fatal errors only (for now).
+    case xres of
+        Fatal -> return (originalErrors, Ok (Left xerrs))
+        Ok x  -> return (xerrs ++ originalErrors, Ok (Right x))
+
+catch
+    :: Monad m
+    => ParachuteT e m a -> ([e] -> ParachuteT e m a) -> ParachuteT e m a
+catch mx f = try mx >>= either f return
