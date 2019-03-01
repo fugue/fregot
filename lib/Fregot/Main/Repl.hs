@@ -1,3 +1,4 @@
+{-# LANGUAGE TemplateHaskell #-}
 module Fregot.Main.Repl
     ( Options
     , parseOptions
@@ -5,19 +6,37 @@ module Fregot.Main.Repl
     , main
     ) where
 
-import qualified Fregot.Interpreter  as Interpreter
-import qualified Fregot.Repl         as Repl
-import qualified Fregot.Sources      as Sources
-import qualified Options.Applicative as OA
+import           Control.Lens            ((^.))
+import           Control.Lens.TH         (makeLenses)
+import           Control.Monad           (forM_)
+import           Control.Monad.Parachute (runParachuteT)
+import qualified Data.IORef              as IORef
+import qualified Fregot.Error            as Error
+import qualified Fregot.Interpreter      as Interpreter
+import qualified Fregot.Repl             as Repl
+import qualified Fregot.Sources          as Sources
+import qualified Options.Applicative     as OA
+import qualified System.IO               as IO
 
-type Options = ()
+data Options = Options
+    { _paths :: [FilePath]
+    } deriving (Show)
+
+$(makeLenses ''Options)
 
 parseOptions :: OA.Parser Options
-parseOptions = pure ()
+parseOptions = Options
+    <$> (OA.many $ OA.strArgument $
+            OA.metavar "PATHS" <>
+            OA.help    "Rego files or directories to load into repl")
 
 main :: Options -> IO ()
-main () = do
+main opts = do
     sources <- Sources.newHandle
     interpreter <- Interpreter.newHandle sources
-    Repl.withHandle sources interpreter $ \repl ->
+    Repl.withHandle sources interpreter $ \repl -> do
+        (lerrs, _) <- runParachuteT $ forM_ (opts ^. paths) $ \path ->
+            Interpreter.loadModule interpreter path
+        sauce <- IORef.readIORef sources
+        Error.hPutErrors IO.stderr sauce Error.TextFmt lerrs
         Repl.run repl
