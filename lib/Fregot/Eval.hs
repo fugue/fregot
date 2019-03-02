@@ -267,38 +267,28 @@ evalRuleDefinition
     :: RuleDefinition SourceSpan -> Maybe Value -> EvalM Value
 evalRuleDefinition rule mbIndex =
     withImports (rule ^. ruleDefImports) $
-    clearLocals $
-    case (mbIndex, rule ^. ruleIndex) of
-        (Nothing, Nothing) -> branch
-            [ evalRuleBody body (final Nothing)
-            | body <- rule ^. ruleBodies
-            ]
+    clearLocals $ do
+
+    mbIdxVal <- case (mbIndex, rule ^. ruleIndex) of
+        (Nothing, Nothing) -> return Nothing
         (Just arg, Just tpl) -> do
             tplv <- evalTerm tpl
             _    <- unify arg tplv
-            branch
-                [ evalRuleBody body (final $ Just tplv)
-                | body <- rule ^. ruleBodies
-                ]
+            return $ Just tplv
         (Just _, Nothing) -> fail $
             "evalRuleDefinition: got argument for rule " ++
             show (PP.pretty (rule ^. ruleDefName)) ++
             " but didn't expect one"
-
-        -- If the rule definition has an argument, but we didn't give any, we
-        -- want to evaluate things anyway, converting the result to a set.
         (Nothing, Just tpl) -> do
             tplv <- evalTerm tpl
-            branch
-                [ evalRuleBody body (final $ Just tplv)
-                | body <- rule ^. ruleBodies
-                ]
-  where
-    -- NOTE(jasperdj): We are using `mbIdxVal` here rather than `mbIndex` since
-    -- the index might be a wildcard.
-    final mbIdxVal = case rule ^. ruleValue of
-        Nothing   -> ground $ return $ fromMaybe (BoolV True) mbIdxVal
-        Just term -> evalTerm term
+            return $ Just tplv
+
+    branch
+        [ evalRuleBody body $ case rule ^. ruleValue of
+            Nothing   -> ground $ return $ fromMaybe (BoolV True) mbIdxVal
+            Just term -> evalTerm term
+        | body <- rule ^. ruleBodies
+        ]
 
 evalUserFunction
     :: Rule SourceSpan -> [Value] -> EvalM Value
