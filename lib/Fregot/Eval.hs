@@ -218,7 +218,9 @@ evalRefArg source indexee refArg = do
             if i >= 0 && i < V.length a then
                 return (a V.! i)
             else
-                fail "evalRefArg: index out of bounds"
+                raise' source "out of bounds" $
+                "Index out of bounds: index =" <+> PP.pretty indexee <>
+                ", array length = " <+> PP.pretty (V.length a)
 
         _ | SetV set <- indexee ->
             -- If the LHS is a set, we just test if the index is in there.
