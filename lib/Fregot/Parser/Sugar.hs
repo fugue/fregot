@@ -44,7 +44,10 @@ var :: FregotParser Var
 var = Var <$> Tok.var
 
 rule :: FregotParser (Rule SourceSpan)
-rule = Rule <$> parseRuleHead <*> Parsec.option [] (Parsec.many parseRuleBody)
+rule = Rule
+    <$> parseRuleHead
+    <*> Parsec.many parseRuleBody
+    <*> Parsec.many parseRuleElse
 
 parseRuleHead :: FregotParser (RuleHead SourceSpan)
 parseRuleHead = withSourceSpan $ do
@@ -68,6 +71,15 @@ parseRuleBody = do
     body <- parseUnbracedRuleBody
     Tok.symbol Tok.TRBrace
     return body
+
+parseRuleElse :: FregotParser (RuleElse SourceSpan)
+parseRuleElse = withSourceSpan $ do
+    Tok.symbol Tok.TElse
+    _ruleElseValue <- Parsec.optionMaybe $ do
+        Tok.symbol Tok.TUnify
+        term
+    _ruleElseBody <- parseRuleBody
+    return $ \_ruleElseAnn -> RuleElse {..}
 
 parseUnbracedRuleBody :: FregotParser (RuleBody SourceSpan)
 parseUnbracedRuleBody = blockOrSemi literal
