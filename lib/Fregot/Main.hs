@@ -7,10 +7,11 @@ module Fregot.Main
 import           Control.Lens        ((^.))
 import           Control.Lens.TH     (makeLenses)
 import           Data.Version        (showVersion)
-import qualified Fregot.Main.Test    as Main.Test
 import qualified Fregot.Main.Repl    as Main.Repl
+import qualified Fregot.Main.Test    as Main.Test
 import qualified Options.Applicative as OA
 import qualified Paths_fregot
+import           System.Exit         (exitWith)
 
 data Command
     = Test Main.Test.Options
@@ -49,6 +50,6 @@ parseOptionsPrefs = OA.prefs OA.showHelpOnError
 main :: IO ()
 main = do
     options <- OA.customExecParser parseOptionsPrefs parseOptionsInfo
-    case options ^. command of
+    exitWith =<< case options ^. command of
         Repl o -> Main.Repl.main o
         Test o -> Main.Test.main o
