@@ -44,7 +44,7 @@ var :: FregotParser Var
 var = Var <$> Tok.var
 
 rule :: FregotParser (Rule SourceSpan)
-rule = Rule <$> parseRuleHead <*> Parsec.option [] parseRuleBody
+rule = Rule <$> parseRuleHead <*> Parsec.option [] (Parsec.many parseRuleBody)
 
 parseRuleHead :: FregotParser (RuleHead SourceSpan)
 parseRuleHead = withSourceSpan $ do

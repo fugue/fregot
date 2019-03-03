@@ -39,7 +39,7 @@ prepareRule imports rule
             "bad default"
             "Default rule should not have an index associated with it."
 
-        unless (null $ rule ^. Sugar.ruleBody) $ tellError $ Error.mkError
+        unless (null $ rule ^. Sugar.ruleBodies) $ tellError $ Error.mkError
             "compile"
             (head ^. Sugar.ruleAnn)
             "bad default"
@@ -68,10 +68,10 @@ prepareRule imports rule
             "Rule should have function arguments, " <>
             "or regular arguments, but not both."
 
-        body  <- prepareRuleBody (rule ^. Sugar.ruleBody)
-        args  <- traverse (traverse prepareTerm) (head ^. Sugar.ruleArgs)
-        index <- traverse prepareTerm (head ^. Sugar.ruleIndex)
-        value <- traverse prepareTerm (head ^. Sugar.ruleValue)
+        bodies <- traverse prepareRuleBody (rule ^. Sugar.ruleBodies)
+        args   <- traverse (traverse prepareTerm) (head ^. Sugar.ruleArgs)
+        index  <- traverse prepareTerm (head ^. Sugar.ruleIndex)
+        value  <- traverse prepareTerm (head ^. Sugar.ruleValue)
         pure Rule
             { _ruleName    = head ^. Sugar.ruleName
             , _ruleAnn     = head ^. Sugar.ruleAnn
@@ -85,7 +85,7 @@ prepareRule imports rule
                     , _ruleArgs       = args
                     , _ruleIndex      = index
                     , _ruleValue      = value
-                    , _ruleBody       = body
+                    , _ruleBodies     = bodies
                     }
                 ]
             }
@@ -96,11 +96,11 @@ prepareRule imports rule
                 | Nothing <- head ^. Sugar.ruleValue = GenSetRule
                 | otherwise                          = GenObjectRule
 
-        -- NOTE(jaspervdj): Perform sanity checks on rules.
-        body  <- prepareRuleBody (rule ^. Sugar.ruleBody)
-        args  <- traverse (traverse prepareTerm) (head ^. Sugar.ruleArgs)
-        index <- traverse prepareTerm (head ^. Sugar.ruleIndex)
-        value <- traverse prepareTerm (head ^. Sugar.ruleValue)
+        -- NOTE(jaspervdj): Perform more sanity checks on rules.
+        bodies <- traverse prepareRuleBody (rule ^. Sugar.ruleBodies)
+        args   <- traverse (traverse prepareTerm) (head ^. Sugar.ruleArgs)
+        index  <- traverse prepareTerm (head ^. Sugar.ruleIndex)
+        value  <- traverse prepareTerm (head ^. Sugar.ruleValue)
         pure Rule
             { _ruleName    = head ^. Sugar.ruleName
             , _ruleAnn     = head ^. Sugar.ruleAnn
@@ -114,7 +114,7 @@ prepareRule imports rule
                     , _ruleArgs       = args
                     , _ruleIndex      = index
                     , _ruleValue      = value
-                    , _ruleBody       = body
+                    , _ruleBodies     = bodies
                     }
                 ]
             }

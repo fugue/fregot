@@ -267,29 +267,34 @@ evalRuleDefinition
     :: RuleDefinition SourceSpan -> Maybe Value -> EvalM Value
 evalRuleDefinition rule mbIndex =
     withImports (rule ^. ruleDefImports) $
-    clearLocals $
-    case (mbIndex, rule ^. ruleIndex) of
-        (Nothing, Nothing)   -> evalRuleBody (rule ^. ruleBody) (final Nothing)
+    clearLocals $ do
+
+    mbIdxVal <- case (mbIndex, rule ^. ruleIndex) of
+        (Nothing, Nothing) -> return Nothing
         (Just arg, Just tpl) -> do
             tplv <- evalTerm tpl
             _    <- unify arg tplv
-            evalRuleBody (rule ^. ruleBody) (final $ Just tplv)
+            return $ Just tplv
         (Just _, Nothing) -> fail $
             "evalRuleDefinition: got argument for rule " ++
             show (PP.pretty (rule ^. ruleDefName)) ++
             " but didn't expect one"
-
-        -- If the rule definition has an argument, but we didn't give any, we
-        -- want to evaluate things anyway, converting the result to a set.
         (Nothing, Just tpl) -> do
             tplv <- evalTerm tpl
-            evalRuleBody (rule ^. ruleBody) (final $ Just tplv)
-  where
-    -- NOTE(jasperdj): We are using `mbIdxVal` here rather than `mbIndex` since
-    -- the index might be a wildcard.
-    final mbIdxVal = case rule ^. ruleValue of
-        Nothing   -> ground $ return $ fromMaybe (BoolV True) mbIdxVal
-        Just term -> evalTerm term
+            return $ Just tplv
+
+    let afterBody = case rule ^. ruleValue of
+            Nothing   -> ground $ return $ fromMaybe (BoolV True) mbIdxVal
+            Just term -> evalTerm term
+
+    -- If there is not a single body, we probably have something like
+    --
+    --     a = 1
+    --
+    -- so we can skip directly to the `afterBody`
+    case rule ^. ruleBodies of
+        []     -> afterBody
+        bodies -> branch [evalRuleBody body afterBody | body <- bodies]
 
 evalUserFunction
     :: Rule SourceSpan -> [Value] -> EvalM Value
@@ -306,9 +311,12 @@ evalUserFunction crule callerArgs
             -- TODO(jaspervdj): Check arity.
             calleeArgs <- mapM evalTerm $ fromMaybe [] (def ^. ruleArgs)
             zipWithM_ unify callerArgs calleeArgs
-            evalRuleBody (def ^. ruleBody) $ case def ^. ruleValue of
-                Nothing   -> return (BoolV True)
-                Just term -> evalTerm term
+            branch
+                [ evalRuleBody body $ case def ^. ruleValue of
+                    Nothing   -> return (BoolV True)
+                    Just term -> evalTerm term
+                | body <- def ^. ruleBodies
+                ]
 
 -- | Evaluate the rule body, then perform a continuation.
 evalRuleBody :: RuleBody SourceSpan -> EvalM a -> EvalM a

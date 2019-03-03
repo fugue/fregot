@@ -8,7 +8,7 @@ module Fregot.Prepare.AST
     ( RuleKind (..)
     , Rule (..), ruleName, ruleAnn, ruleDefault, ruleKind, ruleDefs
     , RuleDefinition (..), ruleDefName, ruleDefImports, ruleDefAnn, ruleArgs
-    , ruleIndex, ruleValue, ruleBody
+    , ruleIndex, ruleValue, ruleBodies
 
     , Sugar.PackageName (..)
     , Sugar.packageNameToString, Sugar.packageNameToText
@@ -60,7 +60,7 @@ data RuleDefinition a = RuleDefinition
     , _ruleArgs       :: !(Maybe [Term a])
     , _ruleIndex      :: !(Maybe (Term a))
     , _ruleValue      :: !(Maybe (Term a))
-    , _ruleBody       :: !(RuleBody a)
+    , _ruleBodies     :: ![RuleBody a]
     } deriving (Show)
 
 type Imports a = HMS.HashMap Var (a, Sugar.PackageName)
