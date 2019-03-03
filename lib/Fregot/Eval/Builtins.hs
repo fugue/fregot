@@ -118,6 +118,7 @@ builtins = HMS.fromList
     [ (["all"], builtin_all)
     , (["any"], builtin_any)
     , (["concat"], builtin_concat)
+    , (["contains"], builtin_contains)
     , (["count"], builtin_count)
     , (["endswith"], builtin_endswith)
     , (["is_object"], builtin_is_object)
@@ -142,6 +143,10 @@ builtin_concat :: Builtin
 builtin_concat = Builtin (In (In Out))
     (\(Cons delim (Cons (Collection texts) Nil)) ->
     return $! T.intercalate delim texts)
+
+builtin_contains :: Builtin
+builtin_contains = Builtin (In (In Out)) $
+    \(Cons str (Cons search Nil)) -> return $! search `T.isInfixOf` str
 
 builtin_count :: Builtin
 builtin_count = Builtin (In Out)
