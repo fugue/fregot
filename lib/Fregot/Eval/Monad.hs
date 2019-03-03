@@ -25,6 +25,8 @@ module Fregot.Eval.Monad
     , cut
 
     , negation
+    , orElse
+    , orElses
     , withDefault
     , requireComplete
 
@@ -157,12 +159,19 @@ negation trueish (EvalM f) = EvalM $ \rs ctx -> do
     rows <- filter (\(Row _ x) -> trueish x) <$> (f rs ctx)
     return $! if null rows then [Row ctx ()] else []
 
-withDefault :: EvalM a -> EvalM a -> EvalM a
-withDefault (EvalM def) (EvalM f) = EvalM $ \env ctx -> do
-    rows <- f env ctx
+orElse :: EvalM a -> EvalM a -> EvalM a
+orElse (EvalM x) (EvalM alt) = EvalM $ \env ctx -> do
+    rows <- x env ctx
     case rows of
-        [] -> def env emptyContext
+        [] -> alt env ctx
         xs -> return xs
+
+orElses :: EvalM a -> [EvalM a] -> EvalM a
+orElses x []           = x
+orElses x (alt : alts) = x `orElse` orElses alt alts
+
+withDefault :: EvalM a -> EvalM a -> EvalM a
+withDefault = flip orElse
 
 requireComplete :: Eq a => EvalM a -> EvalM a
 requireComplete (EvalM f) = EvalM $ \env ctx -> do

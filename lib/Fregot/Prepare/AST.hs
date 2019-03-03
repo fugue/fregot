@@ -8,7 +8,8 @@ module Fregot.Prepare.AST
     ( RuleKind (..)
     , Rule (..), ruleName, ruleAnn, ruleDefault, ruleKind, ruleDefs
     , RuleDefinition (..), ruleDefName, ruleDefImports, ruleDefAnn, ruleArgs
-    , ruleIndex, ruleValue, ruleBodies
+    , ruleIndex, ruleValue, ruleBodies, ruleElses
+    , RuleElse (..), ruleElseAnn, ruleElseValue, ruleElseBody
 
     , Sugar.PackageName (..)
     , Sugar.packageNameToString, Sugar.packageNameToText
@@ -61,11 +62,18 @@ data RuleDefinition a = RuleDefinition
     , _ruleIndex      :: !(Maybe (Term a))
     , _ruleValue      :: !(Maybe (Term a))
     , _ruleBodies     :: ![RuleBody a]
+    , _ruleElses      :: ![RuleElse a]
     } deriving (Show)
 
 type Imports a = HMS.HashMap Var (a, Sugar.PackageName)
 
 type RuleBody a = [Literal a]
+
+data RuleElse a = RuleElse
+    { _ruleElseAnn   :: !a
+    , _ruleElseValue :: !(Maybe (Term a))
+    , _ruleElseBody  :: !(RuleBody a)
+    } deriving (Show)
 
 data Literal a = Literal
     { _literalNegation  :: !Bool
@@ -120,6 +128,7 @@ data With a = With
 
 $(makeLenses ''Rule)
 $(makeLenses ''RuleDefinition)
+$(makeLenses ''RuleElse)
 $(makeLenses ''Literal)
 $(makeLenses ''With)
 

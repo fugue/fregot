@@ -15,8 +15,10 @@ module Fregot.Sugar
     , varToString, varToText
 
     , Rule (..), ruleHead, ruleBodies
-    , RuleHead (..), ruleAnn, ruleDefault, ruleName, ruleArgs, ruleIndex, ruleValue
+    , RuleHead (..), ruleAnn, ruleDefault, ruleName, ruleArgs, ruleIndex
+    , ruleValue, ruleElses
     , RuleBody
+    , RuleElse (..), ruleElseAnn, ruleElseValue, ruleElseBody
     , Literal (..), literalNegation, literalExpr, literalWith
 
     , Expr (..), exprAnn
@@ -78,6 +80,7 @@ varToText = unVar
 data Rule a = Rule
     { _ruleHead   :: !(RuleHead a)
     , _ruleBodies :: ![RuleBody a]
+    , _ruleElses  :: ![RuleElse a]
     } deriving (Show)
 
 data RuleHead a = RuleHead
@@ -90,6 +93,12 @@ data RuleHead a = RuleHead
     } deriving (Show)
 
 type RuleBody a = [Literal a]
+
+data RuleElse a = RuleElse
+    { _ruleElseAnn   :: !a
+    , _ruleElseValue :: !(Maybe (Term a))
+    , _ruleElseBody  :: !(RuleBody a)
+    } deriving (Show)
 
 data Literal a = Literal
     { _literalNegation :: !Bool
@@ -168,6 +177,7 @@ $(makeLenses ''Import)
 $(makeLenses ''Module)
 $(makeLenses ''Rule)
 $(makeLenses ''RuleHead)
+$(makeLenses ''RuleElse)
 $(makeLenses ''Literal)
 $(makeLenses ''With)
 
@@ -201,7 +211,10 @@ instance PP.Pretty PP.Sem (Rule a) where
         PP.pretty (r ^. ruleHead) <+>?
         (case r ^. ruleBodies of
             [] -> Nothing
-            bs -> Just $ mconcat $ L.intersperse " " $ map prettyRuleBody bs)
+            bs -> Just $ mconcat $ L.intersperse " " $ map prettyRuleBody bs) <+>?
+        (case r ^. ruleElses of
+            [] -> Nothing
+            es -> Just $ mconcat $ L.intersperse " " $ map PP.pretty es)
 
 instance PP.Pretty PP.Sem (RuleHead a) where
     pretty r =
@@ -220,6 +233,14 @@ instance PP.Pretty PP.Sem (RuleHead a) where
             Nothing  -> mempty
             Just val -> PP.space <>
                 PP.punctuation "=" <+> PP.pretty val)
+
+instance PP.Pretty PP.Sem (RuleElse a) where
+    pretty re =
+        PP.keyword "else" <+>
+        (case re ^. ruleElseValue of
+            Nothing -> Nothing
+            Just v  -> Just $ PP.punctuation "=" <+> PP.pretty v) ?<+>
+        prettyRuleBody (re ^. ruleElseBody)
 
 instance PP.Pretty PP.Sem (Literal a) where
     pretty lit =
