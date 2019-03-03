@@ -24,6 +24,9 @@ import           Control.Monad       (unless)
 import qualified Data.HashMap.Strict as HMS
 import qualified Data.HashSet        as HS
 import qualified Data.Text           as T
+import qualified Data.Text.Encoding           as T
+import qualified Data.Aeson as A
+import qualified Fregot.Eval.Json as Json
 import qualified Data.Text.Read      as TR
 import qualified Data.Vector         as V
 import           Fregot.Eval.Value
@@ -118,6 +121,7 @@ builtins = HMS.fromList
     , (["endswith"], builtin_endswith)
     , (["is_object"], builtin_is_object)
     , (["is_string"], builtin_is_string)
+    , (["json", "unmarshal"], builtin_json_unmarshal)
     , (["split"], builtin_split)
     , (["startswith"], builtin_startswith)
     , (["to_number"], builtin_to_number)
@@ -149,6 +153,11 @@ builtin_is_string :: Builtin
 builtin_is_string = Builtin (In Out) $ \(Cons val Nil) -> case val of
     StringV _ -> return True
     _         -> return False
+
+builtin_json_unmarshal :: Builtin
+builtin_json_unmarshal = Builtin (In Out) $ \(Cons str Nil) -> do
+    val <- A.eitherDecodeStrict' (T.encodeUtf8 str)
+    return $! Json.toValue val
 
 builtin_trim :: Builtin
 builtin_trim = Builtin (In (In Out))

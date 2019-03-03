@@ -4,7 +4,7 @@
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE TemplateHaskell            #-}
-module Fregot.Prepare.AST
+module Fregot.Prepare.Ast
     ( RuleKind (..)
     , Rule (..), ruleName, ruleAnn, ruleDefault, ruleKind, ruleDefs
     , RuleDefinition (..), ruleDefName, ruleDefImports, ruleDefAnn, ruleArgs

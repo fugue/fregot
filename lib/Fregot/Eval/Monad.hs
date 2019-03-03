@@ -56,7 +56,7 @@ import qualified Fregot.Error               as Error
 import           Fregot.Eval.Value
 import           Fregot.Interpreter.Package (Package)
 import qualified Fregot.Interpreter.Package as Package
-import           Fregot.Prepare.AST
+import           Fregot.Prepare.Ast
 import qualified Fregot.PrettyPrint         as PP
 import           Fregot.Sources.SourceSpan  (SourceSpan)
 
@@ -200,7 +200,7 @@ lookupRule :: [Var] -> EvalM (Maybe (Rule SourceSpan))
 lookupRule [root] = do
     env0 <- ask
     return $ Package.lookup root (env0 ^. package)
-lookupRule _ = fail "todo: lookup rules in other packages"
+lookupRule vs = fail $ "todo: lookup rules in other packages: " ++ show vs
 
 clearLocals :: EvalM a -> EvalM a
 clearLocals mx = do

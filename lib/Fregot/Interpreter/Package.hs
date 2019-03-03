@@ -15,7 +15,7 @@ import           Control.Monad.Parachute
 import qualified Data.HashMap.Strict       as HMS
 import           Fregot.Error              (Error)
 import           Fregot.Prepare
-import           Fregot.Prepare.AST
+import           Fregot.Prepare.Ast
 import           Fregot.Sources.SourceSpan (SourceSpan)
 import qualified Fregot.Sugar              as Sugar
 import           Prelude                   hiding (head, lookup)

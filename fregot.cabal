@@ -19,6 +19,7 @@ Library
     Fregot.Error
     Fregot.Eval
     Fregot.Eval.Builtins
+    Fregot.Eval.Json
     Fregot.Eval.Monad
     Fregot.Eval.Value
     Fregot.Interpreter
@@ -36,7 +37,7 @@ Library
     Fregot.Parser.Sugar
     Fregot.Parser.Token
     Fregot.Prepare
-    Fregot.Prepare.AST
+    Fregot.Prepare.Ast
     Fregot.PrettyPrint
     Fregot.PrettyPrint.Internal
     Fregot.PrettyPrint.Sem

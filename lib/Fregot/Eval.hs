@@ -35,7 +35,7 @@ import qualified Data.Vector.Extended      as V
 import           Fregot.Eval.Builtins
 import           Fregot.Eval.Monad
 import           Fregot.Eval.Value
-import           Fregot.Prepare.AST
+import           Fregot.Prepare.Ast
 import           Fregot.PrettyPrint        ((<+>))
 import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources.SourceSpan (SourceSpan)
