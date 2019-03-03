@@ -29,6 +29,8 @@ module Fregot.Sugar
     , ObjectKey (..)
     , BinOp (..)
     , With (..), withAnn, withWith, withAs
+
+    , NestedVar (..)
     ) where
 
 import           Control.Lens       (Lens', lens, (^.))
@@ -182,6 +184,13 @@ $(makeLenses ''RuleElse)
 $(makeLenses ''Literal)
 $(makeLenses ''With)
 
+-- | This type exists solely for pretty-printing.
+newtype NestedVar = NestedVar {unNestedVar :: [Var]}
+
+instance PP.Pretty PP.Sem NestedVar where
+    pretty = mconcat .
+        L.intersperse (PP.punctuation ".") . map PP.pretty . unNestedVar
+
 instance PP.Pretty a PackageName where
     pretty = PP.pretty . packageNameToString
 
@@ -262,7 +271,7 @@ instance PP.Pretty PP.Sem (Expr a) where
 instance PP.Pretty PP.Sem (Term a) where
     pretty (RefT _ _ v args) = PP.pretty v <> mconcat (map PP.pretty args)
     pretty (CallT _ vs as)  =
-        mconcat (L.intersperse (PP.punctuation ".") (map PP.pretty vs)) <>
+        PP.pretty (NestedVar vs) <>
         PP.punctuation "(" <>
         PP.commaSep (map PP.pretty as) <>
         PP.punctuation ")"

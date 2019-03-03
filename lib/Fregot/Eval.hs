@@ -39,6 +39,7 @@ import           Fregot.Prepare.AST
 import           Fregot.PrettyPrint        ((<+>))
 import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources.SourceSpan (SourceSpan)
+import qualified Fregot.Sugar              as Sugar
 
 ground :: EvalM Value -> EvalM Value
 ground mval = do
@@ -82,7 +83,8 @@ evalTerm (CallT source f args)
             Just cr -> do
                 vargs <- mapM evalTerm args
                 evalUserFunction cr vargs
-            Nothing -> fail $ "Not implemented: function call: " ++ show f
+            Nothing -> raise' source "unknown function" $
+                "Unknown function call: " <+> PP.pretty (Sugar.NestedVar f)
 
 evalTerm (VarT _ v) = evalVar v
 evalTerm (ScalarT _ s) = evalScalar s
