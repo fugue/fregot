@@ -117,6 +117,7 @@ builtins :: HMS.HashMap [Var] Builtin
 builtins = HMS.fromList
     [ (["all"], builtin_all)
     , (["any"], builtin_any)
+    , (["concat"], builtin_concat)
     , (["count"], builtin_count)
     , (["endswith"], builtin_endswith)
     , (["is_object"], builtin_is_object)
@@ -136,6 +137,11 @@ builtin_all = Builtin (In Out)
 builtin_any :: Builtin
 builtin_any = Builtin (In Out)
     (\(Cons arr Nil) -> return $! V.or (arr :: V.Vector Bool))
+
+builtin_concat :: Builtin
+builtin_concat = Builtin (In (In Out))
+    (\(Cons delim (Cons (Collection texts) Nil)) ->
+    return $! T.intercalate delim texts)
 
 builtin_count :: Builtin
 builtin_count = Builtin (In Out)
