@@ -165,6 +165,7 @@ data BinOp
     | MinusO
     | TimesO
     | DivideO
+    | BinOrO
     deriving (Show)
 
 data With a = With
@@ -323,6 +324,7 @@ instance PP.Pretty PP.Sem BinOp where
         MinusO              -> "-"
         TimesO              -> "*"
         DivideO             -> "/"
+        BinOrO              -> "|"
 
 instance PP.Pretty PP.Sem (With a) where
     pretty with = PP.keyword "with" <+>

@@ -118,6 +118,7 @@ data BinOp
     | MinusO
     | TimesO
     | DivideO
+    | BinOrO
     deriving (Show)
 
 data With a = With

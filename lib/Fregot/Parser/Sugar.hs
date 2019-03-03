@@ -131,6 +131,8 @@ expr = Parsec.buildExpressionParser
       , binary Tok.TGreaterThanOrEqual GreaterThanOrEqualO Parsec.AssocLeft
       ]
 
+    , [ binary Tok.TPipe BinOrO Parsec.AssocLeft ]
+
     , [ binary Tok.TEqual    EqualO    Parsec.AssocLeft
       , binary Tok.TNotEqual NotEqualO Parsec.AssocLeft
       ]

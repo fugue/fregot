@@ -303,6 +303,7 @@ prepareBinOp source = \case
     Sugar.MinusO              -> pure MinusO
     Sugar.TimesO              -> pure TimesO
     Sugar.DivideO             -> pure DivideO
+    Sugar.BinOrO              -> pure BinOrO
     Sugar.UnifyO              -> do
         tellError $ Error.mkError "compile" source
             "invalid unification" $

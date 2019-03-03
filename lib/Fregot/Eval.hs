@@ -371,6 +371,8 @@ evalScalar (Number t) = return $ NumberV t
 evalScalar (Bool   b) = return $ BoolV   b
 evalScalar Null       = return $ NullV
 
+-- | TODO(jaspervdj): We should convert binary operators to builtin function
+-- calls when preparing.
 evalBinOp :: Expr SourceSpan -> BinOp -> Expr SourceSpan -> EvalM Value
 evalBinOp x op y = do
     xv <- evalExpr x
@@ -394,6 +396,8 @@ evalBinOp x op y = do
             return $! NumberV $! xn * yn
         (NumberV xn, DivideO, NumberV yn) ->
             return $! NumberV $! xn / yn
+        (SetV xs, BinOrO, SetV ys) ->
+            return $! SetV (xs `HS.union` ys)
         _ -> fail $
             "evalBinOp: invalid arguments for " ++ show op ++
             ": " ++ describeValue xv ++ ", " ++ describeValue yv
