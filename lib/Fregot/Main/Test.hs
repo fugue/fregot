@@ -23,6 +23,7 @@ import           Fregot.Sugar            (PackageName, Var)
 import qualified Fregot.Sugar            as Sugar
 import qualified Options.Applicative     as OA
 import qualified System.IO               as IO
+import System.Exit (ExitCode (..))
 
 data Options = Options
     { _paths :: [FilePath]
@@ -73,7 +74,7 @@ runTest h testname@(pkgname, rule) = do
     isTrue (Value.BoolV b) = b
     isTrue _               = False
 
-main :: Options -> IO ()
+main :: Options -> IO ExitCode
 main opts = do
     sources <- Sources.newHandle
     interpreter <- Interpreter.newHandle sources
@@ -102,5 +103,9 @@ main opts = do
                     Sugar.varToString rule
 
     Error.hPutErrors IO.stderr sources' Error.TextFmt errors
+
+    return $! case mbResult of
+        Just tr | null (tr ^. failed) && null (tr ^. errored) -> ExitSuccess
+        _ -> ExitFailure 1
   where
     isTest (_pkgname, var) = "test_" `T.isPrefixOf` Sugar.varToText var

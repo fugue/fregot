@@ -16,6 +16,7 @@ import qualified Fregot.Interpreter      as Interpreter
 import qualified Fregot.Repl             as Repl
 import qualified Fregot.Sources          as Sources
 import qualified Options.Applicative     as OA
+import           System.Exit             (ExitCode (..))
 import qualified System.IO               as IO
 
 data Options = Options
@@ -30,7 +31,7 @@ parseOptions = Options
             OA.metavar "PATHS" <>
             OA.help    "Rego files or directories to load into repl")
 
-main :: Options -> IO ()
+main :: Options -> IO ExitCode
 main opts = do
     sources <- Sources.newHandle
     interpreter <- Interpreter.newHandle sources
@@ -40,3 +41,4 @@ main opts = do
         sauce <- IORef.readIORef sources
         Error.hPutErrors IO.stderr sauce Error.TextFmt lerrs
         Repl.run repl
+        return ExitSuccess
