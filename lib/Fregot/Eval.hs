@@ -283,18 +283,25 @@ evalRuleDefinition rule mbIndex =
             tplv <- evalTerm tpl
             return $ Just tplv
 
-    let afterBody = case rule ^. ruleValue of
+    let ret mbRet = case mbRet of
             Nothing   -> ground $ return $ fromMaybe (BoolV True) mbIdxVal
             Just term -> evalTerm term
 
-    -- If there is not a single body, we probably have something like
-    --
-    --     a = 1
-    --
-    -- so we can skip directly to the `afterBody`
     case rule ^. ruleBodies of
-        []     -> afterBody
-        bodies -> branch [evalRuleBody body afterBody | body <- bodies]
+        -- If there is not a single body, we probably have something like
+        --
+        --     a = 1
+        --
+        -- so we can skip directly to the return.
+        []     -> ret (rule ^. ruleValue)
+        bodies ->
+            branch
+                [ evalRuleBody body (ret $ rule ^. ruleValue)
+                | body <- bodies
+                ] `orElses`
+            [ evalRuleBody (re ^. ruleElseBody) (ret $ re ^. ruleElseValue)
+            | re <- rule ^. ruleElses
+            ]
 
 evalUserFunction
     :: Rule SourceSpan -> [Value] -> EvalM Value
