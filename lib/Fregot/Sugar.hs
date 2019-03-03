@@ -211,7 +211,10 @@ instance PP.Pretty PP.Sem (Rule a) where
         PP.pretty (r ^. ruleHead) <+>?
         (case r ^. ruleBodies of
             [] -> Nothing
-            bs -> Just $ mconcat $ L.intersperse " " $ map prettyRuleBody bs)
+            bs -> Just $ mconcat $ L.intersperse " " $ map prettyRuleBody bs) <+>?
+        (case r ^. ruleElses of
+            [] -> Nothing
+            es -> Just $ mconcat $ L.intersperse " " $ map PP.pretty es)
 
 instance PP.Pretty PP.Sem (RuleHead a) where
     pretty r =
@@ -230,6 +233,14 @@ instance PP.Pretty PP.Sem (RuleHead a) where
             Nothing  -> mempty
             Just val -> PP.space <>
                 PP.punctuation "=" <+> PP.pretty val)
+
+instance PP.Pretty PP.Sem (RuleElse a) where
+    pretty re =
+        PP.keyword "else" <+>
+        (case re ^. ruleElseValue of
+            Nothing -> Nothing
+            Just v  -> Just $ PP.punctuation "=" <+> PP.pretty v) ?<+>
+        prettyRuleBody (re ^. ruleElseBody)
 
 instance PP.Pretty PP.Sem (Literal a) where
     pretty lit =

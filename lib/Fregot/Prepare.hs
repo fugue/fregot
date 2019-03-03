@@ -69,6 +69,7 @@ prepareRule imports rule
             "or regular arguments, but not both."
 
         bodies <- traverse prepareRuleBody (rule ^. Sugar.ruleBodies)
+        elses  <- traverse prepareRuleElse (rule ^. Sugar.ruleElses)
         args   <- traverse (traverse prepareTerm) (head ^. Sugar.ruleArgs)
         index  <- traverse prepareTerm (head ^. Sugar.ruleIndex)
         value  <- traverse prepareTerm (head ^. Sugar.ruleValue)
@@ -86,6 +87,7 @@ prepareRule imports rule
                     , _ruleIndex      = index
                     , _ruleValue      = value
                     , _ruleBodies     = bodies
+                    , _ruleElses      = elses
                     }
                 ]
             }
@@ -98,6 +100,7 @@ prepareRule imports rule
 
         -- NOTE(jaspervdj): Perform more sanity checks on rules.
         bodies <- traverse prepareRuleBody (rule ^. Sugar.ruleBodies)
+        elses  <- traverse prepareRuleElse (rule ^. Sugar.ruleElses)
         args   <- traverse (traverse prepareTerm) (head ^. Sugar.ruleArgs)
         index  <- traverse prepareTerm (head ^. Sugar.ruleIndex)
         value  <- traverse prepareTerm (head ^. Sugar.ruleValue)
@@ -115,6 +118,7 @@ prepareRule imports rule
                     , _ruleIndex      = index
                     , _ruleValue      = value
                     , _ruleBodies     = bodies
+                    , _ruleElses      = elses
                     }
                 ]
             }
@@ -188,6 +192,14 @@ prepareRuleBody
     => Sugar.RuleBody SourceSpan
     -> ParachuteT Error m (RuleBody SourceSpan)
 prepareRuleBody = mapM prepareLiteral
+
+prepareRuleElse
+    :: Monad m
+    => Sugar.RuleElse SourceSpan
+    -> ParachuteT Error m (RuleElse SourceSpan)
+prepareRuleElse re = RuleElse (re ^. Sugar.ruleElseAnn)
+    <$> traverse prepareTerm (re ^. Sugar.ruleElseValue)
+    <*> prepareRuleBody (re ^. Sugar.ruleElseBody)
 
 prepareLiteral
     :: Monad m
