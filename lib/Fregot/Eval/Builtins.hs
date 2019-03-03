@@ -122,6 +122,7 @@ builtins = HMS.fromList
     , (["is_object"], builtin_is_object)
     , (["is_string"], builtin_is_string)
     , (["json", "unmarshal"], builtin_json_unmarshal)
+    , (["replace"], builtin_replace)
     , (["split"], builtin_split)
     , (["startswith"], builtin_startswith)
     , (["to_number"], builtin_to_number)
@@ -158,6 +159,10 @@ builtin_json_unmarshal :: Builtin
 builtin_json_unmarshal = Builtin (In Out) $ \(Cons str Nil) -> do
     val <- A.eitherDecodeStrict' (T.encodeUtf8 str)
     return $! Json.toValue val
+
+builtin_replace :: Builtin
+builtin_replace = Builtin (In (In (In Out))) $
+    \(Cons str (Cons old (Cons new Nil))) -> return $! T.replace old new str
 
 builtin_trim :: Builtin
 builtin_trim = Builtin (In (In Out))
