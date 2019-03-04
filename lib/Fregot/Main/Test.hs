@@ -17,6 +17,7 @@ import           Fregot.Error              (Error)
 import qualified Fregot.Error              as Error
 import qualified Fregot.Eval               as Eval
 import qualified Fregot.Eval.Value         as Value
+import qualified Fregot.Find               as Find
 import qualified Fregot.Interpreter        as Interpreter
 import qualified Fregot.Sources            as Sources
 import qualified Fregot.Sources.SourceSpan as SourceSpan
@@ -81,8 +82,9 @@ main :: Options -> IO ExitCode
 main opts = do
     sources <- Sources.newHandle
     interpreter <- Interpreter.newHandle sources
+    regoPaths <- Find.findRegoFiles (opts ^. paths)
     (errors, mbResult) <- Parachute.runParachuteT $ do
-        forM_ (opts ^. paths) $ \path -> Interpreter.loadModule interpreter path
+        forM_ regoPaths $ \path -> Interpreter.loadModule interpreter path
         tests <- filter isTest <$> Interpreter.readRules interpreter
         foldMapM (\t -> runTest interpreter t) tests
 
