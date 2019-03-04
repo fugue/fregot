@@ -316,17 +316,23 @@ evalUserFunction crule callerArgs
         | def <- crule ^. ruleDefs
         ]
   where
+    ret mbTerm = case mbTerm of
+        Nothing   -> return (BoolV True)
+        Just term -> ground $ evalTerm term
+
     evalFunctionDefinition def =
-        withImports (def ^. ruleDefImports) $ clearLocals $ do
-            -- TODO(jaspervdj): Check arity.
-            calleeArgs <- mapM evalTerm $ fromMaybe [] (def ^. ruleArgs)
-            zipWithM_ unify callerArgs calleeArgs
-            branch
-                [ evalRuleBody body $ case def ^. ruleValue of
-                    Nothing   -> return (BoolV True)
-                    Just term -> evalTerm term
-                | body <- def ^. ruleBodies
-                ]
+        withImports (def ^. ruleDefImports) $
+        clearLocals $ do
+        -- TODO(jaspervdj): Check arity.
+        calleeArgs <- mapM evalTerm $ fromMaybe [] (def ^. ruleArgs)
+        zipWithM_ unify callerArgs calleeArgs
+        branch
+            [ evalRuleBody body $ ret $ def ^. ruleValue
+            | body <- def ^. ruleBodies
+            ] `orElses`
+            [ evalRuleBody (re ^. ruleElseBody) (ret $ re ^. ruleElseValue)
+            | re <- def ^. ruleElses
+            ]
 
 -- | Evaluate the rule body, then perform a continuation.
 evalRuleBody :: RuleBody SourceSpan -> EvalM a -> EvalM a
