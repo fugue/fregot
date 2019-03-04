@@ -21,6 +21,7 @@ module Fregot.Sources.SourceSpan
     , sourcePosToSourceSpan
 
     , unsafeMergeSourceSpan
+    , testSourceSpan
     ) where
 
 import           Control.Lens          ((&), (.~), (^.))
@@ -126,3 +127,7 @@ unsafeMergeSourceSpan x y
     | otherwise = x
         & start .~ (min (x ^. start) (y ^. start))
         & end   .~ (max (x ^. end)   (y ^. end))
+
+-- | Source span that can be used for calling tests.
+testSourceSpan :: SourceSpan
+testSourceSpan = SourceSpan TestInput initPosition initPosition

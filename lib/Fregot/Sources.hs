@@ -26,6 +26,7 @@ import           Prelude             hiding (lookup)
 data SourcePointer
     = ReplInput Int T.Text
     | FileInput FilePath
+    | TestInput
     deriving (Eq, Generic, Ord, Show)
 
 instance Hashable SourcePointer
@@ -33,6 +34,7 @@ instance Hashable SourcePointer
 describeSourcePointer :: SourcePointer -> String
 describeSourcePointer (ReplInput _ txt) = T.unpack txt
 describeSourcePointer (FileInput p)     = p
+describeSourcePointer TestInput         = "tests"
 
 newtype Sources = Sources
     { unSourceStore :: HMS.HashMap SourcePointer T.Text

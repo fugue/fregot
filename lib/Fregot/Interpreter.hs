@@ -123,6 +123,6 @@ evalExpr h pkgname expr = do
     eval h pkgname (Eval.evalExpr prep)
 
 evalVar
-    :: Handle -> PackageName -> Var
+    :: Handle -> SourceSpan -> PackageName -> Var
     -> InterpreterM (Eval.Document Eval.Value)
-evalVar h pkgname = eval h pkgname . Eval.evalVar
+evalVar h source pkgname = eval h pkgname . Eval.evalVar source

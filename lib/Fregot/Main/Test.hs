@@ -7,23 +7,24 @@ module Fregot.Main.Test
     , main
     ) where
 
-import           Control.Lens            (view, (&), (.~), (^.))
-import           Control.Lens.TH         (makeLenses)
-import           Control.Monad.Extended  (foldMapM, forM_, unless)
-import qualified Control.Monad.Parachute as Parachute
-import qualified Data.IORef              as IORef
-import qualified Data.Text               as T
-import           Fregot.Error            (Error)
-import qualified Fregot.Error            as Error
-import qualified Fregot.Eval             as Eval
-import qualified Fregot.Eval.Value       as Value
-import qualified Fregot.Interpreter      as Interpreter
-import qualified Fregot.Sources          as Sources
-import           Fregot.Sugar            (PackageName, Var)
-import qualified Fregot.Sugar            as Sugar
-import qualified Options.Applicative     as OA
-import qualified System.IO               as IO
-import System.Exit (ExitCode (..))
+import           Control.Lens              (view, (&), (.~), (^.))
+import           Control.Lens.TH           (makeLenses)
+import           Control.Monad.Extended    (foldMapM, forM_, unless)
+import qualified Control.Monad.Parachute   as Parachute
+import qualified Data.IORef                as IORef
+import qualified Data.Text                 as T
+import           Fregot.Error              (Error)
+import qualified Fregot.Error              as Error
+import qualified Fregot.Eval               as Eval
+import qualified Fregot.Eval.Value         as Value
+import qualified Fregot.Interpreter        as Interpreter
+import qualified Fregot.Sources            as Sources
+import qualified Fregot.Sources.SourceSpan as SourceSpan
+import           Fregot.Sugar              (PackageName, Var)
+import qualified Fregot.Sugar              as Sugar
+import qualified Options.Applicative       as OA
+import           System.Exit               (ExitCode (..))
+import qualified System.IO                 as IO
 
 data Options = Options
     { _paths :: [FilePath]
@@ -58,7 +59,7 @@ runTest
     :: Interpreter.Handle -> TestName
     -> Interpreter.InterpreterM TestResults
 runTest h testname@(pkgname, rule) = do
-    errOrDoc <- Parachute.try $ Interpreter.evalVar h pkgname rule
+    errOrDoc <- Parachute.try $ Interpreter.evalVar h source pkgname rule
 
     results <- case errOrDoc of
         Right doc@(_ : _) | all (isTrue . view Eval.rowValue) doc -> return $
@@ -73,6 +74,8 @@ runTest h testname@(pkgname, rule) = do
   where
     isTrue (Value.BoolV b) = b
     isTrue _               = False
+
+    source = SourceSpan.testSourceSpan
 
 main :: Options -> IO ExitCode
 main opts = do

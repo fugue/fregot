@@ -22,6 +22,8 @@ module Fregot.Lexer
     , TokenStream
     , parseTokenStream
     , Position (..)
+    , initPosition
+
     , TokenPos
     , prettyTokenPos
     , Token (..)

@@ -67,7 +67,7 @@ evalTerm (RefT source lhs arg) = do
         -- an argument, i.e. it is not a complete rule.
         Just crule | CompleteRule /= (crule ^. ruleKind) -> do
             arg' <- evalExpr arg
-            evalCompiledRule crule (Just arg')
+            evalCompiledRule source crule (Just arg')
         _ -> do
             val <- evalTerm lhs
             evalRefArg source val arg
@@ -86,7 +86,7 @@ evalTerm (CallT source f args)
             Nothing -> raise' source "unknown function" $
                 "Unknown function call: " <+> PP.pretty (Sugar.NestedVar f)
 
-evalTerm (VarT _ v) = evalVar v
+evalTerm (VarT source v) = evalVar source v
 evalTerm (ScalarT _ s) = evalScalar s
 evalTerm (ArrayT _ a) = do
     bs <- mapM evalExpr a
@@ -116,11 +116,11 @@ evalTerm (ObjectCompT _ khead vhead cbody) = do
         (,) <$> evalTerm khead <*> evalTerm vhead
     return $ ObjectV $ V.fromList rows
 
-evalVar :: Var -> EvalM Value
-evalVar "_"     = return WildcardV
-evalVar "input" = view inputDoc
-evalVar "data"  = return $! PackageV mempty
-evalVar v       = do
+evalVar :: SourceSpan -> Var -> EvalM Value
+evalVar _source "_"     = return WildcardV
+evalVar _source "input" = view inputDoc
+evalVar _source "data"  = return $! PackageV mempty
+evalVar source v       = do
     imps <- view imports
     lcls <- use locals
     case HMS.lookup v imps of
@@ -137,7 +137,7 @@ evalVar v       = do
                         -- We allow calling a null-ary function `report()` both
                         -- as just `report` as well as `report()`
                         evalUserFunction crule []
-                    Just crule -> evalCompiledRule crule Nothing
+                    Just crule -> evalCompiledRule source crule Nothing
 
 evalBuiltin :: SourceSpan -> Builtin -> [Value] -> EvalM Value
 evalBuiltin source (Builtin sig impl) args0 = do
@@ -181,7 +181,7 @@ evalRefArg source indexee refArg = do
             mbPkg <- lookupPackage pkgname
             case mbPkg of
                 Nothing  -> return $! PackageV (pkgname <> PackageName [k])
-                Just pkg -> withPackage pkg $ evalVar (Var k)
+                Just pkg -> withPackage pkg $ evalVar source (Var k)
 
         WildcardV -> case indexee of
             ArrayV a  -> branch [return val | val <- V.toList a]
@@ -239,9 +239,11 @@ evalRefArg source indexee refArg = do
 -- | Returns the value of the index value (if given) as well as the result of
 -- the rule.
 evalCompiledRule
-    :: Rule SourceSpan -> Maybe Value
+    :: SourceSpan
+    -> Rule SourceSpan
+    -> Maybe Value
     -> EvalM Value
-evalCompiledRule crule mbIndex = case crule ^. ruleKind of
+evalCompiledRule callerSource crule mbIndex = case crule ^. ruleKind of
     -- Complete definitions
     CompleteRule -> requireComplete $
         case crule ^. ruleDefault of
@@ -263,13 +265,13 @@ evalCompiledRule crule mbIndex = case crule ^. ruleKind of
   where
     -- Standard branching evaluation of rule definitions.
     branches = branch
-        [ evalRuleDefinition def mbIndex
+        [ evalRuleDefinition callerSource def mbIndex
         | def <- crule ^. ruleDefs
         ]
 
 evalRuleDefinition
-    :: RuleDefinition SourceSpan -> Maybe Value -> EvalM Value
-evalRuleDefinition rule mbIndex =
+    :: SourceSpan -> RuleDefinition SourceSpan -> Maybe Value -> EvalM Value
+evalRuleDefinition callerSource rule mbIndex =
     withImports (rule ^. ruleDefImports) $
     clearLocals $ do
 
@@ -279,10 +281,10 @@ evalRuleDefinition rule mbIndex =
             tplv <- evalTerm tpl
             _    <- unify arg tplv
             return $ Just tplv
-        (Just _, Nothing) -> fail $
-            "evalRuleDefinition: got argument for rule " ++
-            show (PP.pretty (rule ^. ruleDefName)) ++
-            " but didn't expect one"
+        (Just _, Nothing) -> raise' callerSource "arity problem" $
+            "An argument was given for rule" <+>
+            PP.pretty (rule ^. ruleDefName) <+>
+            "but it does not expect one"
         (Nothing, Just tpl) -> do
             tplv <- evalTerm tpl
             return $ Just tplv
