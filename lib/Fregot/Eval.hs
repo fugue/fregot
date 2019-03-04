@@ -65,7 +65,9 @@ evalTerm (RefT source lhs arg) = do
     case mbCompiledRule of
         -- Using a rule with an index.  This only triggers if the rule requires
         -- an argument, i.e. it is not a complete rule.
-        Just crule | CompleteRule /= (crule ^. ruleKind) -> do
+        Just crule
+                | CompleteRule /= crule ^. ruleKind
+                , FunctionRule /= crule ^. ruleKind -> do
             arg' <- evalExpr arg
             evalCompiledRule source crule (Just arg')
         _ -> do
