@@ -23,23 +23,24 @@ module Fregot.Eval
     , evalTerm
     ) where
 
-import           Control.Lens              (use, view, (%=), (.=), (.~), (^.))
-import           Control.Monad.Extended    (forM, zipWithM_)
-import           Control.Monad.Reader      (local)
-import qualified Data.HashMap.Strict       as HMS
-import qualified Data.HashSet              as HS
-import           Data.Maybe                (fromMaybe, isNothing)
-import qualified Data.Scientific           as Scientific
-import qualified Data.Unification          as Unification
-import qualified Data.Vector.Extended      as V
+import           Control.Lens               (use, view, (%=), (.=), (.~), (^.))
+import           Control.Monad.Extended     (forM, zipWithM_)
+import           Control.Monad.Reader       (local)
+import qualified Data.HashMap.Strict        as HMS
+import qualified Data.HashSet               as HS
+import           Data.Maybe                 (fromMaybe, isNothing)
+import qualified Data.Scientific            as Scientific
+import qualified Data.Unification           as Unification
+import qualified Data.Vector.Extended       as V
 import           Fregot.Eval.Builtins
 import           Fregot.Eval.Monad
 import           Fregot.Eval.Value
+import qualified Fregot.Interpreter.Package as Package
 import           Fregot.Prepare.Ast
-import           Fregot.PrettyPrint        ((<+>))
-import qualified Fregot.PrettyPrint        as PP
-import           Fregot.Sources.SourceSpan (SourceSpan)
-import qualified Fregot.Sugar              as Sugar
+import           Fregot.PrettyPrint         ((<+>))
+import qualified Fregot.PrettyPrint         as PP
+import           Fregot.Sources.SourceSpan  (SourceSpan)
+import qualified Fregot.Sugar               as Sugar
 
 ground :: EvalM Value -> EvalM Value
 ground mval = do
@@ -182,8 +183,14 @@ evalRefArg source indexee refArg = do
         StringV k | PackageV pkgname <- indexee -> do
             mbPkg <- lookupPackage pkgname
             case mbPkg of
-                Nothing  -> return $! PackageV (pkgname <> PackageName [k])
-                Just pkg -> withPackage pkg $ evalVar source (Var k)
+                -- If the package exists *AND* actually has a rule with that
+                -- name, we'll evaluate that name.
+                Just pkg | Just _ <- Package.lookup (Var k) pkg ->
+                    withPackage pkg $ evalVar source (Var k)
+                -- Otherwise, we'll construct a further package name.  This
+                -- package name does not actually need to exist (yet), since we
+                -- might append more pieces to it.
+                _ -> return $! PackageV (pkgname <> PackageName [k])
 
         WildcardV -> case indexee of
             ArrayV a  -> branch [return val | val <- V.toList a]
