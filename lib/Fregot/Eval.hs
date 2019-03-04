@@ -333,13 +333,20 @@ evalUserFunction crule callerArgs
         -- TODO(jaspervdj): Check arity.
         calleeArgs <- mapM evalTerm $ fromMaybe [] (def ^. ruleArgs)
         zipWithM_ unify callerArgs calleeArgs
-        branch
-            [ evalRuleBody body $ ret $ def ^. ruleValue
-            | body <- def ^. ruleBodies
-            ] `orElses`
-            [ evalRuleBody (re ^. ruleElseBody) (ret $ re ^. ruleElseValue)
-            | re <- def ^. ruleElses
-            ]
+        case def ^. ruleBodies of
+            -- If there is not a single body, we may have something like
+            --
+            --     a(x) = {x | x > 2}
+            --
+            -- so we can skip directly to the return.
+            []     -> ret (def ^. ruleValue)
+            bodies -> branch
+                [ evalRuleBody body $ ret $ def ^. ruleValue
+                | body <- bodies
+                ] `orElses`
+                [ evalRuleBody (re ^. ruleElseBody) (ret $ re ^. ruleElseValue)
+                | re <- def ^. ruleElses
+                ]
 
 -- | Evaluate the rule body, then perform a continuation.
 evalRuleBody :: RuleBody SourceSpan -> EvalM a -> EvalM a
