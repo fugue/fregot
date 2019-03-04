@@ -365,7 +365,7 @@ evalStatement (AssignS _ v x) = do
     xv <- evalExpr x
     iv <- toInstVar v
     unify (FreeV iv) xv
-    return xv
+    return $ BoolV True
 evalStatement (ExprS e) = evalExpr e
 
 evalScalar :: Scalar a -> EvalM Value
