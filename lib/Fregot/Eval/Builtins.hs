@@ -20,15 +20,16 @@ module Fregot.Eval.Builtins
     , builtins
     ) where
 
+import           Control.Applicative ((<|>))
 import           Control.Monad       (unless)
+import qualified Data.Aeson          as A
 import qualified Data.HashMap.Strict as HMS
 import qualified Data.HashSet        as HS
 import qualified Data.Text           as T
-import qualified Data.Text.Encoding           as T
-import qualified Data.Aeson as A
-import qualified Fregot.Eval.Json as Json
+import qualified Data.Text.Encoding  as T
 import qualified Data.Text.Read      as TR
 import qualified Data.Vector         as V
+import qualified Fregot.Eval.Json    as Json
 import           Fregot.Eval.Value
 import           Fregot.Sugar        (Var)
 
@@ -84,6 +85,14 @@ instance FromVal a => FromVal (Collection a) where
     fromVal (ObjectV c) = Collection <$> traverse (fromVal . snd) (V.toList c)
     fromVal v           = Left $
         "Expected collection but got " ++ describeValue v
+
+-- | Either-like type for when we have weird ad-hoc polymorphism.
+data a :|: b = InL a | InR b
+
+instance (FromVal a, FromVal b) => FromVal (a :|: b) where
+    -- TODO(jaspervdj): We should use a datatype for expected result types, so
+    -- we can join them here nicely and not just return the last error message.
+    fromVal v = (InL <$> fromVal v) <|> (InR <$> fromVal v)
 
 data Sig (i :: [t]) (o :: *) where
     In  :: FromVal a => Sig i o -> Sig (a ': i) o
@@ -150,7 +159,9 @@ builtin_contains = Builtin (In (In Out)) $
 
 builtin_count :: Builtin
 builtin_count = Builtin (In Out)
-    (\(Cons (Collection c) Nil) -> return $! length (c :: [Value]))
+    (\(Cons countee Nil) -> case countee of
+        InL (Collection c) -> return $! length (c :: [Value])
+        InR txt            -> return $! T.length txt)
 
 builtin_endswith :: Builtin
 builtin_endswith = Builtin (In (In Out))
