@@ -217,12 +217,7 @@ evalRefArg source indexee refArg = do
         NumberV n
                 | Right i <- Scientific.floatingOrInteger n :: Either Double Int
                 , ArrayV a <- indexee ->
-            if i >= 0 && i < V.length a then
-                return (a V.! i)
-            else
-                raise' source "out of bounds" $
-                "Index out of bounds: index =" <+> PP.pretty indexee <>
-                ", array length = " <+> PP.pretty (V.length a)
+            if i >= 0 && i < V.length a then return (a V.! i) else cut
 
         _ | SetV set <- indexee ->
             -- If the LHS is a set, we just test if the index is in there.
