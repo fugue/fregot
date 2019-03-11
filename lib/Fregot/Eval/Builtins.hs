@@ -243,6 +243,12 @@ builtinOperators = \case
 
 builtin_equal :: Builtin
 builtin_equal = Builtin (In (In Out))
+  -- TODO(jaspervdj): These don't currently work:
+  --
+  --     0 == 1.2 - 1.2
+  --
+  -- Because we'll end up comparing an IntV on the left with a DoubleV on the
+  -- right.
   (\(Cons x (Cons y Nil)) -> return $! BoolV $! x == (y :: Value))
 
 builtin_not_equal :: Builtin
