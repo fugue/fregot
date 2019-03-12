@@ -13,4 +13,4 @@ before_install:
 
 script:
 - travis_wait stack --no-terminal --skip-ghc-check --copy-bins build
-- fregot test tests/
+- fregot test tests/rego

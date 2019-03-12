@@ -50,6 +50,7 @@ Library
 
     Control.Monad.Parachute
     Data.Unification
+    Data.SafeVar
 
     Control.Monad.Extended
     Data.Aeson.TH.Extended
@@ -87,3 +88,18 @@ Executable fregot
   Default-language:  Haskell2010
   Ghc-options:       -Wall -Werror -rtsopts -threaded
   build-depends:     base, fregot
+
+Test-suite fregot-tests
+  Hs-source-dirs:    tests/hs
+  Main-is:           Main.hs
+  Type:              exitcode-stdio-1.0
+  Default-language:  Haskell2010
+  Ghc-options:       -Wall -Werror -rtsopts -threaded
+
+  Other-modules:
+    Data.SafeVar.Tests
+
+  Build-depends:
+    fregot,
+    base     >= 4   && < 5,
+    tasty    >= 1.2 && < 1.3
