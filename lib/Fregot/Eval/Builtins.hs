@@ -1,7 +1,9 @@
 {-# LANGUAGE BangPatterns      #-}
 {-# LANGUAGE DataKinds         #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs             #-}
 {-# LANGUAGE KindSignatures    #-}
+{-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PolyKinds         #-}
 {-# LANGUAGE TypeOperators     #-}
@@ -17,21 +19,22 @@ module Fregot.Eval.Builtins
     , Builtin (..)
     , arity
 
-    , builtins
+    , builtinFunctions
+    , builtinOperators
     ) where
 
 import           Control.Applicative ((<|>))
-import           Control.Monad       (unless)
 import qualified Data.Aeson          as A
 import qualified Data.HashMap.Strict as HMS
 import qualified Data.HashSet        as HS
 import qualified Data.Text           as T
 import qualified Data.Text.Encoding  as T
-import qualified Data.Text.Read      as TR
 import qualified Data.Vector         as V
 import qualified Fregot.Eval.Json    as Json
 import           Fregot.Eval.Value
+import           Fregot.Prepare.Ast  (BinOp (..))
 import           Fregot.Sugar        (Var)
+import           Text.Read           (readMaybe)
 
 class ToVal a where
     toVal :: a -> Value
@@ -43,7 +46,10 @@ instance ToVal T.Text where
     toVal = StringV
 
 instance ToVal Int where
-    toVal = NumberV . fromIntegral
+    toVal = IntV
+
+instance ToVal Double where
+    toVal = DoubleV
 
 instance ToVal Bool where
     toVal = BoolV
@@ -64,6 +70,14 @@ instance FromVal T.Text where
     fromVal (StringV t) = Right t
     fromVal v           = Left $ "Expected string but got " ++ describeValue v
 
+instance FromVal Int where
+    fromVal (IntV i) =  Right i
+    fromVal v        = Left $ "Expected int but got " ++ describeValue v
+
+instance FromVal Double where
+    fromVal (DoubleV d) =  Right d
+    fromVal v           = Left $ "Expected double but got " ++ describeValue v
+
 instance FromVal Bool where
     fromVal (BoolV b) = Right b
     fromVal v         = Left $ "Expected bool but got " ++ describeValue v
@@ -74,6 +88,10 @@ instance FromVal a => FromVal (V.Vector a) where
 
 instance FromVal a => FromVal [a] where
     fromVal = fmap V.toList . fromVal
+
+instance FromVal (HS.HashSet Value) where
+    fromVal (SetV s) = Right s
+    fromVal v        = Left $ "Expected set but got " ++ describeValue v
 
 -- | Sometimes builtins (e.g. `count`) do not take a specific type, but any
 -- sort of collection.
@@ -122,8 +140,8 @@ arity (Builtin sig _) = go 0 sig
     go !acc Out    = acc
     go !acc (In s) = go (acc + 1) s
 
-builtins :: HMS.HashMap [Var] Builtin
-builtins = HMS.fromList
+builtinFunctions :: HMS.HashMap [Var] Builtin
+builtinFunctions = HMS.fromList
     [ (["all"], builtin_all)
     , (["any"], builtin_any)
     , (["concat"], builtin_concat)
@@ -201,9 +219,85 @@ builtin_startswith = Builtin (In (In Out))
 
 builtin_to_number :: Builtin
 builtin_to_number = Builtin (In Out)
-    -- TODO(jaspervdj): read floating points
-    (\(Cons str Nil) -> do
-        (x, remainder) <- TR.decimal str
-        unless (T.null remainder) $ Left $
-            "to_number: couldn't read " ++ T.unpack str
-        return $! NumberV $! fromIntegral (x :: Int))
+    (\(Cons txt Nil) ->
+        let str = T.unpack txt
+            mbRead = (Left <$> readMaybe str) <|> (Right <$> readMaybe str) in
+        case mbRead of
+            Nothing        -> Left $! "to_number: couldn't read " ++ str
+            Just (Left i)  -> return (IntV i)
+            Just (Right d) -> return (DoubleV d))
+
+builtinOperators :: BinOp -> Builtin
+builtinOperators = \case
+    EqualO -> builtin_equal
+    NotEqualO -> builtin_not_equal
+    LessThanO -> builtin_less_than
+    LessThanOrEqualO -> builtin_less_than_or_equal
+    GreaterThanO -> builtin_greater_than
+    GreaterThanOrEqualO -> builtin_greater_than_or_equal
+    PlusO -> builtin_plus
+    MinusO -> builtin_minus
+    TimesO -> builtin_times
+    DivideO -> builtin_divide
+    BinOrO -> builtin_bin_or
+
+builtin_equal :: Builtin
+builtin_equal = Builtin (In (In Out))
+  -- TODO(jaspervdj): These don't currently work:
+  --
+  --     0 == 1.2 - 1.2
+  --
+  -- Because we'll end up comparing an IntV on the left with a DoubleV on the
+  -- right.
+  (\(Cons x (Cons y Nil)) -> return $! BoolV $! x == (y :: Value))
+
+builtin_not_equal :: Builtin
+builtin_not_equal = Builtin (In (In Out))
+  (\(Cons x (Cons y Nil)) -> return $! BoolV $! x /= (y :: Value))
+
+builtin_less_than :: Builtin
+builtin_less_than = Builtin (In (In Out))
+  (\(Cons x (Cons y Nil)) -> return $! numericBinOp (<) (<) x y)
+
+builtin_less_than_or_equal :: Builtin
+builtin_less_than_or_equal = Builtin (In (In Out))
+  (\(Cons x (Cons y Nil)) -> return $! numericBinOp (<=) (<=) x y)
+
+builtin_greater_than :: Builtin
+builtin_greater_than = Builtin (In (In Out))
+  (\(Cons x (Cons y Nil)) -> return $! numericBinOp (>) (>) x y)
+
+builtin_greater_than_or_equal :: Builtin
+builtin_greater_than_or_equal = Builtin (In (In Out))
+  (\(Cons x (Cons y Nil)) -> return $! numericBinOp (>=) (>=) x y)
+
+builtin_plus :: Builtin
+builtin_plus = Builtin (In (In Out))
+  (\(Cons x (Cons y Nil)) -> return $! numericBinOp (+) (+) x y)
+
+builtin_minus :: Builtin
+builtin_minus = Builtin (In (In Out))
+  (\(Cons x (Cons y Nil)) -> return $! numericBinOp (-) (-) x y)
+
+builtin_times :: Builtin
+builtin_times = Builtin (In (In Out))
+  (\(Cons x (Cons y Nil)) -> return $! numericBinOp (*) (*) x y)
+
+builtin_divide :: Builtin
+builtin_divide = Builtin (In (In Out))
+  (\(Cons x (Cons y Nil)) -> return $!  numericBinOp
+    (\i1 i2 -> (fromIntegral i1 :: Double) / fromIntegral i2) (/) x y)
+
+builtin_bin_or :: Builtin
+builtin_bin_or = Builtin (In (In Out))
+  (\(Cons x (Cons y Nil)) -> return $! SetV $ HS.union x y)
+
+numericBinOp
+    :: (ToVal a, ToVal b)
+    => (Int -> Int -> a)
+    -> (Double -> Double -> b)
+    -> (Int :|: Double) -> (Int :|: Double) -> Value
+numericBinOp f _ (InL x) (InL y) = toVal $! f x y
+numericBinOp _ g (InL x) (InR y) = toVal $! g (fromIntegral x) y
+numericBinOp _ g (InR x) (InL y) = toVal $! g x (fromIntegral y)
+numericBinOp _ g (InR x) (InR y) = toVal $! g x y

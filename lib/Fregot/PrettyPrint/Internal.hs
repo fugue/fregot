@@ -42,13 +42,13 @@ module Fregot.PrettyPrint.Internal
     ) where
 
 import qualified Data.Aeson                        as Aeson
+import qualified Data.Scientific                   as Scientific
 import           Data.Semigroup                    (Semigroup, (<>))
 import qualified Data.Text                         as T
 import qualified Data.Text.Lazy                    as TL
 import           Prelude                           hiding (error)
 import qualified System.Console.ANSI               as Ansi
 import qualified System.IO.Extended                as IO
-import qualified Data.Scientific as Scientific
 import qualified Text.Blaze.Html                   as Html
 import qualified Text.Blaze.Html.Renderer.Text     as Html
 import           Text.PrettyPrint.Annotated.Leijen hiding ((<>))

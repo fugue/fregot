@@ -17,7 +17,6 @@ module Fregot.Eval.Value
 
 import           Data.Hashable        (Hashable (..))
 import qualified Data.HashSet         as HS
-import qualified Data.Scientific      as Scientific
 import qualified Data.Text            as T
 import qualified Data.Vector.Extended as V
 import           Fregot.PrettyPrint   ((<+>))
@@ -49,8 +48,8 @@ data Value
     = FreeV   !InstVar
     | WildcardV
     | StringV !T.Text
-    -- TODO(jaspervdj): This would be cleaner using `IntV` and `DoubleV`.
-    | NumberV !Scientific.Scientific
+    | IntV    !Int
+    | DoubleV !Double
     | BoolV   !Bool
     | ArrayV  !(V.Vector Value)
     | SetV    !(HS.HashSet Value)
@@ -68,7 +67,8 @@ instance PP.Pretty PP.Sem Value where
     pretty (FreeV   v)  = PP.pretty v
     pretty WildcardV    = "_"
     pretty (StringV t)  = PP.literal $ PP.pretty $ show $ T.unpack t
-    pretty (NumberV s)  = PP.literal $ PP.pretty s
+    pretty (IntV    i)  = PP.literal $ PP.pretty i
+    pretty (DoubleV d)  = PP.literal $ PP.pretty d
     pretty (BoolV   b)  = PP.literal $ if b then "true" else "false"
     pretty (ArrayV  a)  = PP.array (V.toList a)
     pretty (SetV    s)  = PP.set (HS.toList s)
@@ -81,7 +81,8 @@ describeValue = \case
     FreeV   v  -> "free variable (" ++ show v ++ ")"
     WildcardV  -> "wildcard"
     StringV  _ -> "string"
-    NumberV  _ -> "number"
+    IntV     _ -> "number"
+    DoubleV  _ -> "number"
     BoolV    _ -> "boolean"
     ArrayV   _ -> "array"
     SetV     _ -> "set"

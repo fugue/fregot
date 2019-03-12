@@ -56,7 +56,11 @@ ground mval = do
 
 evalExpr :: Expr SourceSpan -> EvalM Value
 evalExpr (TermE _ t)      = evalTerm t
-evalExpr (BinOpE _ x o y) = evalBinOp x o y
+evalExpr (BinOpE source x o y) = do
+    let builtin = builtinOperators o
+    xv <- evalExpr x
+    yv <- evalExpr y
+    evalBuiltin source builtin [xv, yv]
 
 evalTerm :: Term SourceSpan -> EvalM Value
 evalTerm (RefT source lhs arg) = do
@@ -76,7 +80,7 @@ evalTerm (RefT source lhs arg) = do
             evalRefArg source val arg
 
 evalTerm (CallT source f args)
-    | Just builtin <- HMS.lookup f builtins = do
+    | Just builtin <- HMS.lookup f builtinFunctions = do
         vargs <- mapM evalTerm args
         evalBuiltin source builtin vargs
 
@@ -202,7 +206,7 @@ evalRefArg source indexee refArg = do
 
         FreeV unbound -> case indexee of
             ArrayV a -> branch
-                [ Unification.bindTerm unbound (NumberV $ fromIntegral i) >> return val
+                [ Unification.bindTerm unbound (IntV i) >> return val
                 | (i, val) <- zip [0 :: Int ..] (V.toList a)
                 ]
             SetV s -> branch
@@ -221,9 +225,8 @@ evalRefArg source indexee refArg = do
             -- NOTE(jaspervdj): We can omit some warning here.
             maybe cut return $! V.lookup k o
 
-        NumberV n
-                | Right i <- Scientific.floatingOrInteger n :: Either Double Int
-                , ArrayV a <- indexee ->
+        _   | Just i <- toInt idx
+            , ArrayV a <- indexee ->
             if i >= 0 && i < V.length a then return (a V.! i) else cut
 
         _ | SetV set <- indexee ->
@@ -239,6 +242,12 @@ evalRefArg source indexee refArg = do
         _ -> raise' source "index type error" $
             "evalRefArg: cannot index" <+> PP.pretty (describeValue indexee) <+>
             "with a" <+> PP.pretty (describeValue idx)
+
+  where
+    toInt (IntV i)    = Just i
+    toInt (DoubleV d) =
+        let i = floor d in if fromIntegral i == d then Just i else Nothing
+    toInt _           = Nothing
 
 -- | Returns the value of the index value (if given) as well as the result of
 -- the rule.
@@ -390,40 +399,10 @@ evalStatement (ExprS e) = evalExpr e
 
 evalScalar :: Scalar a -> EvalM Value
 evalScalar (String t) = return $ StringV t
-evalScalar (Number t) = return $ NumberV t
+evalScalar (Number n) = return $ either DoubleV IntV $
+                            Scientific.floatingOrInteger n
 evalScalar (Bool   b) = return $ BoolV   b
 evalScalar Null       = return $ NullV
-
--- | TODO(jaspervdj): We should convert binary operators to builtin function
--- calls when preparing.
-evalBinOp :: Expr SourceSpan -> BinOp -> Expr SourceSpan -> EvalM Value
-evalBinOp x op y = do
-    xv <- evalExpr x
-    yv <- evalExpr y
-    case (xv, op, yv) of
-        (_, EqualO, _)    -> return $! BoolV $! xv == yv
-        (_, NotEqualO, _) -> return $! BoolV $! xv /= yv
-        (NumberV xn, LessThanO, NumberV yn) ->
-            return $! BoolV $! xn < yn
-        (NumberV xn, LessThanOrEqualO, NumberV yn) ->
-            return $! BoolV $! xn <= yn
-        (NumberV xn, GreaterThanO, NumberV yn) ->
-            return $! BoolV $! xn > yn
-        (NumberV xn, GreaterThanOrEqualO, NumberV yn) ->
-            return $! BoolV $! xn >= yn
-        (NumberV xn, PlusO, NumberV yn) ->
-            return $! NumberV $! xn + yn
-        (NumberV xn, MinusO, NumberV yn) ->
-            return $! NumberV $! xn - yn
-        (NumberV xn, TimesO, NumberV yn) ->
-            return $! NumberV $! xn * yn
-        (NumberV xn, DivideO, NumberV yn) ->
-            return $! NumberV $! xn / yn
-        (SetV xs, BinOrO, SetV ys) ->
-            return $! SetV (xs `HS.union` ys)
-        _ -> fail $
-            "evalBinOp: invalid arguments for " ++ show op ++
-            ": " ++ describeValue xv ++ ", " ++ describeValue yv
 
 unify :: Value -> Value -> EvalM ()
 unify WildcardV _     = return ()
