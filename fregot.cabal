@@ -49,8 +49,9 @@ Library
     Fregot.Sugar
 
     Control.Monad.Parachute
-    Data.Unification
     Data.SafeVar
+    Data.Unification
+    Language.Dot
 
     Control.Monad.Extended
     Data.Aeson.TH.Extended

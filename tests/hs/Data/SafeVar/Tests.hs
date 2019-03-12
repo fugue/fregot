@@ -1,7 +1,9 @@
 module Data.SafeVar.Tests where
 
+import           Control.Lens (view, (^.))
 import qualified Data.HashSet as HS
 import qualified Data.SafeVar as SafeVar
+import qualified Language.Dot as Dot
 import qualified Test.Tasty   as Tasty
 
 tests :: Tasty.TestTree
@@ -13,19 +15,37 @@ data SimpleExpr
     = LitE Int
     | VarE Var
     | AddE SimpleExpr SimpleExpr
-    deriving (Show)
+
+instance Show SimpleExpr where
+    show (LitE i)   = show i
+    show (VarE v)   = v
+    show (AddE x y) = show x ++ " + " ++ show y
 
 data SimpleStatement
-    = UnifyS SimpleExpr SimpleExpr
-    | AssignS Var SimpleExpr
+    = UnifyS      SimpleExpr SimpleExpr
+    | AssignS      Var       SimpleExpr
     | GreaterThanS SimpleExpr SimpleExpr
-    deriving (Show)
 
-program01 :: [SimpleStatement]
+instance Show SimpleStatement where
+    show (UnifyS       x y) = show x ++ " = "  ++ show y
+    show (AssignS      v x) = v      ++ " := " ++ show x
+    show (GreaterThanS x y) = show x ++ " > "  ++ show y
+
+type Program = [SimpleStatement]
+
+program01 :: Program
 program01 =
     [ GreaterThanS (VarE "x") (VarE "y")
-    , UnifyS (VarE "x") (LitE 1)
-    , UnifyS (LitE 2) (VarE "y")
+    , UnifyS       (VarE "x") (LitE 1)
+    , UnifyS       (LitE 2)   (VarE "y")
+    ]
+
+program02 :: Program
+program02 =
+    [ GreaterThanS (AddE (VarE "z") (VarE "x")) (VarE "y")
+    , UnifyS       (VarE "z") (LitE 1)
+    , UnifyS       (VarE "x") (VarE "y")
+    , UnifyS       (VarE "z") (VarE "x")
     ]
 
 freeVars :: SimpleExpr -> HS.HashSet Var
@@ -47,3 +67,9 @@ toStatement ss = SafeVar.Statement ss inVars outVars
                 (False, True)  -> (mempty, xf)
                 (True,  False) -> (mempty, yf)
                 (False, False) -> let f = xf <> yf in (f, f)
+
+programToDot :: Program -> Dot.Dot
+programToDot = Dot.digraph showNode show .  SafeVar.toGraph .  fmap toStatement
+  where
+    showNode (SafeVar.VarNode       x) = "[" ++ x ++ "]"
+    showNode (SafeVar.StatementNode s) = show (s ^. SafeVar.statementExpr)
