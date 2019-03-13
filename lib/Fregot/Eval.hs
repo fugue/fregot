@@ -19,7 +19,6 @@ module Fregot.Eval
     , runEvalM
 
     , evalVar
-    , evalExpr
     , evalTerm
     ) where
 
@@ -40,7 +39,6 @@ import           Fregot.Prepare.Ast
 import           Fregot.PrettyPrint         ((<+>))
 import qualified Fregot.PrettyPrint         as PP
 import           Fregot.Sources.SourceSpan  (SourceSpan)
-import qualified Fregot.Sugar               as Sugar
 
 ground :: EvalM Value -> EvalM Value
 ground mval = do
@@ -54,14 +52,6 @@ ground mval = do
         WildcardV -> fail $ "Unknown variable: _"
         _         -> return val
 
-evalExpr :: Expr SourceSpan -> EvalM Value
-evalExpr (TermE _ t)      = evalTerm t
-evalExpr (BinOpE source x o y) = do
-    let builtin = builtinOperators o
-    xv <- evalExpr x
-    yv <- evalExpr y
-    evalBuiltin source builtin [xv, yv]
-
 evalTerm :: Term SourceSpan -> EvalM Value
 evalTerm (RefT source lhs arg) = do
     mbCompiledRule <- case lhs of
@@ -73,38 +63,41 @@ evalTerm (RefT source lhs arg) = do
         Just crule
                 | CompleteRule /= crule ^. ruleKind
                 , FunctionRule /= crule ^. ruleKind -> do
-            arg' <- evalExpr arg
+            arg' <- evalTerm arg
             evalCompiledRule source crule (Just arg')
         _ -> do
             val <- evalTerm lhs
             evalRefArg source val arg
 
 evalTerm (CallT source f args)
-    | Just builtin <- HMS.lookup f builtinFunctions = do
+    | Just builtin <- HMS.lookup f builtins = do
         vargs <- mapM evalTerm args
         evalBuiltin source builtin vargs
 
-    | otherwise = do
-        mbCompiledRule <- lookupRule f
+    | NamedFunction rn <- f = do
+        mbCompiledRule <- lookupRule rn
         case mbCompiledRule of
             Just cr -> do
                 vargs <- mapM evalTerm args
                 evalUserFunction cr vargs
             Nothing -> raise' source "unknown function" $
-                "Unknown function call: " <+> PP.pretty (Sugar.NestedVar f)
+                "Unknown function call: " <+> PP.pretty f
+
+    | otherwise = raise' source "unknown function" $
+        "Unknown function call: " <+> PP.pretty f
 
 evalTerm (VarT source v) = evalVar source v
 evalTerm (ScalarT _ s) = evalScalar s
 evalTerm (ArrayT _ a) = do
-    bs <- mapM evalExpr a
+    bs <- mapM evalTerm a
     return $ ArrayV $ V.fromList bs
 evalTerm (SetT _ s) = do
-    bs <- mapM evalExpr s
+    bs <- mapM evalTerm s
     return $ SetV $ HS.fromList bs
 evalTerm (ObjectT _ o) = do
     obj <- forM o $ \(kt, vt) -> do
         key <- evalTerm kt
-        val <- evalExpr vt
+        val <- evalTerm vt
         return (key, val)
 
     -- TODO(jaspervdj): Check for key consistency and optimizations.
@@ -180,9 +173,9 @@ evalBuiltin source (Builtin sig impl) args0 = do
 -- * indexing rules
 -- * indexing "cached/precomputed" rules
 -- * indexing actual values, i.e. objects and arrays
-evalRefArg :: SourceSpan -> Value -> Expr SourceSpan -> EvalM Value
+evalRefArg :: SourceSpan -> Value -> Term SourceSpan -> EvalM Value
 evalRefArg source indexee refArg = do
-    idx <- evalExpr refArg
+    idx <- evalTerm refArg
     case idx of
         StringV k | PackageV pkgname <- indexee -> do
             mbPkg <- lookupPackage pkgname
@@ -386,16 +379,16 @@ evalRuleBody lits0 final = go lits0
 
 evalStatement :: Statement SourceSpan -> EvalM Value
 evalStatement (UnifyS _ x y) = do
-    xv <- evalExpr x
-    yv <- evalExpr y
+    xv <- evalTerm x
+    yv <- evalTerm y
     _  <- unify xv yv
     return $ BoolV True
 evalStatement (AssignS _ v x) = do
-    xv <- evalExpr x
+    xv <- evalTerm x
     iv <- toInstVar v
     unify (FreeV iv) xv
     return $ BoolV True
-evalStatement (ExprS e) = evalExpr e
+evalStatement (TermS e) = evalTerm e
 
 evalScalar :: Scalar a -> EvalM Value
 evalScalar (String t) = return $ StringV t
