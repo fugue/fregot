@@ -25,6 +25,7 @@ module Fregot.Prepare.Ast
     , Literal (..), literalNegation, literalStatement, literalWith
     , Statement (..)
     , Term (..), termAnn
+    , Object
     , Function (..)
     , BinOp (..)
 

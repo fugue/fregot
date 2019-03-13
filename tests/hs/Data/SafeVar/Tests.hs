@@ -1,7 +1,8 @@
 module Data.SafeVar.Tests where
 
-import           Control.Lens (view, (^.))
+import           Control.Lens ((^.))
 import qualified Data.HashSet as HS
+import qualified Data.Map     as Map
 import qualified Data.SafeVar as SafeVar
 import qualified Language.Dot as Dot
 import qualified Test.Tasty   as Tasty
@@ -69,7 +70,10 @@ toStatement ss = SafeVar.Statement ss inVars outVars
                 (False, False) -> let f = xf <> yf in (f, f)
 
 programToDot :: Program -> Dot.Dot
-programToDot = Dot.digraph showNode show .  SafeVar.toGraph .  fmap toStatement
+programToDot =
+    Dot.digraph showNode show .
+    (map (\(k, (v, n)) -> (v, k, n)) . Map.toList) .
+    SafeVar.toGraph .  fmap toStatement
   where
     showNode (SafeVar.VarNode       x) = "[" ++ x ++ "]"
     showNode (SafeVar.StatementNode s) = show (s ^. SafeVar.statementExpr)
