@@ -320,7 +320,7 @@ instance PP.Pretty PP.Sem (ObjectKey a) where
     pretty (RefK _ v a)  = PP.pretty v <> mconcat (map PP.pretty a)
 
 instance PP.Pretty PP.Sem BinOp where
-    pretty bo = PP.punctuation $ case bo of
+    pretty = PP.punctuation . \case
         UnifyO              -> "="
         AssignO             -> ":="
         EqualO              -> "=="

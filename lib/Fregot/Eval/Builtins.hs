@@ -19,8 +19,7 @@ module Fregot.Eval.Builtins
     , Builtin (..)
     , arity
 
-    , builtinFunctions
-    , builtinOperators
+    , builtins
     ) where
 
 import           Control.Applicative ((<|>))
@@ -32,8 +31,7 @@ import qualified Data.Text.Encoding  as T
 import qualified Data.Vector         as V
 import qualified Fregot.Eval.Json    as Json
 import           Fregot.Eval.Value
-import           Fregot.Prepare.Ast  (BinOp (..))
-import           Fregot.Sugar        (Var)
+import           Fregot.Prepare.Ast  (Function (..), BinOp (..))
 import           Text.Read           (readMaybe)
 
 class ToVal a where
@@ -140,22 +138,33 @@ arity (Builtin sig _) = go 0 sig
     go !acc Out    = acc
     go !acc (In s) = go (acc + 1) s
 
-builtinFunctions :: HMS.HashMap [Var] Builtin
-builtinFunctions = HMS.fromList
-    [ (["all"], builtin_all)
-    , (["any"], builtin_any)
-    , (["concat"], builtin_concat)
-    , (["contains"], builtin_contains)
-    , (["count"], builtin_count)
-    , (["endswith"], builtin_endswith)
-    , (["is_object"], builtin_is_object)
-    , (["is_string"], builtin_is_string)
-    , (["json", "unmarshal"], builtin_json_unmarshal)
-    , (["replace"], builtin_replace)
-    , (["split"], builtin_split)
-    , (["startswith"], builtin_startswith)
-    , (["to_number"], builtin_to_number)
-    , (["trim"], builtin_trim)
+builtins :: HMS.HashMap Function Builtin
+builtins = HMS.fromList
+    [ (NamedFunction ["all"],                builtin_all)
+    , (NamedFunction ["any"],                builtin_any)
+    , (NamedFunction ["concat"],             builtin_concat)
+    , (NamedFunction ["contains"],           builtin_contains)
+    , (NamedFunction ["count"],              builtin_count)
+    , (NamedFunction ["endswith"],           builtin_endswith)
+    , (NamedFunction ["is_object"],          builtin_is_object)
+    , (NamedFunction ["is_string"],          builtin_is_string)
+    , (NamedFunction ["json", "unmarshal"],  builtin_json_unmarshal)
+    , (NamedFunction ["replace"],            builtin_replace)
+    , (NamedFunction ["split"],              builtin_split)
+    , (NamedFunction ["startswith"],         builtin_startswith)
+    , (NamedFunction ["to_number"],          builtin_to_number)
+    , (NamedFunction ["trim"],               builtin_trim)
+    , (OperatorFunction EqualO,              builtin_equal)
+    , (OperatorFunction NotEqualO,           builtin_not_equal)
+    , (OperatorFunction LessThanO,           builtin_less_than)
+    , (OperatorFunction LessThanOrEqualO,    builtin_less_than_or_equal)
+    , (OperatorFunction GreaterThanO,        builtin_greater_than)
+    , (OperatorFunction GreaterThanOrEqualO, builtin_greater_than_or_equal)
+    , (OperatorFunction PlusO,               builtin_plus)
+    , (OperatorFunction MinusO,              builtin_minus)
+    , (OperatorFunction TimesO,              builtin_times)
+    , (OperatorFunction DivideO,             builtin_divide)
+    , (OperatorFunction BinOrO,              builtin_bin_or)
     ]
 
 builtin_all :: Builtin
@@ -226,20 +235,6 @@ builtin_to_number = Builtin (In Out)
             Nothing        -> Left $! "to_number: couldn't read " ++ str
             Just (Left i)  -> return (IntV i)
             Just (Right d) -> return (DoubleV d))
-
-builtinOperators :: BinOp -> Builtin
-builtinOperators = \case
-    EqualO -> builtin_equal
-    NotEqualO -> builtin_not_equal
-    LessThanO -> builtin_less_than
-    LessThanOrEqualO -> builtin_less_than_or_equal
-    GreaterThanO -> builtin_greater_than
-    GreaterThanOrEqualO -> builtin_greater_than_or_equal
-    PlusO -> builtin_plus
-    MinusO -> builtin_minus
-    TimesO -> builtin_times
-    DivideO -> builtin_divide
-    BinOrO -> builtin_bin_or
 
 builtin_equal :: Builtin
 builtin_equal = Builtin (In (In Out))
