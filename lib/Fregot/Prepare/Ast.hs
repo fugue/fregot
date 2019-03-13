@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
@@ -23,8 +24,8 @@ module Fregot.Prepare.Ast
     , RuleBody
     , Literal (..), literalNegation, literalStatement, literalWith
     , Statement (..)
-    , Expr (..), exprAnn
     , Term (..), termAnn
+    , Function (..)
     , BinOp (..)
 
     , With (..), withPath, withAs
@@ -34,10 +35,13 @@ module Fregot.Prepare.Ast
 
 import           Control.Lens              (Lens', lens)
 import           Control.Lens.TH           (makeLenses)
+import           Data.Hashable             (Hashable)
 import qualified Data.HashMap.Strict       as HMS
+import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources.SourceSpan (SourceSpan)
 import           Fregot.Sugar              (Var (..))
 import qualified Fregot.Sugar              as Sugar
+import           GHC.Generics              (Generic)
 
 data RuleKind
     = CompleteRule
@@ -82,30 +86,32 @@ data Literal a = Literal
     } deriving (Show)
 
 data Statement a
-    = UnifyS  a (Expr a) (Expr a)
-    | AssignS a Var (Expr a)
-    | ExprS   (Expr a)
-    deriving (Show)
-
-data Expr a
-    = TermE   a (Term a)
-    | BinOpE  a (Expr a) BinOp (Expr a)
+    = UnifyS  a (Term a) (Term a)
+    | AssignS a Var (Term a)
+    | TermS     (Term a)
     deriving (Show)
 
 data Term a
-    = RefT        a (Term a) (Expr a)
-    | CallT       a [Var] [Term a]
+    = RefT        a (Term a) (Term a)
+    | CallT       a Function [Term a]
     | VarT        a Var
     | ScalarT     a (Sugar.Scalar a)
-    | ArrayT      a [Expr a]
-    | SetT        a [Expr a]
+    | ArrayT      a [Term a]
+    | SetT        a [Term a]
     | ObjectT     a (Object a)
     | ArrayCompT  a (Term a) (RuleBody a)
     | SetCompT    a (Term a) (RuleBody a)
     | ObjectCompT a (Term a) (Term a) (RuleBody a)
     deriving (Show)
 
-type Object a = [(Term a, Expr a)]
+data Function
+    = NamedFunction [Var]
+    | OperatorFunction BinOp
+    deriving (Eq, Generic, Show)
+
+instance Hashable Function
+
+type Object a = [(Term a, Term a)]
 
 data BinOp
     = EqualO
@@ -119,7 +125,9 @@ data BinOp
     | TimesO
     | DivideO
     | BinOrO
-    deriving (Show)
+    deriving (Eq, Generic, Show)
+
+instance Hashable BinOp
 
 data With a = With
     { withAnn   :: !a
@@ -133,16 +141,23 @@ $(makeLenses ''RuleElse)
 $(makeLenses ''Literal)
 $(makeLenses ''With)
 
-exprAnn :: Lens' (Expr a) a
-exprAnn = lens getAnn setAnn
-  where
-    getAnn = \case
-        TermE   a _     -> a
-        BinOpE  a _ _ _ -> a
+instance PP.Pretty PP.Sem Function where
+    pretty (NamedFunction    vs) = PP.pretty (Sugar.NestedVar vs)
+    pretty (OperatorFunction o)  = PP.pretty o
 
-    setAnn e a = case e of
-        TermE   _ t     -> TermE   a t
-        BinOpE  _ x o y -> BinOpE  a x o y
+instance PP.Pretty PP.Sem BinOp where
+    pretty = PP.punctuation . \case
+        EqualO              -> "=="
+        NotEqualO           -> "!="
+        LessThanO           -> "<"
+        LessThanOrEqualO    -> "<="
+        GreaterThanO        -> ">"
+        GreaterThanOrEqualO -> ">="
+        PlusO               -> "+"
+        MinusO              -> "-"
+        TimesO              -> "*"
+        DivideO             -> "/"
+        BinOrO              -> "|"
 
 termAnn :: Lens' (Term a) a
 termAnn = lens getAnn setAnn

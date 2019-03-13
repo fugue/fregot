@@ -211,7 +211,7 @@ prepareLiteral slit = do
             UnifyS ann <$> prepareExpr x <*> prepareExpr y
         Sugar.BinOpE ann (Sugar.TermE _ (Sugar.VarT _ v)) Sugar.AssignO y ->
             AssignS ann v <$> prepareExpr y
-        expr -> ExprS <$> prepareExpr expr
+        expr -> TermS <$> prepareExpr expr
 
     with <- traverse prepareWith $ slit ^. Sugar.literalWith
     pure Literal
@@ -223,13 +223,14 @@ prepareLiteral slit = do
 prepareExpr
     :: Monad m
     => Sugar.Expr SourceSpan
-    -> ParachuteT Error m (Expr SourceSpan)
+    -> ParachuteT Error m (Term SourceSpan)
 prepareExpr = \case
-    Sugar.TermE source t -> TermE source <$> prepareTerm t
-    Sugar.BinOpE source x o y -> BinOpE source
-        <$> prepareExpr x
-        <*> prepareBinOp source o
-        <*> prepareExpr y
+    Sugar.TermE _source t -> prepareTerm t
+    Sugar.BinOpE source x o y -> do
+        o' <- prepareBinOp source o
+        x' <- prepareExpr x
+        y' <- prepareExpr y
+        return $ CallT source (OperatorFunction o') [x', y']
     Sugar.ParensE _source e -> prepareExpr e
 
 prepareTerm
@@ -241,7 +242,7 @@ prepareTerm = \case
         prepareRef source varSource var0 refs
 
     Sugar.CallT source vars args ->
-        CallT source vars <$> traverse prepareTerm args
+        CallT source (NamedFunction vars) <$> traverse prepareTerm args
     Sugar.VarT source v -> pure $ VarT source v
     Sugar.ScalarT source s -> pure $ ScalarT source s
 
@@ -265,7 +266,7 @@ prepareRef
 prepareRef source varSource var0 refs = foldM
     (\acc refArg -> case refArg of
         Sugar.RefDotArg ann (Var v) -> return $
-            RefT source acc (TermE ann (ScalarT ann (Sugar.String v)))
+            RefT source acc (ScalarT ann (Sugar.String v))
         Sugar.RefBrackArg k -> do
             k' <- prepareExpr k
             return $ RefT source acc k')
@@ -275,7 +276,7 @@ prepareRef source varSource var0 refs = foldM
 prepareObjectItem
     :: Monad m
     => (Sugar.ObjectKey SourceSpan, Sugar.Expr SourceSpan)
-    -> ParachuteT Error m (Term SourceSpan, Expr SourceSpan)
+    -> ParachuteT Error m (Term SourceSpan, Term SourceSpan)
 prepareObjectItem (k, e) = (,) <$> prepareObjectKey k <*> prepareExpr e
 
 prepareObjectKey
