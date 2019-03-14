@@ -49,6 +49,13 @@ program02 =
     , UnifyS       (VarE "z") (VarE "x")
     ]
 
+program03 :: Program
+program03 =
+    [ GreaterThanS (VarE "x") (VarE "y")
+    , UnifyS       (VarE "x") (LitE 1)
+    , UnifyS       (VarE "y") (VarE "z")
+    ]
+
 freeVars :: SimpleExpr -> HS.HashSet Var
 freeVars (LitE _)   = HS.empty
 freeVars (VarE x)   = HS.singleton x

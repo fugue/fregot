@@ -57,6 +57,7 @@ Library
     Control.Monad.Extended
     Data.Aeson.TH.Extended
     Data.IORef.Extended
+    Data.List.NonEmpty.Extended
     Data.Vector.Extended
     System.Directory.Find
     System.IO.Extended

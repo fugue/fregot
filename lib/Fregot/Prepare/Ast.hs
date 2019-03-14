@@ -29,7 +29,7 @@ module Fregot.Prepare.Ast
     , Function (..)
     , BinOp (..)
 
-    , With (..), withPath, withAs
+    , With (..), withAnn, withPath, withAs
 
     , Sugar.Scalar (..)
     ) where
@@ -131,7 +131,7 @@ data BinOp
 instance Hashable BinOp
 
 data With a = With
-    { withAnn   :: !a
+    { _withAnn  :: !a
     , _withPath :: [Var]
     , _withAs   :: !(Term a)
     } deriving (Show)
