@@ -39,7 +39,7 @@ Library
     Fregot.Parser.Token
     Fregot.Prepare
     Fregot.Prepare.Ast
-    Fregot.Prepare.ReOrder
+    Fregot.Prepare.Vars
     Fregot.PrettyPrint
     Fregot.PrettyPrint.Internal
     Fregot.PrettyPrint.Sem
@@ -102,11 +102,13 @@ Test-suite fregot-tests
 
   Other-modules:
     Data.SafeVar.Tests
+    Fregot.Prepare.Vars.Tests
 
   Build-depends:
     fregot,
-    base                 >= 4   && < 5,
+    base                 >= 4    && < 5,
     lens                 >= 4.17 && < 4.18,
     containers           >= 0.6  && < 0.7,
     unordered-containers >= 0.2  && < 0.3,
-    tasty                >= 1.2 && < 1.3
+    tasty                >= 1.2  && < 1.3,
+    tasty-hunit          >= 0.10 && < 0.11

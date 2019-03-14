@@ -32,6 +32,9 @@ module Fregot.Prepare.Ast
     , With (..), withAnn, withPath, withAs
 
     , Sugar.Scalar (..)
+
+      -- * Constructors
+    , literal
     ) where
 
 import           Control.Lens              (Lens', lens)
@@ -186,3 +189,9 @@ termAnn = lens getAnn setAnn
         ArrayCompT  _ x b   -> ArrayCompT  a x b
         SetCompT    _ x b   -> SetCompT    a x b
         ObjectCompT _ k x b -> ObjectCompT a k x b
+
+--------------------------------------------------------------------------------
+-- Constructor-like things
+
+literal :: Statement a -> Literal a
+literal s = Literal False s []

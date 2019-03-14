@@ -1,9 +1,11 @@
 {-# LANGUAGE DeriveFunctor   #-}
 {-# LANGUAGE TemplateHaskell #-}
-module Fregot.Prepare.ReOrder
+module Fregot.Prepare.Vars
     ( Dir (..)
     , Vars (..), varsIn, varsOut
+
     , Scope (..), locals, globals, builtins
+    , emptyScope
 
     , freeRuleBody
     , freeStatement
@@ -33,17 +35,9 @@ up = Up ()
 data Vars v a = Vars
     { _varsIn  :: HMS.HashMap v (NonEmpty.NonEmpty a)
     , _varsOut :: HMS.HashMap v ()
-    }
-
--- | Set of declared variables.
-data Scope v = Scope
-    { _locals   :: !(HS.HashSet v)
-    , _globals  :: !(HS.HashSet [v])  -- Maybe a function instead?
-    , _builtins :: !(HMS.HashMap Function Builtins.Builtin)
-    }
+    } deriving (Eq, Show)
 
 $(makeLenses ''Vars)
-$(makeLenses ''Scope)
 
 instance (Eq v, Hashable v) => Semigroup (Vars v a) where
     v1 <> v2 =
@@ -64,6 +58,20 @@ vout v = Vars mempty (HMS.singleton v ())
 
 close :: (Eq v, Hashable v) => Vars v a -> Vars v a
 close = varsOut .~ mempty
+
+--------------------------------------------------------------------------------
+
+-- | Set of declared variables.
+data Scope v = Scope
+    { _locals   :: !(HS.HashSet v)
+    , _globals  :: !(HS.HashSet [v])  -- Maybe a function instead?
+    , _builtins :: !(HMS.HashMap Function Builtins.Builtin)
+    }
+
+$(makeLenses ''Scope)
+
+emptyScope :: Scope v
+emptyScope = Scope HS.empty HS.empty HMS.empty
 
 --------------------------------------------------------------------------------
 
@@ -89,12 +97,11 @@ freeStatement scope (Down _) (UnifyS _ x y)  =
     freeTerm scope down x <> freeTerm scope down y
 
 freeUnify :: Scope Var -> Term a -> Term a -> Vars Var a
-freeUnify scope (VarT _ alpha) y | defined alpha scope =
-    freeTerm scope up y
-freeUnify scope x (VarT _ beta) | defined beta scope =
-    freeTerm scope up x
-freeUnify scope x y =
-    freeTerm scope down x <> freeTerm scope down y
+freeUnify scope (VarT ax alpha) (VarT bx beta) =
+    freeTerm scope down (VarT ax alpha) <> freeTerm scope down (VarT bx beta)
+freeUnify scope (VarT _ alpha) y = vout alpha <> freeTerm scope down y
+freeUnify scope x (VarT _ beta) = vout beta <> freeTerm scope down x
+freeUnify scope x y = freeTerm scope down x <> freeTerm scope down y
 
 freeTerm :: Scope Var -> Dir ty -> Term a -> Vars Var a
 freeTerm scope _dir (RefT _ x k) =
