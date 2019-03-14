@@ -72,8 +72,8 @@ toStatement ss = SafeVar.Statement ss inVars outVars
 programToDot :: Program -> Dot.Dot
 programToDot =
     Dot.digraph showNode show .
-    (map (\(k, (v, n)) -> (v, k, n)) . Map.toList) .
+    (map (\(k, (v, n)) -> ((k, v), k, n)) . Map.toList) .
     SafeVar.toGraph .  fmap toStatement
   where
-    showNode (SafeVar.VarNode       x) = "[" ++ x ++ "]"
-    showNode (SafeVar.StatementNode s) = show (s ^. SafeVar.statementExpr)
+    showNode (k, (SafeVar.VarNode       x)) = show k ++ ". [" ++ x ++ "]"
+    showNode (k, (SafeVar.StatementNode s)) = show k ++ ". " ++ show (s ^. SafeVar.statementExpr)

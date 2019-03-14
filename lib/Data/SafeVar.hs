@@ -47,10 +47,11 @@ toGraph statements =
         foldOf (traverse . statementOut) statements
 
     idxVariables :: Map v Key
-    idxVariables = Map.fromList $ zip (HS.toList allVariables) [0 ..]
+    idxVariables = Map.fromList $
+        zip (HS.toList allVariables) [length idxStatements ..]
 
     idxStatements :: [(Key, Statement s v)]
-    idxStatements = zip [HS.size allVariables ..] statements
+    idxStatements = zip [0 ..] statements
 
     toKeyList :: HS.HashSet v -> [Key]
     toKeyList = mapMaybe (\v -> Map.lookup v idxVariables) . HS.toList
