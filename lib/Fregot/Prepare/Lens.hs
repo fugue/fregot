@@ -4,13 +4,15 @@
 module Fregot.Prepare.Lens
     ( ruleBodyTerms
     , termAnn
+    , termVars
     , termCosmosVars
+    , termCosmosNoClosures
     , termCosmosClosures
     ) where
 
-import           Control.Lens        (Fold, Lens', Traversal', lens, to,
-                                      traverseOf, (^.))
-import           Control.Lens.Plated (Plated (..), cosmos)
+import           Control.Lens        (Fold, Lens', Traversal', lens, traverseOf,
+                                      (^.))
+import           Control.Lens.Plated (Plated (..), cosmos, cosmosOnOf)
 import           Control.Lens.TH     (makePrisms)
 import           Fregot.Prepare.Ast
 
@@ -72,12 +74,28 @@ instance Plated (Term a) where
         ObjectCompT a k v b -> ObjectCompT a <$>
                                 f k <*> f v <*> ruleBodyTerms f b
 
-termCosmosVars :: Fold (Term a) Var
-termCosmosVars = cosmos . _VarT . to snd
+-- | Fold over the direct vars of a term.
+termVars :: Traversal' (Term a) Var
+termVars = _VarT . traverse
 
+termCosmosVars :: Fold (Term a) Var
+termCosmosVars = cosmos . termVars
+
+-- | Fold over all closures in a term recursively.
 termCosmosClosures :: Fold (Term a) (Term a)
 termCosmosClosures = cosmos . termClosures
 
+-- | Fold over all terms that DO NOT appear in a closure.
+termCosmosNoClosures :: Fold (Term a) (Term a)
+termCosmosNoClosures = cosmosOnOf noClosure (plate . noClosure)
+  where
+    noClosure f e = case e of
+        ArrayCompT  _ _ _   -> pure e
+        SetCompT    _ _ _   -> pure e
+        ObjectCompT _ _ _ _ -> pure e
+        _                   -> f e
+
+-- | Fold over the direct subclosures of a term.
 termClosures :: Traversal' (Term a) (Term a)
 termClosures f e = case e of
     ArrayCompT  _ _ _   -> f e

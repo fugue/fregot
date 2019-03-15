@@ -21,7 +21,18 @@ tests = Tasty.testGroup "Fregot.Prepare.Lens.Tests"
             , ArrayCompT () (v "e") [literal $ TermS (v "e")]
             ]
         ] @?= ["c", "d", "e"]
+    , Tasty.testCase "vars not in closures" $ HS.toHashSetOf
+        (ruleBodyTerms . termCosmosNoClosures . termVars)
+        [ literal $ UnifyS () (v "a") (v "b")
+        , literal $ TermS (ArrayCompT () (v "c") [literal $ TermS (v "c")])
+        , literal $ TermS $ ArrayT ()
+            [ ScalarT () (String "wat")
+            , ArrayCompT () (v "d") [literal $ TermS (v "d")]
+            , ArrayCompT () (v "e") [literal $ TermS (v "e")]
+            , v "dontforgetme"
+            ]
+        , literal $ UnifyS () (v "x") $ ArrayT () [v "y", v "z"]
+        ] @?= ["a", "b", "x", "y", "z", "dontforgetme"]
     ]
-
   where
     v = VarT ()
