@@ -20,18 +20,26 @@ tests = Tasty.testGroup "Fregot.Prepare.Order.Tests"
 
 tests_reorder :: Tasty.TestTree
 tests_reorder = Tasty.testGroup "reorder"
-    [ Tasty.testCase "01" $ reorder needAllSmallerNumbers
+    [ Tasty.testCase "01" $ reorderSmallerNumbers
         [1, 2, 3, 4] @?= ([1, 2, 3, 4], [])
-    , Tasty.testCase "02" $ reorder needAllSmallerNumbers
+    , Tasty.testCase "02" $ reorderSmallerNumbers
         [1, 4, 3, 2] @?= ([1, 2, 3, 4], [])
-    , Tasty.testCase "03" $ reorder needAllSmallerNumbers
+    , Tasty.testCase "03" $ reorderSmallerNumbers
         [1, 5, 3, 2] @?= ([1, 2, 3], [[4]])
     ]
   where
-    needAllSmallerNumbers :: [Int] -> Int -> OrderPredicate (HS.HashSet Int)
-    needAllSmallerNumbers xs x =
-        let missing = HS.fromList [1 .. x - 1] `HS.difference` HS.fromList xs in
-        if null missing then OrderOk else OrderError missing
+    reorderSmallerNumbers xs =
+        let (_, ys, es) = reorder needAllSmallerNumbers mempty xs in
+        (ys, es)
+
+    needAllSmallerNumbers
+        :: HS.HashSet Int -> [Int] -> Int
+        -> OrderPredicate (HS.HashSet Int) (HS.HashSet Int)
+    needAllSmallerNumbers acc _xs x =
+        let missing = HS.fromList [1 .. x - 1] `HS.difference` acc in
+        if null missing
+            then OrderOk (HS.insert x acc)
+            else OrderError missing
 
 tests_orderForClosures :: Tasty.TestTree
 tests_orderForClosures = Tasty.testGroup "orderForClosures"
