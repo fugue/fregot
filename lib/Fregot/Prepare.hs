@@ -20,6 +20,7 @@ import           Data.Maybe                (isJust, isNothing, mapMaybe)
 import           Fregot.Error              (Error)
 import qualified Fregot.Error              as Error
 import           Fregot.Prepare.Ast
+import           Fregot.Prepare.Lens
 import           Fregot.PrettyPrint        ((<+>))
 import           Fregot.Sources.SourceSpan (SourceSpan)
 import qualified Fregot.Sugar              as Sugar

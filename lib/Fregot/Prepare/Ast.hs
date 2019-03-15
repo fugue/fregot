@@ -24,7 +24,7 @@ module Fregot.Prepare.Ast
     , RuleBody
     , Literal (..), literalNegation, literalStatement, literalWith
     , Statement (..)
-    , Term (..), termAnn
+    , Term (..)
     , Object
     , Function (..)
     , BinOp (..)
@@ -37,7 +37,6 @@ module Fregot.Prepare.Ast
     , literal
     ) where
 
-import           Control.Lens              (Lens', lens)
 import           Control.Lens.TH           (makeLenses)
 import           Data.Hashable             (Hashable)
 import qualified Data.HashMap.Strict       as HMS
@@ -162,33 +161,6 @@ instance PP.Pretty PP.Sem BinOp where
         TimesO              -> "*"
         DivideO             -> "/"
         BinOrO              -> "|"
-
-termAnn :: Lens' (Term a) a
-termAnn = lens getAnn setAnn
-  where
-    getAnn = \case
-        RefT        a _ _   -> a
-        CallT       a _ _   -> a
-        VarT        a _     -> a
-        ScalarT     a _     -> a
-        ArrayT      a _     -> a
-        SetT        a _     -> a
-        ObjectT     a _     -> a
-        ArrayCompT  a _ _   -> a
-        SetCompT    a _ _   -> a
-        ObjectCompT a _ _ _ -> a
-
-    setAnn t a = case t of
-        RefT        _ x k   -> RefT        a x k
-        CallT       _ f as  -> CallT       a f as
-        VarT        _ v     -> VarT        a v
-        ScalarT     _ s     -> ScalarT     a s
-        ArrayT      _ l     -> ArrayT      a l
-        SetT        _ s     -> SetT        a s
-        ObjectT     _ o     -> ObjectT     a o
-        ArrayCompT  _ x b   -> ArrayCompT  a x b
-        SetCompT    _ x b   -> SetCompT    a x b
-        ObjectCompT _ k x b -> ObjectCompT a k x b
 
 --------------------------------------------------------------------------------
 -- Constructor-like things

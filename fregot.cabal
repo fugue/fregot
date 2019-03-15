@@ -39,6 +39,7 @@ Library
     Fregot.Parser.Token
     Fregot.Prepare
     Fregot.Prepare.Ast
+    Fregot.Prepare.Lens
     Fregot.Prepare.Vars
     Fregot.PrettyPrint
     Fregot.PrettyPrint.Internal
@@ -56,6 +57,7 @@ Library
 
     Control.Monad.Extended
     Data.Aeson.TH.Extended
+    Data.HashSet.Extended
     Data.IORef.Extended
     Data.List.NonEmpty.Extended
     Data.Vector.Extended
@@ -102,6 +104,7 @@ Test-suite fregot-tests
 
   Other-modules:
     Data.SafeVar.Tests
+    Fregot.Prepare.Lens.Tests
     Fregot.Prepare.Vars.Tests
 
   Build-depends:

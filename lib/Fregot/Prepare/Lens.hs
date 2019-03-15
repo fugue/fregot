@@ -1,0 +1,86 @@
+{-# LANGUAGE LambdaCase      #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
+module Fregot.Prepare.Lens
+    ( ruleBodyTerms
+    , termAnn
+    , termCosmosVars
+    , termCosmosClosures
+    ) where
+
+import           Control.Lens        (Fold, Lens', Traversal', lens, to,
+                                      traverseOf, (^.))
+import           Control.Lens.Plated (Plated (..), cosmos)
+import           Control.Lens.TH     (makePrisms)
+import           Fregot.Prepare.Ast
+
+$(makePrisms ''Term)
+
+termAnn :: Lens' (Term a) a
+termAnn = lens getAnn setAnn
+  where
+    getAnn = \case
+        RefT        a _ _   -> a
+        CallT       a _ _   -> a
+        VarT        a _     -> a
+        ScalarT     a _     -> a
+        ArrayT      a _     -> a
+        SetT        a _     -> a
+        ObjectT     a _     -> a
+        ArrayCompT  a _ _   -> a
+        SetCompT    a _ _   -> a
+        ObjectCompT a _ _ _ -> a
+
+    setAnn t a = case t of
+        RefT        _ x k   -> RefT        a x k
+        CallT       _ f as  -> CallT       a f as
+        VarT        _ v     -> VarT        a v
+        ScalarT     _ s     -> ScalarT     a s
+        ArrayT      _ l     -> ArrayT      a l
+        SetT        _ s     -> SetT        a s
+        ObjectT     _ o     -> ObjectT     a o
+        ArrayCompT  _ x b   -> ArrayCompT  a x b
+        SetCompT    _ x b   -> SetCompT    a x b
+        ObjectCompT _ k x b -> ObjectCompT a k x b
+
+statementTerms :: Traversal' (Statement a) (Term a)
+statementTerms f = \case
+    UnifyS  a x y -> UnifyS a <$> f x <*> f y
+    AssignS a v x -> AssignS a v <$> f x
+    TermS       x -> TermS <$> f x
+
+literalTerms :: Traversal' (Literal a) (Term a)
+literalTerms f lit = Literal (lit ^. literalNegation)
+    <$> statementTerms f (lit ^. literalStatement)
+    <*> traverseOf (traverse . withAs) f (lit ^. literalWith)
+
+ruleBodyTerms :: Traversal' (RuleBody a) (Term a)
+ruleBodyTerms = traverse . literalTerms
+
+instance Plated (Term a) where
+    plate f = \case
+        RefT        a x k   -> RefT a <$> f x <*> f k
+        CallT       a g xs  -> CallT a g <$> traverse f xs
+        VarT        a v     -> pure (VarT a v)
+        ScalarT     a s     -> pure (ScalarT a s)
+        ArrayT      a xs    -> ArrayT a <$> traverse f xs
+        SetT        a xs    -> SetT a <$> traverse f xs
+        ObjectT     a xs    -> ObjectT a <$>
+                                traverse (\(k, v) -> (,) <$> f k <*> f v) xs
+        ArrayCompT  a h b   -> ArrayCompT a <$> f h <*> ruleBodyTerms f b
+        SetCompT    a h b   -> SetCompT a <$> f h <*> ruleBodyTerms f b
+        ObjectCompT a k v b -> ObjectCompT a <$>
+                                f k <*> f v <*> ruleBodyTerms f b
+
+termCosmosVars :: Fold (Term a) Var
+termCosmosVars = cosmos . _VarT . to snd
+
+termCosmosClosures :: Fold (Term a) (Term a)
+termCosmosClosures = cosmos . termClosures
+
+termClosures :: Traversal' (Term a) (Term a)
+termClosures f e = case e of
+    ArrayCompT  _ _ _   -> f e
+    SetCompT    _ _ _   -> f e
+    ObjectCompT _ _ _ _ -> f e
+    _                   -> pure e
