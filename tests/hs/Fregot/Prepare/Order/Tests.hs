@@ -68,6 +68,21 @@ tests_orderForSafety = Tasty.testGroup "orderForSafety"
                 ] in
         testOrderForSafety program @?=
         [program !! 0, program !! 2, program !! 1]
+    , Tasty.testCase "02" $ testOrderForSafety
+        [ lit $ TermS $
+            ArrayCompT 0 (var "c")
+                [ lit $ UnifyS 0 (var "c") (var "b")
+                , lit $ UnifyS 0 (var "b") (var "a")
+                ]
+        , lit $ UnifyS 0 (var "a") (num 1)
+        ] @?=
+        [ lit $ UnifyS 0 (var "a") (num 1)
+        , lit $ TermS $
+            ArrayCompT 0 (var "c")
+                [ lit $ UnifyS 0 (var "b") (var "a")
+                , lit $ UnifyS 0 (var "c") (var "b")
+                ]
+        ]
     ]
   where
     testOrderForSafety = fst . orderForSafety (const 2) mempty

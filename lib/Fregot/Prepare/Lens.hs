@@ -9,6 +9,7 @@ module Fregot.Prepare.Lens
     , termCosmosVars
     , termCosmosNoClosures
     , termCosmosClosures
+    , termRuleBodies
     ) where
 
 import           Control.Lens        (Fold, Lens', Traversal', lens, traverseOf,
@@ -102,4 +103,12 @@ termClosures f e = case e of
     ArrayCompT  _ _ _   -> f e
     SetCompT    _ _ _   -> f e
     ObjectCompT _ _ _ _ -> f e
+    _                   -> pure e
+
+-- | Fold over the direct closures bodies of a term.
+termRuleBodies :: Traversal' (Term a) (RuleBody a)
+termRuleBodies f e = case e of
+    ArrayCompT  a h   b -> ArrayCompT a h <$> f b
+    SetCompT    a h   b -> SetCompT a h <$> f b
+    ObjectCompT a k v b -> ObjectCompT a k v <$> f b
     _                   -> pure e

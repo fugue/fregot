@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiWayIf                 #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
@@ -10,7 +11,10 @@ module Fregot.Prepare.Order
     , orderForSafety
     ) where
 
-import           Control.Lens                ((^.))
+import           Control.Lens                (traverseOf, (^.))
+import           Control.Lens.Plated         (transformMOn)
+import           Control.Monad.Extended      (mapAccumM)
+import           Control.Monad.Writer        (Writer, runWriter, tell)
 import qualified Data.HashMap.Strict         as HMS
 import qualified Data.HashSet.Extended       as HS
 import           Data.List.NonEmpty.Extended (NonEmpty)
@@ -119,9 +123,19 @@ orderForSafety arities safe0 body0
                         lit
                 return (idx, inLit `HS.difference` unSafe safe0)
 
-            (_, body2, unsafes2) = reorder step (safe0, unsafes) idxBody in
+            -- Order statements in this body.
+            (_, body2, unsafes2) = reorder step (safe0, unsafes) idxBody
 
-        (map snd body2, mconcat unsafes2)
+            -- Final run to recursively call `orderForSafety` on closures within
+            -- terms in this body.
+            ((_, body3), unsafes3) = runWriter $ mapAccumM
+                (\safe lit -> do
+                    lit' <- recurse safe lit
+                    return (safe <> ovLiteral arities safe lit', lit'))
+                safe0
+                (map snd body2) in
+
+        (body3, mconcat unsafes2 <> unsafes3)
   where
     (body1, unsafes1) = orderForClosures arities safe0 body0
 
@@ -143,3 +157,12 @@ orderForSafety arities safe0 body0
         stillUnsafe =
             const (NonEmpty.singleton (lit ^. literalAnn)) <$>
             HS.toMap (prevUnsafes `HS.difference` unSafe nowSafe)
+
+    -- Recursively rewrite all closures in a literal using the given safe list.
+    recurse :: Safe Var -> Literal a -> Writer (Unsafe Var a) (Literal a)
+    recurse rsafe =
+        transformMOn literalTerms $
+        (traverseOf termRuleBodies $ \rb -> do
+            let (rb', bad) = orderForSafety arities rsafe rb
+            tell bad
+            return rb')

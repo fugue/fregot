@@ -7,6 +7,7 @@ module Control.Monad.Extended
     , unlessM
     , unzipWithM
     , foldMapM
+    , mapAccumM
     ) where
 
 import           Control.Monad
@@ -32,3 +33,11 @@ foldMapM f = go mempty
     go !acc (x : xs) = do
         s <- f x
         go (acc <> s) xs
+
+mapAccumM :: Monad m => (a -> b -> m (a, c)) -> a -> [b] -> m (a, [c])
+mapAccumM step initial = go initial []
+  where
+    go !acc items []       = return (acc, reverse items)
+    go !acc items (x : xs) = do
+        (acc', y) <- step acc x
+        go acc' (y : items) xs
