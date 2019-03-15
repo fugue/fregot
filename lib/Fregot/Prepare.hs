@@ -216,7 +216,8 @@ prepareLiteral slit = do
 
     with <- traverse prepareWith $ slit ^. Sugar.literalWith
     pure Literal
-        { _literalNegation  = slit ^. Sugar.literalNegation
+        { _literalAnn       = slit ^. Sugar.literalAnn
+        , _literalNegation  = slit ^. Sugar.literalNegation
         , _literalStatement = statement
         , _literalWith      = with
         }

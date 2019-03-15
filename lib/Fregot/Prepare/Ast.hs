@@ -22,7 +22,7 @@ module Fregot.Prepare.Ast
 
     , Imports
     , RuleBody
-    , Literal (..), literalNegation, literalStatement, literalWith
+    , Literal (..), literalAnn, literalNegation, literalStatement, literalWith
     , Statement (..)
     , Term (..)
     , Object
@@ -83,7 +83,8 @@ data RuleElse a = RuleElse
     } deriving (Show)
 
 data Literal a = Literal
-    { _literalNegation  :: !Bool
+    { _literalAnn       :: !a
+    , _literalNegation  :: !Bool
     , _literalStatement :: !(Statement a)
     , _literalWith      :: ![With a]
     } deriving (Show)
@@ -165,5 +166,5 @@ instance PP.Pretty PP.Sem BinOp where
 --------------------------------------------------------------------------------
 -- Constructor-like things
 
-literal :: Statement a -> Literal a
-literal s = Literal False s []
+literal :: a -> Statement a -> Literal a
+literal a s = Literal a False s []

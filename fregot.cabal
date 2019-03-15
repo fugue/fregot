@@ -40,6 +40,7 @@ Library
     Fregot.Prepare
     Fregot.Prepare.Ast
     Fregot.Prepare.Lens
+    Fregot.Prepare.Order
     Fregot.Prepare.Vars
     Fregot.PrettyPrint
     Fregot.PrettyPrint.Internal
@@ -105,6 +106,7 @@ Test-suite fregot-tests
   Other-modules:
     Data.SafeVar.Tests
     Fregot.Prepare.Lens.Tests
+    Fregot.Prepare.Order.Tests
     Fregot.Prepare.Vars.Tests
 
   Build-depends:

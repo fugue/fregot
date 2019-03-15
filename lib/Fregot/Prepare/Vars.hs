@@ -28,7 +28,8 @@ import           Data.List             (foldl')
 import           Fregot.Prepare.Ast
 import           Fregot.Prepare.Lens
 
-newtype Safe v = Safe (HS.HashSet v) deriving (Eq, Monoid, Semigroup, Show)
+newtype Safe v = Safe {unSafe :: HS.HashSet v}
+    deriving (Eq, Monoid, Semigroup, Show)
 
 markSafe :: (Eq v, Hashable v) => v -> Safe v
 markSafe = Safe . HS.singleton

@@ -3,6 +3,7 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 module Fregot.Prepare.Lens
     ( ruleBodyTerms
+    , literalTerms
     , termAnn
     , termVars
     , termCosmosVars
@@ -52,7 +53,7 @@ statementTerms f = \case
     TermS       x -> TermS <$> f x
 
 literalTerms :: Traversal' (Literal a) (Term a)
-literalTerms f lit = Literal (lit ^. literalNegation)
+literalTerms f lit = Literal (lit ^. literalAnn) (lit ^. literalNegation)
     <$> statementTerms f (lit ^. literalStatement)
     <*> traverseOf (traverse . withAs) f (lit ^. literalWith)
 

@@ -19,7 +19,7 @@ module Fregot.Sugar
     , ruleValue, ruleElses
     , RuleBody
     , RuleElse (..), ruleElseAnn, ruleElseValue, ruleElseBody
-    , Literal (..), literalNegation, literalExpr, literalWith
+    , Literal (..), literalAnn, literalNegation, literalExpr, literalWith
 
     , Expr (..), exprAnn
     , Term (..), termAnn
@@ -103,7 +103,8 @@ data RuleElse a = RuleElse
     } deriving (Show)
 
 data Literal a = Literal
-    { _literalNegation :: !Bool
+    { _literalAnn      :: !a
+    , _literalNegation :: !Bool
     , _literalExpr     :: !(Expr a)
     , _literalWith     :: ![With a]
     } deriving (Show)
