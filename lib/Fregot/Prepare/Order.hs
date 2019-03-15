@@ -1,5 +1,6 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiWayIf                 #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
 module Fregot.Prepare.Order
     ( OrderPredicate (..)
     , reorder
@@ -15,6 +16,7 @@ import qualified Data.HashSet.Extended       as HS
 import           Data.List.NonEmpty.Extended (NonEmpty)
 import qualified Data.List.NonEmpty.Extended as NonEmpty
 import qualified Data.Map                    as Map
+import           Data.Maybe                  (fromMaybe)
 import           Fregot.Prepare.Ast
 import           Fregot.Prepare.Lens
 import           Fregot.Prepare.Vars
@@ -60,7 +62,7 @@ reorder orderPredicate = \userAcc items ->
                 -- Run again.
                 loop userAcc1 ordered1 errorMap1 itemMap1
 
-newtype Unsafe v a = Unsafe (HMS.HashMap v (NonEmpty a))
+newtype Unsafe v a = Unsafe {unUnsafe :: HMS.HashMap v (NonEmpty a)}
     deriving (Eq, Monoid, Semigroup, Show)
 
 orderForClosures
@@ -100,5 +102,44 @@ orderForClosures arities safe body =
         if HMS.null unsafes then OrderOk () else OrderError (Unsafe unsafes)
 
 orderForSafety
-    :: Arities -> Safe Var -> RuleBody a -> (RuleBody a, Unsafe Var a)
-orderForSafety _arities _safe _body = undefined
+    :: forall a.
+       Arities -> Safe Var -> RuleBody a -> (RuleBody a, Unsafe Var a)
+orderForSafety arities safe0 body0
+    -- If ordering for closures fails, shortcut here.
+    | not (HMS.null (unUnsafe unsafes1)) = (body1, unsafes1)
+    -- Otherwise, do a proper ordering.
+    | otherwise =
+        let idxBody = zip [0 :: Int ..] body1
+
+            -- A list of unsafe variables per statement.
+            unsafes = Map.fromList $ do
+                (idx, lit) <- idxBody
+                let inLit = HS.toHashSetOf
+                        (literalTerms . termCosmosNoClosures . termVars)
+                        lit
+                return (idx, inLit `HS.difference` unSafe safe0)
+
+            (_, body2, unsafes2) = reorder step (safe0, unsafes) idxBody in
+
+        (map snd body2, mconcat unsafes2)
+  where
+    (body1, unsafes1) = orderForClosures arities safe0 body0
+
+    step
+        :: (Safe Var, Map.Map Int (HS.HashSet Var))
+        -> [(Int, Literal a)]
+        -> (Int, Literal a)
+        -> OrderPredicate
+            (Safe Var, Map.Map Int (HS.HashSet Var))
+            (Unsafe Var a)
+
+    step (safe, unsafes) _ordered (idx, lit)
+        -- Find the unsafes we previously stored for this literal.
+        | HMS.null stillUnsafe = OrderOk (nowSafe, Map.delete idx unsafes)
+        | otherwise            = OrderError (Unsafe stillUnsafe)
+      where
+        nowSafe     = safe <> ovLiteral arities safe lit
+        prevUnsafes = fromMaybe mempty (Map.lookup idx unsafes)
+        stillUnsafe =
+            const (NonEmpty.singleton (lit ^. literalAnn)) <$>
+            HS.toMap (prevUnsafes `HS.difference` unSafe nowSafe)

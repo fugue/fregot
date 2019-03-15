@@ -34,14 +34,11 @@ tests_ovRuleBody = Tasty.testGroup "ovRuleBody"
         ] @?=
         Safe ["a", "b"]
     , Tasty.testCase "05" $ ovRuleBody (const 2) mempty
-        [ lit $ TermS $
-            CallT 0 (NamedFunction ["add"]) [var "a", var "b", var "x"]
+        [ lit $ TermS $ call "add" [var "a", var "b", var "x"]
         ] @?=
         Safe ["x"]
     , Tasty.testCase "06" $ ovRuleBody (const 2) mempty
-        [ lit $ UnifyS 0
-            (var "x")
-            (CallT 0 (NamedFunction ["add"]) [var "a", var "b"])
+        [ lit $ UnifyS 0 (var "x") (call "add" [var "a", var "b"])
         ] @?=
         Safe ["x"]
     ]

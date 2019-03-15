@@ -11,3 +11,6 @@ var = VarT 0
 
 num :: Int -> Term Int
 num = ScalarT 0 . Number . fromIntegral
+
+call :: Var -> [Term Int] -> Term Int
+call v args = CallT 0 (NamedFunction [v]) args

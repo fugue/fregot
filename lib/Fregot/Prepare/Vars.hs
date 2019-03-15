@@ -19,6 +19,7 @@ module Fregot.Prepare.Vars
       Safe (..)
     , Arities
     , ovRuleBody
+    , ovLiteral
     ) where
 
 import           Control.Lens          ((^.))

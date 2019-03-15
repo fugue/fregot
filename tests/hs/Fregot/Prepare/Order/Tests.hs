@@ -16,6 +16,7 @@ tests :: Tasty.TestTree
 tests = Tasty.testGroup "Fregot.Prepare.Order.Tests"
     [ tests_reorder
     , tests_orderForClosures
+    , tests_orderForSafety
     ]
 
 tests_reorder :: Tasty.TestTree
@@ -56,3 +57,17 @@ tests_orderForClosures = Tasty.testGroup "orderForClosures"
     ]
   where
     testOrderForClosures = fst . orderForClosures (const 2) mempty
+
+tests_orderForSafety :: Tasty.TestTree
+tests_orderForSafety = Tasty.testGroup "orderForSafety"
+    [ Tasty.testCase "01" $
+        let program =
+                [ lit $ UnifyS 0 (var "a") (num 1)
+                , lit $ UnifyS 0 (var "x") (call "add" [var "a", var "b", var "x"])
+                , lit $ UnifyS 0 (var "b") (num 2)
+                ] in
+        testOrderForSafety program @?=
+        [program !! 0, program !! 2, program !! 1]
+    ]
+  where
+    testOrderForSafety = fst . orderForSafety (const 2) mempty
