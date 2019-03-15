@@ -80,20 +80,20 @@ data RuleElse a = RuleElse
     { _ruleElseAnn   :: !a
     , _ruleElseValue :: !(Maybe (Term a))
     , _ruleElseBody  :: !(RuleBody a)
-    } deriving (Show)
+    } deriving (Eq, Show)
 
 data Literal a = Literal
     { _literalAnn       :: !a
     , _literalNegation  :: !Bool
     , _literalStatement :: !(Statement a)
     , _literalWith      :: ![With a]
-    } deriving (Show)
+    } deriving (Eq, Show)
 
 data Statement a
     = UnifyS  a (Term a) (Term a)
     | AssignS a Var (Term a)
     | TermS     (Term a)
-    deriving (Show)
+    deriving (Eq, Show)
 
 data Term a
     = RefT        a (Term a) (Term a)
@@ -106,7 +106,7 @@ data Term a
     | ArrayCompT  a (Term a) (RuleBody a)
     | SetCompT    a (Term a) (RuleBody a)
     | ObjectCompT a (Term a) (Term a) (RuleBody a)
-    deriving (Show)
+    deriving (Eq, Show)
 
 data Function
     = NamedFunction [Var]
@@ -137,7 +137,7 @@ data With a = With
     { _withAnn  :: !a
     , _withPath :: [Var]
     , _withAs   :: !(Term a)
-    } deriving (Show)
+    } deriving (Eq, Show)
 
 $(makeLenses ''Rule)
 $(makeLenses ''RuleDefinition)

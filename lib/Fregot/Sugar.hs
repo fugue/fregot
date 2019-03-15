@@ -145,7 +145,7 @@ data Scalar a
     | Number Scientific
     | Bool   Bool
     | Null
-    deriving (Show)
+    deriving (Eq, Show)
 
 type Object a = [(ObjectKey a, Expr a)]
 

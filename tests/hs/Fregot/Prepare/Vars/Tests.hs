@@ -3,6 +3,7 @@
 module Fregot.Prepare.Vars.Tests where
 
 import           Fregot.Prepare.Ast
+import           Fregot.Prepare.Dsl
 import           Fregot.Prepare.Vars
 import qualified Test.Tasty          as Tasty
 import           Test.Tasty.HUnit    ((@?=))
@@ -45,12 +46,3 @@ tests = Tasty.testGroup "Fregot.Prepare.Vars.Tests"
             ] @?=
         Safe ["x"]
     ]
-
-lit :: Statement Int -> Literal Int
-lit = literal 0
-
-var :: Var -> Term Int
-var = VarT 0
-
-num :: Int -> Term Int
-num = ScalarT 0 . Number . fromIntegral
