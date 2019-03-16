@@ -10,7 +10,7 @@ module Fregot.Compile.Package
     , compile
     ) where
 
-import           Control.Lens                (iforM, traverseOf)
+import           Control.Lens                (iforM, traverseOf, (^.))
 import           Control.Monad.Parachute     (ParachuteT, tellError)
 import qualified Data.HashMap.Strict         as HMS
 import qualified Data.HashSet.Extended       as HS
@@ -56,11 +56,13 @@ compile prep =
         traverseOf (ruleBodies . traverse) order def >>=
         traverseOf (ruleElses . traverse . ruleElseBody) order
       where
-        safe = safeGlobals <> safeLocals
+        safe = safeGlobals <> safeLocals <> safeImports
 
         safeLocals = Safe $ HS.toHashSetOf
             (ruleArgs . traverse . traverse . termCosmosNoClosures . termVars)
             def
+
+        safeImports = Safe $ HS.fromMap $ () <$ def ^. ruleDefImports
 
         order :: RuleBody SourceSpan -> ParachuteT Error m (RuleBody SourceSpan)
         order b = do
