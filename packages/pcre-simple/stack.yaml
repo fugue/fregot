@@ -1,0 +1,9 @@
+resolver: lts-10.4
+
+system-ghc: false
+install-ghc: true
+compiler: ghc-8.2.2
+require-stack-version: ">= 1.5"
+
+packages:
+  - '.'

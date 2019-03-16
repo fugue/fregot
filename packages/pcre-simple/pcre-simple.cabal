@@ -1,0 +1,96 @@
+Name:                pcre-simple
+Version:             0.1.0.0
+Synopsis:            Simple UTF-8 enabled PCRE bindings with windows compatibility.
+description:         Simple UTF-8 enabled PCRE bindings with windows compatibility.
+Homepage:            https://github.com/LuminalHQ/pcre-simple
+License:             AllRightsReserved
+License-file:        LICENSE
+Author:              Jasper Van der Jeugt <jasper@fugue.co>
+Maintainer:          Jasper Van der Jeugt <jasper@fugue.co>
+Copyright:           Fugue, Inc.
+Category:            Text
+Build-type:          Simple
+Extra-source-files:  README.md
+Cabal-version:       >= 1.10
+
+Library
+  Hs-source-dirs:   src
+  Default-language: Haskell2010
+  Ghc-options:      -Wall
+  Include-dirs:     cbits/pcre2-10.30/src
+
+  Exposed-modules:
+    Text.Pcre2
+    Text.Pcre2.Internal
+
+  Build-depends:
+    base,
+    bytestring,
+    text
+
+  Cc-options:
+    "-DPCRE2_CODE_UNIT_WIDTH=8"
+    "-DPCRE2_STATIC=1"
+    "-DLINK_SIZE=2"
+    "-DMAX_NAME_SIZE=32"
+    "-DMAX_NAME_COUNT=10000"
+    "-DNEWLINE_DEFAULT=5"
+    "-DPARENS_NEST_LIMIT=250"
+    "-DMATCH_LIMIT=10000000"
+    "-DMATCH_LIMIT_DEPTH=10000000"
+    "-DHEAP_LIMIT=20000000"
+    "-DSUPPORT_UNICODE=1"
+
+  C-sources:
+    cbits/pcre2-10.30/src/pcre2_tables.c
+    cbits/pcre2-10.30/src/pcre2_substring.c
+    cbits/pcre2-10.30/src/pcre2_context.c
+    cbits/pcre2-10.30/src/pcre2_pattern_info.c
+    cbits/pcre2-10.30/src/pcre2_string_utils.c
+    cbits/pcre2-10.30/src/pcre2_serialize.c
+    cbits/pcre2-10.30/src/pcre2_xclass.c
+    cbits/pcre2-10.30/src/pcre2_match_data.c
+    cbits/pcre2-10.30/src/pcre2_newline.c
+    cbits/pcre2-10.30/src/pcre2_config.c
+    cbits/pcre2-10.30/src/pcre2_compile.c
+    cbits/pcre2-10.30/src/pcre2_fuzzsupport.c
+    cbits/pcre2-10.30/src/pcre2_auto_possess.c
+    cbits/pcre2-10.30/src/pcre2_find_bracket.c
+    cbits/pcre2-10.30/src/pcre2_convert.c
+    cbits/pcre2-10.30/src/pcre2_substitute.c
+    cbits/pcre2-10.30/src/pcre2_dfa_match.c
+    cbits/pcre2-10.30/src/pcre2_valid_utf.c
+    cbits/pcre2-10.30/src/pcre2_error.c
+    cbits/pcre2-10.30/src/pcre2_ord2utf.c
+    cbits/pcre2-10.30/src/pcre2_jit_compile.c
+    cbits/pcre2-10.30/src/pcre2_ucd.c
+    cbits/pcre2-10.30/src/pcre2_study.c
+    cbits/pcre2-10.30/src/pcre2_match.c
+    cbits/pcre2-10.30/src/pcre2_maketables.c
+    cbits/pcre2-10.30/src/pcre2_chartables.c
+    cbits/pcre_simple.c
+
+Test-suite pcre-tests
+  Type:             exitcode-stdio-1.0
+  Hs-source-dirs:   tests
+  Main-is:          TestSuite.hs
+  Ghc-options:      -Wall
+  Default-language: Haskell2010
+
+  Other-modules:
+    Text.Pcre2.Tests
+    Text.Pcre2.Internal.Tests
+
+  Build-depends:
+    base,
+    bytestring,
+    pcre-simple,
+    tasty,
+    tasty-hunit,
+    tasty-quickcheck,
+    QuickCheck,
+    text
+
+Source-repository head
+  Type:     git
+  Location: https://github.com/LuminalHQ/pcre-simple

@@ -2,6 +2,7 @@ module System.Directory.Find
     ( recursivelyFindPaths
     , recursivelyFindFiles
     , recursivelyFindFilesWithExtension
+    , glob
     ) where
 
 import           Control.Monad        (forM_, when)
@@ -9,6 +10,7 @@ import           Control.Monad.Trans  (liftIO)
 import           Control.Monad.Writer (WriterT, execWriterT, tell)
 import           System.Directory
 import           System.FilePath
+import qualified System.FilePath.Glob as Glob
 
 -- | Recursively find files in a directory using an extension.  The returned
 -- file paths /DO NOT/ include the directory prefix.
@@ -54,3 +56,16 @@ recursivelyFindPaths predicate dir0 = do
 
     search ('.' : _) = False
     search _         = True
+
+--------------------------------------------------------------------------------
+-- | Perform a glob match in the current directory.
+--
+-- This is a drop-in replacement for `glob` from the `Glob` library, which has a
+-- an annoying tendency to return absolute file paths.
+glob :: String -> IO [FilePath]
+glob pattern =
+    map dropLeadingDot <$> Glob.globDir1 (Glob.compile pattern) "."
+  where
+    dropLeadingDot fp0 = case break isPathSeparator fp0 of
+        (".", fp1) -> drop 1 fp1
+        _          -> fp0

@@ -3,3 +3,8 @@ resolver: 'lts-13.0'
 # Dev options
 ghc-options:
   fregot: -freverse-errors
+
+packages:
+- '.'
+- location: 'packages/pcre-simple'
+  extra-dep: True

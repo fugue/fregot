@@ -9,8 +9,8 @@ import           Control.Lens.TH     (makeLenses)
 import           Data.Version        (showVersion)
 import qualified Fregot.Main.Repl    as Main.Repl
 import qualified Fregot.Main.Test    as Main.Test
+import           Fregot.Version      (version)
 import qualified Options.Applicative as OA
-import qualified Paths_fregot
 import           System.Exit         (exitWith)
 
 data Command
@@ -41,8 +41,7 @@ parseOptions = Options
 
 parseOptionsInfo :: OA.ParserInfo Options
 parseOptionsInfo = OA.info (OA.helper <*> parseOptions) $
-    OA.fullDesc <>
-    OA.header ("fregot v" <> showVersion Paths_fregot.version)
+    OA.fullDesc <> OA.header ("fregot v" <> showVersion version)
 
 parseOptionsPrefs :: OA.ParserPrefs
 parseOptionsPrefs = OA.prefs OA.showHelpOnError
