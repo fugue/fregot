@@ -20,6 +20,7 @@ import           Data.Maybe                (isJust, isNothing, mapMaybe)
 import           Fregot.Error              (Error)
 import qualified Fregot.Error              as Error
 import           Fregot.Prepare.Ast
+import           Fregot.Prepare.Lens
 import           Fregot.PrettyPrint        ((<+>))
 import           Fregot.Sources.SourceSpan (SourceSpan)
 import qualified Fregot.Sugar              as Sugar
@@ -215,7 +216,8 @@ prepareLiteral slit = do
 
     with <- traverse prepareWith $ slit ^. Sugar.literalWith
     pure Literal
-        { _literalNegation  = slit ^. Sugar.literalNegation
+        { _literalAnn       = slit ^. Sugar.literalAnn
+        , _literalNegation  = slit ^. Sugar.literalNegation
         , _literalStatement = statement
         , _literalWith      = with
         }

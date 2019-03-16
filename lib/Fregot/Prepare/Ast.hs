@@ -22,18 +22,21 @@ module Fregot.Prepare.Ast
 
     , Imports
     , RuleBody
-    , Literal (..), literalNegation, literalStatement, literalWith
+    , Literal (..), literalAnn, literalNegation, literalStatement, literalWith
     , Statement (..)
-    , Term (..), termAnn
+    , Term (..)
+    , Object
     , Function (..)
     , BinOp (..)
 
-    , With (..), withPath, withAs
+    , With (..), withAnn, withPath, withAs
 
     , Sugar.Scalar (..)
+
+      -- * Constructors
+    , literal
     ) where
 
-import           Control.Lens              (Lens', lens)
 import           Control.Lens.TH           (makeLenses)
 import           Data.Hashable             (Hashable)
 import qualified Data.HashMap.Strict       as HMS
@@ -77,19 +80,20 @@ data RuleElse a = RuleElse
     { _ruleElseAnn   :: !a
     , _ruleElseValue :: !(Maybe (Term a))
     , _ruleElseBody  :: !(RuleBody a)
-    } deriving (Show)
+    } deriving (Eq, Show)
 
 data Literal a = Literal
-    { _literalNegation  :: !Bool
+    { _literalAnn       :: !a
+    , _literalNegation  :: !Bool
     , _literalStatement :: !(Statement a)
     , _literalWith      :: ![With a]
-    } deriving (Show)
+    } deriving (Eq, Show)
 
 data Statement a
     = UnifyS  a (Term a) (Term a)
     | AssignS a Var (Term a)
     | TermS     (Term a)
-    deriving (Show)
+    deriving (Eq, Show)
 
 data Term a
     = RefT        a (Term a) (Term a)
@@ -102,7 +106,7 @@ data Term a
     | ArrayCompT  a (Term a) (RuleBody a)
     | SetCompT    a (Term a) (RuleBody a)
     | ObjectCompT a (Term a) (Term a) (RuleBody a)
-    deriving (Show)
+    deriving (Eq, Show)
 
 data Function
     = NamedFunction [Var]
@@ -130,10 +134,10 @@ data BinOp
 instance Hashable BinOp
 
 data With a = With
-    { withAnn   :: !a
+    { _withAnn  :: !a
     , _withPath :: [Var]
     , _withAs   :: !(Term a)
-    } deriving (Show)
+    } deriving (Eq, Show)
 
 $(makeLenses ''Rule)
 $(makeLenses ''RuleDefinition)
@@ -159,29 +163,8 @@ instance PP.Pretty PP.Sem BinOp where
         DivideO             -> "/"
         BinOrO              -> "|"
 
-termAnn :: Lens' (Term a) a
-termAnn = lens getAnn setAnn
-  where
-    getAnn = \case
-        RefT        a _ _   -> a
-        CallT       a _ _   -> a
-        VarT        a _     -> a
-        ScalarT     a _     -> a
-        ArrayT      a _     -> a
-        SetT        a _     -> a
-        ObjectT     a _     -> a
-        ArrayCompT  a _ _   -> a
-        SetCompT    a _ _   -> a
-        ObjectCompT a _ _ _ -> a
+--------------------------------------------------------------------------------
+-- Constructor-like things
 
-    setAnn t a = case t of
-        RefT        _ x k   -> RefT        a x k
-        CallT       _ f as  -> CallT       a f as
-        VarT        _ v     -> VarT        a v
-        ScalarT     _ s     -> ScalarT     a s
-        ArrayT      _ l     -> ArrayT      a l
-        SetT        _ s     -> SetT        a s
-        ObjectT     _ o     -> ObjectT     a o
-        ArrayCompT  _ x b   -> ArrayCompT  a x b
-        SetCompT    _ x b   -> SetCompT    a x b
-        ObjectCompT _ k x b -> ObjectCompT a k x b
+literal :: a -> Statement a -> Literal a
+literal a s = Literal a False s []

@@ -109,11 +109,11 @@ blockOrSemi linep =
         return []
 
 literal :: FregotParser (Literal SourceSpan)
-literal = do
+literal = withSourceSpan $ do
     _literalNegation <- Parsec.option False $ Tok.symbol Tok.TNot $> True
     _literalExpr <- expr
     _literalWith <- Parsec.many parseWith
-    return Literal {..}
+    return $ \_literalAnn -> Literal {..}
 
 expr :: FregotParser (Expr SourceSpan)
 expr = Parsec.buildExpressionParser

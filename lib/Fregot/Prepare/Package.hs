@@ -1,8 +1,9 @@
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell   #-}
-module Fregot.Interpreter.Package
-    ( Package (..), packageName, packageRules
+module Fregot.Prepare.Package
+    ( PreparedPackage
+    , Package (..), packageName, packageRules
     , empty
     , insert
     , lookup
@@ -20,14 +21,16 @@ import           Fregot.Sources.SourceSpan (SourceSpan)
 import qualified Fregot.Sugar              as Sugar
 import           Prelude                   hiding (head, lookup)
 
-data Package = Package
+type PreparedPackage = Package ()
+
+data Package ty = Package
     { _packageName  :: !PackageName
     , _packageRules :: !(HMS.HashMap Var (Rule SourceSpan))
     } deriving (Show)
 
 $(makeLenses ''Package)
 
-empty :: PackageName -> Package
+empty :: PackageName -> Package ty
 empty name = Package
     { _packageName  = name
     , _packageRules = HMS.empty
@@ -38,8 +41,8 @@ insert
     :: Monad m
     => Imports SourceSpan
     -> Sugar.Rule SourceSpan
-    -> Package
-    -> ParachuteT Error m Package
+    -> Package ty
+    -> ParachuteT Error m (Package ty)
 insert imports rule package = do
     new <- prepareRule imports rule
     merged <- case HMS.lookup rname (package ^. packageRules) of
@@ -50,8 +53,8 @@ insert imports rule package = do
   where
     rname = rule ^. Sugar.ruleHead . Sugar.ruleName
 
-lookup :: Var -> Package -> Maybe (Rule SourceSpan)
+lookup :: Var -> Package ty -> Maybe (Rule SourceSpan)
 lookup var pkg = HMS.lookup var (pkg ^. packageRules)
 
-rules :: Package -> [Var]
+rules :: Package ty -> [Var]
 rules = map fst . HMS.toList . view packageRules

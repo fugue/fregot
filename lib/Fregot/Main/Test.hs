@@ -85,6 +85,7 @@ main opts = do
     regoPaths <- Find.findRegoFiles (opts ^. paths)
     (errors, mbResult) <- Parachute.runParachuteT $ do
         forM_ regoPaths $ \path -> Interpreter.loadModule interpreter path
+        Interpreter.compilePackages interpreter
         tests <- filter isTest <$> Interpreter.readRules interpreter
         foldMapM (\t -> runTest interpreter t) tests
 
