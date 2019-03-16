@@ -1,4 +1,5 @@
 {-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE OverloadedLists     #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell     #-}
@@ -9,7 +10,7 @@ module Fregot.Compile.Package
     , compile
     ) where
 
-import           Control.Lens                (traverseOf, iforM)
+import           Control.Lens                (iforM, traverseOf)
 import           Control.Monad.Parachute     (ParachuteT, tellError)
 import qualified Data.HashMap.Strict         as HMS
 import qualified Data.HashSet                as HS
@@ -38,7 +39,9 @@ compile prep =
         Just builtin -> Builtins.arity builtin
 
     globals :: Safe Var
-    globals = Safe $ HS.fromList $ rules prep
+    globals = Safe $
+        HS.fromList (rules prep) <>
+        ["input"]
 
     compileRule
         :: Monad m => Rule SourceSpan -> ParachuteT Error m (Rule SourceSpan)

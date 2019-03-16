@@ -40,16 +40,18 @@ import           Fregot.PrettyPrint        ((<+>))
 import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources.SourceSpan (SourceSpan)
 
-ground :: EvalM Value -> EvalM Value
-ground mval = do
+ground :: SourceSpan -> EvalM Value -> EvalM Value
+ground source mval = do
     val <- mval
     case val of
         FreeV v   -> do
             mbVal <- Unification.lookup v
             case mbVal of
-                Nothing -> fail $ "Unknown variable: " ++ show (PP.pretty v)
+                Nothing -> raise' source "unknown variable" $
+                    "Unkown variable:" <+> PP.pretty v
                 Just b  -> return b
-        WildcardV -> fail $ "Unknown variable: _"
+        WildcardV -> raise' source "unknown variable" $
+                    "Unkown variable:" <+> PP.pretty WildcardV
         _         -> return val
 
 evalTerm :: Term SourceSpan -> EvalM Value
@@ -296,7 +298,8 @@ evalRuleDefinition callerSource rule mbIndex =
             return $ Just tplv
 
     let ret mbRet = case mbRet of
-            Nothing   -> ground $ return $ fromMaybe (BoolV True) mbIdxVal
+            Nothing   -> ground (rule ^. ruleDefAnn) $
+                            return $ fromMaybe (BoolV True) mbIdxVal
             Just term -> evalTerm term
 
     case rule ^. ruleBodies of
@@ -327,7 +330,7 @@ evalUserFunction crule callerArgs
   where
     ret mbTerm = case mbTerm of
         Nothing   -> return (BoolV True)
-        Just term -> ground $ evalTerm term
+        Just term -> ground (crule ^. ruleAnn) $ evalTerm term
 
     evalFunctionDefinition def =
         withImports (def ^. ruleDefImports) $
@@ -358,10 +361,10 @@ evalRuleBody lits0 final = go lits0
 
     go (lit : lits)
         | lit ^. literalNegation = localWiths (lit ^. literalWith) $ do
-            negation trueish $ ground $ evalStatement $ lit ^. literalStatement
+            negation trueish $ ground (lit ^. literalAnn) $ evalStatement $ lit ^. literalStatement
             go lits
         | otherwise = localWiths (lit ^. literalWith) $ do
-            r <- ground $ evalStatement $ lit ^. literalStatement
+            r <- ground (lit ^. literalAnn) $ evalStatement $ lit ^. literalStatement
             if trueish r then go lits else cut
 
     trueish (BoolV False) = False
