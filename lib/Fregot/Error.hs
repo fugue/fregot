@@ -13,7 +13,9 @@ module Fregot.Error
     , Severity (..)
     , Subsystem
     , Error (..), severity, subsystem, sourceSpans, details, hints
+
     , Errors
+    , severe
 
     , ErrorFmt (..)
     , hPutErrors
@@ -25,7 +27,7 @@ module Fregot.Error
     , mkMultiError
     ) where
 
-import           Control.Lens              (preview, (^.), _head)
+import           Control.Lens              (preview, (^.), _head, anyOf)
 import           Control.Lens.TH           (makeLenses)
 import           Data.Data                 (Data)
 import           Data.List                 (sortBy)
@@ -52,7 +54,7 @@ data Severity
     = FatalSeverity
     | ErrorSeverity
     | WarningSeverity
-    deriving (Data, Show, Generic)
+    deriving (Eq, Data, Show, Generic)
 
 instance PP.Pretty e Severity where
     pretty FatalSeverity   = "fatal error"
@@ -71,6 +73,10 @@ data Error = Error
 
 $(makeLenses ''SourceSpanMessage)
 $(makeLenses ''Error)
+
+-- | It's fine, it's only a warning...
+severe :: Traversable f => f Error -> Bool
+severe = anyOf (traverse . severity) (/= WarningSeverity)
 
 -- | In a lot of cases, we allow functions to throw a list of errors.  We
 -- shouldn't allow these functions to throw the empty list though.

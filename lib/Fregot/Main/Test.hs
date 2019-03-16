@@ -111,6 +111,7 @@ main opts = do
     Error.hPutErrors IO.stderr sources' Error.TextFmt errors
 
     return $! case mbResult of
+        _ | Error.severe errors -> ExitFailure 1
         Just tr | null (tr ^. failed) && null (tr ^. errored) -> ExitSuccess
         _ -> ExitFailure 1
   where

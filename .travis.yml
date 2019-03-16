@@ -14,3 +14,4 @@ before_install:
 script:
 - travis_wait stack --no-terminal --skip-ghc-check --copy-bins --test build
 - fregot test tests/rego
+- fspec -j2 --pretty-diff tests/golden
