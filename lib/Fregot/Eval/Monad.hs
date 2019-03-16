@@ -42,23 +42,23 @@ module Fregot.Eval.Monad
     , raise'
     ) where
 
-import           Control.Exception          (Exception, catch, throwIO)
-import           Control.Lens               (view, (&), (.~), (^.))
-import           Control.Lens.TH            (makeLenses)
-import           Control.Monad.Extended     (forM)
-import           Control.Monad.Reader       (MonadReader (..), ask)
-import           Control.Monad.State        (MonadState (..), modify)
-import qualified Data.HashMap.Strict        as HMS
-import           Data.Unification           (Unification)
-import qualified Data.Unification           as Unification
-import           Fregot.Error               (Error)
-import qualified Fregot.Error               as Error
+import           Control.Exception         (Exception, catch, throwIO)
+import           Control.Lens              (view, (&), (.~), (^.))
+import           Control.Lens.TH           (makeLenses)
+import           Control.Monad.Extended    (forM)
+import           Control.Monad.Reader      (MonadReader (..), ask)
+import           Control.Monad.State       (MonadState (..), modify)
+import qualified Data.HashMap.Strict       as HMS
+import           Data.Unification          (Unification)
+import qualified Data.Unification          as Unification
+import           Fregot.Compile.Package    (CompiledPackage)
+import qualified Fregot.Compile.Package    as Package
+import           Fregot.Error              (Error)
+import qualified Fregot.Error              as Error
 import           Fregot.Eval.Value
-import           Fregot.Interpreter.Package (Package)
-import qualified Fregot.Interpreter.Package as Package
 import           Fregot.Prepare.Ast
-import qualified Fregot.PrettyPrint         as PP
-import           Fregot.Sources.SourceSpan  (SourceSpan)
+import qualified Fregot.PrettyPrint        as PP
+import           Fregot.Sources.SourceSpan (SourceSpan)
 
 data Context = Context
     { _unification :: !(Unification InstVar Value)
@@ -90,11 +90,11 @@ type Document a = [Row a]
 --------------------------------------------------------------------------------
 
 data Environment = Environment
-    { _packages :: !(HMS.HashMap PackageName Package)
+    { _packages :: !(HMS.HashMap PackageName CompiledPackage)
 
     -- NOTE(jaspervdj): We'll need to update package as well if call a rule from
     -- another package.
-    , _package  :: !Package
+    , _package  :: !CompiledPackage
     , _inputDoc :: !Value
     , _imports  :: !(Imports SourceSpan)
     } deriving (Show)
@@ -212,12 +212,12 @@ clearLocals mx = do
 withImports :: Imports SourceSpan -> EvalM a -> EvalM a
 withImports imps = local (imports .~ imps)
 
-lookupPackage :: PackageName -> EvalM (Maybe Package)
+lookupPackage :: PackageName -> EvalM (Maybe CompiledPackage)
 lookupPackage pkgname = do
     pkgs <- view packages
     return $! HMS.lookup pkgname pkgs
 
-withPackage :: Package -> EvalM a -> EvalM a
+withPackage :: CompiledPackage -> EvalM a -> EvalM a
 withPackage pkg = local (package .~ pkg)
 
 -- | Raise an error.  We currently don't allow catching exceptions, but they are

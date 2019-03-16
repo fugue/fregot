@@ -16,6 +16,8 @@ Library
   Hs-source-dirs:   lib
 
   Exposed-modules:
+    Fregot.Compile.Order
+    Fregot.Compile.Package
     Fregot.Error
     Fregot.Eval
     Fregot.Eval.Builtins
@@ -24,7 +26,6 @@ Library
     Fregot.Eval.Value
     Fregot.Find
     Fregot.Interpreter
-    Fregot.Interpreter.Package
     Fregot.Lexer
     Fregot.Lexer.Comment
     Fregot.Lexer.Internal
@@ -40,7 +41,7 @@ Library
     Fregot.Prepare
     Fregot.Prepare.Ast
     Fregot.Prepare.Lens
-    Fregot.Prepare.Order
+    Fregot.Prepare.Package
     Fregot.Prepare.Vars
     Fregot.PrettyPrint
     Fregot.PrettyPrint.Internal
@@ -105,9 +106,9 @@ Test-suite fregot-tests
 
   Other-modules:
     Data.SafeVar.Tests
+    Fregot.Compile.Order.Tests
     Fregot.Prepare.Dsl
     Fregot.Prepare.Lens.Tests
-    Fregot.Prepare.Order.Tests
     Fregot.Prepare.Vars.Tests
 
   Build-depends:

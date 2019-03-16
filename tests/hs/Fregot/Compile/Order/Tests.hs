@@ -1,19 +1,19 @@
 {-# LANGUAGE OverloadedLists   #-}
 {-# LANGUAGE OverloadedStrings #-}
-module Fregot.Prepare.Order.Tests
+module Fregot.Compile.Order.Tests
     ( tests
     ) where
 
 import qualified Data.HashSet         as HS
+import           Fregot.Compile.Order
 import           Fregot.Prepare.Ast
 import           Fregot.Prepare.Dsl
-import           Fregot.Prepare.Order
 import qualified Test.Tasty           as Tasty
 import           Test.Tasty.HUnit     ((@?=))
 import qualified Test.Tasty.HUnit     as Tasty
 
 tests :: Tasty.TestTree
-tests = Tasty.testGroup "Fregot.Prepare.Order.Tests"
+tests = Tasty.testGroup "Fregot.Compile.Order.Tests"
     [ tests_reorder
     , tests_orderForClosures
     , tests_orderForSafety

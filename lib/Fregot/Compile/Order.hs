@@ -2,7 +2,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiWayIf                 #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
-module Fregot.Prepare.Order
+module Fregot.Compile.Order
     ( OrderPredicate (..)
     , reorder
 

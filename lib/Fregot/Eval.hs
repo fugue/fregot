@@ -22,23 +22,23 @@ module Fregot.Eval
     , evalTerm
     ) where
 
-import           Control.Lens               (use, view, (%=), (.=), (.~), (^.))
-import           Control.Monad.Extended     (forM, zipWithM_)
-import           Control.Monad.Reader       (local)
-import qualified Data.HashMap.Strict        as HMS
-import qualified Data.HashSet               as HS
-import           Data.Maybe                 (fromMaybe, isNothing)
-import qualified Data.Scientific            as Scientific
-import qualified Data.Unification           as Unification
-import qualified Data.Vector.Extended       as V
+import           Control.Lens              (use, view, (%=), (.=), (.~), (^.))
+import           Control.Monad.Extended    (forM, zipWithM_)
+import           Control.Monad.Reader      (local)
+import qualified Data.HashMap.Strict       as HMS
+import qualified Data.HashSet              as HS
+import           Data.Maybe                (fromMaybe, isNothing)
+import qualified Data.Scientific           as Scientific
+import qualified Data.Unification          as Unification
+import qualified Data.Vector.Extended      as V
+import qualified Fregot.Compile.Package    as Package
 import           Fregot.Eval.Builtins
 import           Fregot.Eval.Monad
 import           Fregot.Eval.Value
-import qualified Fregot.Interpreter.Package as Package
 import           Fregot.Prepare.Ast
-import           Fregot.PrettyPrint         ((<+>))
-import qualified Fregot.PrettyPrint         as PP
-import           Fregot.Sources.SourceSpan  (SourceSpan)
+import           Fregot.PrettyPrint        ((<+>))
+import qualified Fregot.PrettyPrint        as PP
+import           Fregot.Sources.SourceSpan (SourceSpan)
 
 ground :: EvalM Value -> EvalM Value
 ground mval = do
