@@ -13,13 +13,14 @@ module Fregot.Compile.Package
 import           Control.Lens                (iforM, traverseOf)
 import           Control.Monad.Parachute     (ParachuteT, tellError)
 import qualified Data.HashMap.Strict         as HMS
-import qualified Data.HashSet                as HS
+import qualified Data.HashSet.Extended       as HS
 import           Data.List.NonEmpty.Extended (NonEmpty (..))
 import           Fregot.Compile.Order
 import           Fregot.Error                (Error)
 import qualified Fregot.Error                as Error
 import qualified Fregot.Eval.Builtins        as Builtins
 import           Fregot.Prepare.Ast
+import           Fregot.Prepare.Lens
 import           Fregot.Prepare.Package
 import           Fregot.Prepare.Vars         (Arities, Safe (..))
 import           Fregot.PrettyPrint          ((<+>))
@@ -38,8 +39,8 @@ compile prep =
         Nothing      -> 0
         Just builtin -> Builtins.arity builtin
 
-    globals :: Safe Var
-    globals = Safe $
+    safeGlobals :: Safe Var
+    safeGlobals = Safe $
         HS.fromList (rules prep) <>
         ["input"]
 
@@ -55,9 +56,15 @@ compile prep =
         traverseOf (ruleBodies . traverse) order def >>=
         traverseOf (ruleElses . traverse . ruleElseBody) order
       where
+        safe = safeGlobals <> safeLocals
+
+        safeLocals = Safe $ HS.toHashSetOf
+            (ruleArgs . traverse . traverse . termCosmosNoClosures . termVars)
+            def
+
         order :: RuleBody SourceSpan -> ParachuteT Error m (RuleBody SourceSpan)
         order b = do
-            let (b', Unsafe unsafe) = orderForSafety arities globals b
+            let (b', Unsafe unsafe) = orderForSafety arities safe b
             _ <- iforM unsafe $ \var (source :| _) -> tellError $ Error.mkError
                 "compile" source "unknown variable" $
                 "Undefined variable:" <+> PP.pretty var
