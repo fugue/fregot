@@ -155,6 +155,7 @@ evalExpr
     -> InterpreterM (Eval.Document Eval.Value)
 evalExpr h pkgname expr = do
     term <- Prepare.prepareExpr expr
+    -- TODO(jaserpvdj): Compile.compileTerm ?
     eval h pkgname (Eval.evalTerm term)
 
 evalVar

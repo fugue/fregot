@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedLists     #-}
 {-# LANGUAGE OverloadedStrings   #-}
@@ -53,8 +54,9 @@ compile prep =
         => RuleDefinition SourceSpan
         -> ParachuteT Error m (RuleDefinition SourceSpan)
     compileRuleDefinition def =
-        traverseOf (ruleBodies . traverse) order def >>=
-        traverseOf (ruleElses . traverse . ruleElseBody) order
+        traverseOf (ruleBodies . traverse) orderRuleBody def >>=
+        traverseOf (ruleElses . traverse . ruleElseBody) orderRuleBody >>=
+        traverseOf (ruleValue . traverse ) orderTerm
       where
         safe = safeGlobals <> safeLocals <> safeImports
 
@@ -64,10 +66,11 @@ compile prep =
 
         safeImports = Safe $ HS.fromMap $ () <$ def ^. ruleDefImports
 
-        order :: RuleBody SourceSpan -> ParachuteT Error m (RuleBody SourceSpan)
-        order b = do
-            let (b', Unsafe unsafe) = orderForSafety arities safe b
+        runOrder (x, Unsafe unsafe) = do
             _ <- iforM unsafe $ \var (source :| _) -> tellError $ Error.mkError
                 "compile" source "unknown variable" $
                 "Undefined variable:" <+> PP.pretty var
-            return b'
+            return x
+
+        orderRuleBody = runOrder . orderForSafety arities safe
+        orderTerm = runOrder . orderTermForSafety arities safe
