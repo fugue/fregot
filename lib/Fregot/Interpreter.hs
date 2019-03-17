@@ -33,6 +33,7 @@ import qualified Fregot.Parser             as Parser
 import qualified Fregot.Prepare            as Prepare
 import           Fregot.Prepare.Package    (PreparedPackage)
 import qualified Fregot.Prepare.Package    as Prepare
+import           Fregot.Sources            (SourcePointer)
 import qualified Fregot.Sources            as Sources
 import           Fregot.Sources.SourceSpan (SourceSpan)
 import           Fregot.Sugar              (PackageName, Var)
@@ -40,9 +41,16 @@ import qualified Fregot.Sugar              as Sugar
 
 type InterpreterM a = ParachuteT Error IO a
 
+-- | The modules that make up a package.
+type ModuleBatch = [(SourcePointer, Sugar.Module SourceSpan)]
+
 data Handle = Handle
     { _sources  :: !Sources.Handle
+    -- | List of modules, and files we loaded them from.  Grouped by package
+    -- name.
+    , _modules  :: !(IORef (HMS.HashMap PackageName ModuleBatch))
     , _packages :: !(IORef (HMS.HashMap PackageName PreparedPackage))
+    -- | Map of compiled packages.  Dynamically generated from the modules.
     , _compiled :: !(IORef (HMS.HashMap PackageName CompiledPackage))
     }
 
@@ -52,6 +60,7 @@ newHandle
     :: Sources.Handle
     -> IO Handle
 newHandle _sources = do
+    _modules  <- liftIO $ IORef.newIORef HMS.empty
     _packages <- liftIO $ IORef.newIORef HMS.empty
     _compiled <- liftIO $ IORef.newIORef HMS.empty
     return Handle {..}
@@ -63,6 +72,13 @@ loadModule h path = do
     liftIO $ IORef.atomicModifyIORef_ (h ^. sources) $
         Sources.insert sourcep input
     modul <- Parser.lexAndParse Parser.parseModule sourcep input
+
+    -- Insert or replace the module.
+    let pkgname = modul ^. Sugar.modulePackage
+    liftIO $ IORef.atomicModifyIORef_ (h ^. modules) $ \mods ->
+        let m1 = fromMaybe [] (HMS.lookup pkgname mods)
+            m2 = (sourcep, modul) : filter ((/= sourcep) . fst) m1 in
+        HMS.insert pkgname m2 mods
 
     -- Insert the module into the packages system.
     insertModule h modul
