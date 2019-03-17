@@ -10,7 +10,7 @@ module Fregot.Repl
     , metaCommands
     ) where
 
-import           Control.Lens                 ((^.))
+import           Control.Lens                 ((^.), preview, review)
 import           Control.Lens.TH              (makeLenses)
 import           Control.Monad                (forM_, void, when)
 import           Control.Monad.Parachute
@@ -163,8 +163,8 @@ run h = do
 
     getMultilineInput :: Hl.InputT IO (Maybe T.Text)
     getMultilineInput = do
-        pkgname <- liftIO $ IORef.readIORef (h ^. openPackage)
-        mbLine0 <- Hl.getInputLine (packageNameToString pkgname <> "% ")
+        pkg     <- liftIO $ IORef.readIORef (h ^. openPackage)
+        mbLine0 <- Hl.getInputLine $ review packageNameFromString pkg <> "% "
         case mbLine0 of
             Nothing    -> return Nothing
             Just input -> more Multiline.emptyPartial input
@@ -185,6 +185,7 @@ metaShortcuts =
     shortcuts = HMS.fromList
         [ (":h", ":help")
         , (":l", ":load")
+        , (":o", ":open")
         , (":q", ":quit")
         , (":r", ":reload")
         ]
@@ -213,10 +214,12 @@ metaCommands =
                 return True
     , MetaCommand ":open" "open a different package, e.g. `:open foo`" $
         \h args -> case args of
-            _ | [str] <- T.unpack <$> args -> liftIO $ load h path
+            _ | [Just pkg] <- preview packageNameFromText <$> args ->
+                -- TODO(jaspervdj): Check if exists?
+                liftIO $ IORef.writeIORef (h ^. openPackage) pkg $> True
             _ -> do
                 liftIO $ IO.hPutStrLn IO.stderr $
-                    ":load takes one path argument"
+                    ":open takes a package name as argument"
                 return True
     , MetaCommand ":quit" "exit the repl" $ \_ _ -> return False
     , MetaCommand ":reload" "reload the file from the last `:load`" $
