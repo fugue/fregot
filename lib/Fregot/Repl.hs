@@ -100,13 +100,15 @@ parseRuleOrExpr h input = do
     ruleToExpr r
         | null (r ^. ruleBodies)
         , isNothing (r ^. ruleHead . ruleValue) =
-            case r ^. ruleHead . ruleIndex of
+            case (r ^. ruleHead . ruleIndex, r ^. ruleHead . ruleArgs) of
                 -- TODO (jaspervdj): undefined
-                Nothing -> Just $ TermE undefined $
-                    VarT undefined (r ^. ruleHead . ruleName)
-                Just idx -> Just $ TermE undefined $
+                (Just idx, _) -> Just $ TermE undefined $
                     RefT undefined undefined
                         (r ^. ruleHead . ruleName) [RefBrackArg (TermE undefined idx)]
+                (_, Just args) -> Just $ TermE undefined $
+                    CallT undefined [r ^. ruleHead . ruleName] args
+                _ -> Just $ TermE undefined $
+                    VarT undefined (r ^. ruleHead . ruleName)
 
         | otherwise = Nothing
 
