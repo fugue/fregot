@@ -46,7 +46,7 @@ data Handle = Handle
 data MetaCommand = MetaCommand
     { _metaName        :: !T.Text
     , _metaDescription :: !T.Text
-    , _metaRun         :: Handle -> Hl.InputT IO Bool
+    , _metaRun         :: Handle -> [T.Text] -> Hl.InputT IO Bool
     }
 
 $(makeLenses ''Handle)
@@ -136,8 +136,11 @@ run h = do
         mbInput <- getMultilineInput
         case mbInput of
             Nothing -> return ()
-            Just meta | Just cmd <- HMS.lookup meta metaShortcuts -> do
-                cont <- (cmd ^. metaRun) h
+            Just input
+                    | (meta : args) <- T.words input
+                    , ":" `T.isPrefixOf` meta
+                    , Just cmd <- HMS.lookup meta metaShortcuts -> do
+                cont <- (cmd ^. metaRun) h args
                 when cont loop
             Just input   -> do
                 liftIO $ processInput h input
@@ -165,13 +168,13 @@ metaShortcuts =
   where
     shortcuts = HMS.fromList
         [ (":h", ":help")
+        , (":l", ":load")
         , (":q", ":quit")
         ]
 
 metaCommands :: [MetaCommand]
 metaCommands =
-    [ MetaCommand ":quit" "exit the repl" $ \_ -> return False
-    , MetaCommand ":help" "show this info" $ \_ -> do
+    [ MetaCommand ":help" "show this info" $ \_ _ -> do
         liftIO $ PP.hPutSemDoc IO.stderr $
             "Enter an expression to evaluate it." <$$>
             "Enter a rule to add it to the current package." <$$>
@@ -182,4 +185,14 @@ metaCommands =
                 return $ PP.pretty _metaName <> "  " <>
                     PP.pretty _metaDescription)
         return True
+    , MetaCommand ":quit" "exit the repl" $ \_ _ -> return False
+    , MetaCommand ":load" "load a rego file, e.g. `:load foo.rego`" $
+        \_ args -> case args of
+            [path] -> do
+                liftIO $ IO.hPutStrLn IO.stderr $ "loading " ++ T.unpack path
+                return True
+            _ -> do
+                liftIO $ IO.hPutStrLn IO.stderr $
+                    ":load takes one path argument"
+                return True
     ]
