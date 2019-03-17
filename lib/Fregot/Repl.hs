@@ -45,6 +45,8 @@ data Handle = Handle
     , _replCount   :: !(IORef Int)
     -- | Last file that was loaded.  Used to implement the `:reload` command.
     , _lastLoad    :: !(IORef (Maybe FilePath))
+    -- | Currently open package.
+    , _openPackage :: !(IORef PackageName)
     }
 
 data MetaCommand = MetaCommand
@@ -62,8 +64,9 @@ withHandle
     -> (Handle -> IO a)
     -> IO a
 withHandle _sources _interpreter f = do
-    _replCount <- IORef.newIORef 0
-    _lastLoad  <- IORef.newIORef Nothing
+    _replCount   <- IORef.newIORef 0
+    _lastLoad    <- IORef.newIORef Nothing
+    _openPackage <- IORef.newIORef "repl"
     f Handle {..}
 
 -- | Auxiliary function to invoke the interpreter.
@@ -121,16 +124,17 @@ processInput :: Handle -> T.Text -> IO ()
 processInput _h input | T.all isSpace input = return ()
 processInput h input = do
     (sourcep, mbRuleOrTerm) <- parseRuleOrExpr h input
+    pkgname <- IORef.readIORef (h ^. openPackage)
     case mbRuleOrTerm of
         Just (Left rule) -> do
             PP.hPutSemDoc IO.stdout $ PP.pretty rule
             void $ runInterpreter h $ \i ->
-                Interpreter.insertRule i "repl" sourcep rule
+                Interpreter.insertRule i pkgname sourcep rule
 
         Just (Right expr) -> do
             PP.hPutSemDoc IO.stdout $ PP.pretty expr
             mbRows <- runInterpreter h $ \i ->
-                Interpreter.evalExpr i "repl" expr
+                Interpreter.evalExpr i pkgname expr
             forM_ mbRows $ \rows -> forM_ rows $ \row ->
                 PP.hPutSemDoc IO.stdout $ "=" PP.<+> PP.pretty row
         Nothing -> return ()
@@ -159,7 +163,8 @@ run h = do
 
     getMultilineInput :: Hl.InputT IO (Maybe T.Text)
     getMultilineInput = do
-        mbLine0 <- Hl.getInputLine "% "
+        pkgname <- liftIO $ IORef.readIORef (h ^. openPackage)
+        mbLine0 <- Hl.getInputLine (packageNameToString pkgname <> "% ")
         case mbLine0 of
             Nothing    -> return Nothing
             Just input -> more Multiline.emptyPartial input
@@ -202,6 +207,13 @@ metaCommands =
     , MetaCommand ":load" "load a rego file, e.g. `:load foo.rego`" $
         \h args -> case args of
             _ | [path] <- T.unpack <$> args -> liftIO $ load h path
+            _ -> do
+                liftIO $ IO.hPutStrLn IO.stderr $
+                    ":load takes one path argument"
+                return True
+    , MetaCommand ":open" "open a different package, e.g. `:open foo`" $
+        \h args -> case args of
+            _ | [str] <- T.unpack <$> args -> liftIO $ load h path
             _ -> do
                 liftIO $ IO.hPutStrLn IO.stderr $
                     ":load takes one path argument"

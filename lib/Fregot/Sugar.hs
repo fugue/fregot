@@ -6,7 +6,7 @@
 {-# LANGUAGE TemplateHaskell            #-}
 module Fregot.Sugar
     ( PackageName (..)
-    , packageNameToString, packageNameToText
+    , packageNameFromString, packageNameFromText
 
     , Import (..), importAnn, importPackage, importAs
     , Module (..), modulePackage, moduleImports, modulePolicy
@@ -33,13 +33,15 @@ module Fregot.Sugar
     , NestedVar (..)
     ) where
 
-import           Control.Lens       (Lens', lens, (^.))
+import           Control.Lens       (Lens', lens, review, (^.))
+import           Control.Lens.Prism (Prism', prism')
 import           Control.Lens.TH    (makeLenses)
+import           Control.Monad      (guard)
 import           Data.Hashable      (Hashable (..))
 import qualified Data.List          as L
 import           Data.Scientific    (Scientific)
 import           Data.String        (IsString (..))
-import qualified Data.Text          as T
+import qualified Data.Text.Extended as T
 import           Fregot.PrettyPrint ((<$$>), (<+>), (<+>?), (?<+>))
 import qualified Fregot.PrettyPrint as PP
 
@@ -49,11 +51,16 @@ newtype PackageName = PackageName {unPackageName :: [T.Text]}
 instance IsString PackageName where
     fromString = PackageName . T.split (== '.') . T.pack
 
-packageNameToString :: PackageName -> String
-packageNameToString = T.unpack . packageNameToText
+packageNameFromString :: Prism' String PackageName
+packageNameFromString = T.fromString . packageNameFromText
 
-packageNameToText :: PackageName -> T.Text
-packageNameToText = T.intercalate "." . unPackageName
+packageNameFromText :: Prism' T.Text PackageName
+packageNameFromText = prism'
+    (T.intercalate "." . unPackageName)
+    (\txt -> do
+        let parts = T.split (== '.') txt
+        guard $ not $ any T.null parts
+        return $ PackageName parts)
 
 data Import a = Import
     { _importAnn     :: !a
@@ -193,7 +200,7 @@ instance PP.Pretty PP.Sem NestedVar where
         L.intersperse (PP.punctuation ".") . map PP.pretty . unNestedVar
 
 instance PP.Pretty a PackageName where
-    pretty = PP.pretty . packageNameToString
+    pretty = PP.pretty . review packageNameFromString
 
 instance PP.Pretty PP.Sem (Import a) where
     pretty imp =
