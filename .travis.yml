@@ -4,6 +4,7 @@ sudo: false
 cache:
   directories:
   - $HOME/.stack
+  - .stack-work
 
 before_install:
 # Download and unpack the stack executable
