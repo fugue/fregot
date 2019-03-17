@@ -10,32 +10,32 @@ module Fregot.Repl
     , metaCommands
     ) where
 
-import           Control.Lens              ((^.))
-import           Control.Lens.TH           (makeLenses)
-import           Control.Monad             (forM_, when)
+import           Control.Lens                 ((^.))
+import           Control.Lens.TH              (makeLenses)
+import           Control.Monad                (forM_, when)
 import           Control.Monad.Parachute
-import           Control.Monad.Trans       (liftIO)
-import           Data.Char                 (isSpace)
-import qualified Data.HashMap.Strict       as HMS
-import           Data.IORef.Extended       (IORef)
-import qualified Data.IORef.Extended       as IORef
-import qualified Data.List                 as L
-import           Data.Maybe                (isNothing)
-import qualified Data.Text                 as T
-import           Data.Version              (showVersion)
-import qualified Fregot.Error              as Error
-import qualified Fregot.Interpreter        as Interpreter
-import qualified Fregot.Parser.Internal    as Parser
-import qualified Fregot.Parser.Sugar       as Parser
-import           Fregot.PrettyPrint        ((<$$>))
-import qualified Fregot.PrettyPrint        as PP
-import qualified Fregot.Repl.Multiline     as Multiline
-import qualified Fregot.Sources            as Sources
-import           Fregot.Sources.SourceSpan (SourceSpan)
+import           Control.Monad.Trans          (liftIO)
+import           Data.Char                    (isSpace)
+import qualified Data.HashMap.Strict.Extended as HMS
+import           Data.IORef.Extended          (IORef)
+import qualified Data.IORef.Extended          as IORef
+import qualified Data.List                    as L
+import           Data.Maybe                   (isNothing)
+import qualified Data.Text                    as T
+import           Data.Version                 (showVersion)
+import qualified Fregot.Error                 as Error
+import qualified Fregot.Interpreter           as Interpreter
+import qualified Fregot.Parser.Internal       as Parser
+import qualified Fregot.Parser.Sugar          as Parser
+import           Fregot.PrettyPrint           ((<$$>))
+import qualified Fregot.PrettyPrint           as PP
+import qualified Fregot.Repl.Multiline        as Multiline
+import qualified Fregot.Sources               as Sources
+import           Fregot.Sources.SourceSpan    (SourceSpan)
 import           Fregot.Sugar
-import           Fregot.Version            (version)
-import qualified System.Console.Haskeline  as Hl
-import qualified System.IO.Extended        as IO
+import           Fregot.Version               (version)
+import qualified System.Console.Haskeline     as Hl
+import qualified System.IO.Extended           as IO
 
 data Handle = Handle
     { _sources     :: !Sources.Handle
@@ -136,7 +136,7 @@ run h = do
         mbInput <- getMultilineInput
         case mbInput of
             Nothing -> return ()
-            Just meta | Just cmd <- HMS.lookup meta metaCommands -> do
+            Just meta | Just cmd <- HMS.lookup meta metaShortcuts -> do
                 cont <- (cmd ^. metaRun) h
                 when cont loop
             Just input   -> do
@@ -158,8 +158,18 @@ run h = do
                     Nothing       -> return $ Just $ Multiline.finish p1
                     Just nextLine -> more p1 nextLine
 
-metaCommands :: HMS.HashMap T.Text MetaCommand
-metaCommands = HMS.fromList $ map (\m -> (m ^. metaName, m))
+metaShortcuts :: HMS.HashMap T.Text MetaCommand
+metaShortcuts =
+    let base = HMS.fromList $ map (\m -> (m ^. metaName, m)) metaCommands in
+    HMS.shortcuts shortcuts base
+  where
+    shortcuts = HMS.fromList
+        [ (":h", ":help")
+        , (":q", ":quit")
+        ]
+
+metaCommands :: [MetaCommand]
+metaCommands =
     [ MetaCommand ":quit" "exit the repl" $ \_ -> return False
     , MetaCommand ":help" "show this info" $ \_ -> do
         liftIO $ PP.hPutSemDoc IO.stderr $
@@ -168,7 +178,7 @@ metaCommands = HMS.fromList $ map (\m -> (m ^. metaName, m))
             mempty <$$>
             "Other commands:" <$$>
             (PP.ind $ PP.vcat $ do
-                MetaCommand {..} <- snd <$> HMS.toList metaCommands
+                MetaCommand {..} <- metaCommands
                 return $ PP.pretty _metaName <> "  " <>
                     PP.pretty _metaDescription)
         return True

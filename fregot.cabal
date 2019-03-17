@@ -62,6 +62,7 @@ Library
     Data.Aeson.TH.Extended
     Data.ByteString.Extended
     Data.HashSet.Extended
+    Data.HashMap.Strict.Extended
     Data.IORef.Extended
     Data.List.NonEmpty.Extended
     Data.Vector.Extended
