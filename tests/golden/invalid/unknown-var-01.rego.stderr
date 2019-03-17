@@ -1,5 +1,5 @@
 fregot ([34mcompile error[0m):
-  "invalid-unknown-var-01.rego" (line 4, column 3):
+  "unknown-var-01.rego" (line 4, column 3):
   unknown variable:
 
     4|   b

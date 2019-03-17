@@ -1,5 +1,5 @@
 {
-    "input_files": "invalid-*.rego",
+    "input_files": "*.rego",
     "command": "fregot",
     "arguments": ["test", "${SPEC_INPUT_FILE}"],
     "asserts": [
