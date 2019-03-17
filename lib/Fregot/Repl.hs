@@ -30,6 +30,7 @@ import qualified Fregot.Parser.Sugar          as Parser
 import           Fregot.PrettyPrint           ((<$$>))
 import qualified Fregot.PrettyPrint           as PP
 import qualified Fregot.Repl.Multiline        as Multiline
+import           Fregot.Sources               (SourcePointer)
 import qualified Fregot.Sources               as Sources
 import           Fregot.Sources.SourceSpan    (SourceSpan)
 import           Fregot.Sugar
@@ -73,7 +74,7 @@ runInterpreter h f = do
 
 parseRuleOrExpr
     :: Handle -> T.Text
-    -> IO (Maybe (Either (Rule SourceSpan) (Expr SourceSpan)))
+    -> IO (SourcePointer, Maybe (Either (Rule SourceSpan) (Expr SourceSpan)))
 parseRuleOrExpr h input = do
     replNum <- IORef.atomicModifyIORef (h ^. replCount) $ \x -> (x + 1, x)
     let sourcep = Sources.ReplInput replNum input
@@ -85,17 +86,17 @@ parseRuleOrExpr h input = do
     case mbRule of
         Just r | Just e <- ruleToExpr r -> do
             Error.hPutErrors IO.stderr sauce Error.TextFmt ruleErrors
-            return $ Just $ Right e
+            return (sourcep, Just $ Right e)
 
         Just r -> do
             Error.hPutErrors IO.stderr sauce Error.TextFmt ruleErrors
-            return $ Just $ Left r
+            return (sourcep, Just $ Left r)
 
         Nothing -> do
             (exprErrors, mbExpr) <- runParachuteT $
                 Parser.lexAndParse Parser.expr sourcep input
             Error.hPutErrors IO.stderr sauce Error.TextFmt exprErrors
-            return $ fmap Right mbExpr
+            return (sourcep, fmap Right mbExpr)
   where
     ruleToExpr r
         | null (r ^. ruleBodies)
@@ -112,16 +113,15 @@ parseRuleOrExpr h input = do
 
         | otherwise = Nothing
 
--- | TODO: Use an interpreter handle rather than duplicating all of that stuff
--- here.
 processInput :: Handle -> T.Text -> IO ()
 processInput _h input | T.all isSpace input = return ()
 processInput h input = do
-    mbRuleOrTerm <- parseRuleOrExpr h input
+    (sourcep, mbRuleOrTerm) <- parseRuleOrExpr h input
     case mbRuleOrTerm of
         Just (Left rule) -> do
             PP.hPutSemDoc IO.stdout $ PP.pretty rule
-            void $ runInterpreter h $ \i -> Interpreter.insertRule i "repl" rule
+            void $ runInterpreter h $ \i ->
+                Interpreter.insertRule i "repl" sourcep rule
 
         Just (Right expr) -> do
             PP.hPutSemDoc IO.stdout $ PP.pretty expr

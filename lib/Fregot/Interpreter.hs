@@ -14,7 +14,7 @@ module Fregot.Interpreter
     , evalVar
     ) where
 
-import           Control.Lens              ((^.))
+import           Control.Lens              (ifor, (^.))
 import           Control.Lens.TH           (makeLenses)
 import           Control.Monad             (foldM)
 import           Control.Monad.Parachute   (ParachuteT, fatal)
@@ -33,6 +33,7 @@ import qualified Fregot.Parser             as Parser
 import qualified Fregot.Prepare            as Prepare
 import           Fregot.Prepare.Package    (PreparedPackage)
 import qualified Fregot.Prepare.Package    as Prepare
+import           Fregot.Sources            (SourcePointer)
 import qualified Fregot.Sources            as Sources
 import           Fregot.Sources.SourceSpan (SourceSpan)
 import           Fregot.Sugar              (PackageName, Var)
@@ -40,9 +41,15 @@ import qualified Fregot.Sugar              as Sugar
 
 type InterpreterM a = ParachuteT Error IO a
 
+-- | The modules that make up a package.
+type ModuleBatch = [(SourcePointer, Sugar.Module SourceSpan)]
+
 data Handle = Handle
     { _sources  :: !Sources.Handle
-    , _packages :: !(IORef (HMS.HashMap PackageName PreparedPackage))
+    -- | List of modules, and files we loaded them from.  Grouped by package
+    -- name.
+    , _modules  :: !(IORef (HMS.HashMap PackageName ModuleBatch))
+    -- | Map of compiled packages.  Dynamically generated from the modules.
     , _compiled :: !(IORef (HMS.HashMap PackageName CompiledPackage))
     }
 
@@ -52,9 +59,22 @@ newHandle
     :: Sources.Handle
     -> IO Handle
 newHandle _sources = do
-    _packages <- liftIO $ IORef.newIORef HMS.empty
+    _modules  <- liftIO $ IORef.newIORef HMS.empty
     _compiled <- liftIO $ IORef.newIORef HMS.empty
     return Handle {..}
+
+insertModule
+    :: Handle -> SourcePointer -> Sugar.Module SourceSpan -> InterpreterM ()
+insertModule h sourcep modul = do
+    -- Insert or replace the module.
+    let pkgname = modul ^. Sugar.modulePackage
+    liftIO $ IORef.atomicModifyIORef_ (h ^. modules) $ \mods ->
+        let m1 = fromMaybe [] (HMS.lookup pkgname mods)
+            m2 = (sourcep, modul) : filter ((/= sourcep) . fst) m1 in
+        HMS.insert pkgname m2 mods
+
+    -- Remove the corresponding compiled module.
+    liftIO $ IORef.atomicModifyIORef_ (h ^. compiled) $ HMS.delete pkgname
 
 loadModule :: Handle -> FilePath -> InterpreterM ()
 loadModule h path = do
@@ -64,17 +84,27 @@ loadModule h path = do
         Sources.insert sourcep input
     modul <- Parser.lexAndParse Parser.parseModule sourcep input
 
-    -- Insert the module into the packages system.
-    insertModule h modul
+    -- Insert or replace the module.
+    insertModule h sourcep modul
   where
     sourcep = Sources.FileInput path
 
 -- | Get a single package by package name.  If the package does not exist, an
 -- empty one is created.
-readPackage :: Handle -> PackageName -> InterpreterM PreparedPackage
-readPackage h pkgname =
-    fromMaybe (Prepare.empty pkgname) . HMS.lookup pkgname <$>
-    liftIO (IORef.readIORef (h ^. packages))
+readPreparedPackage :: Handle -> PackageName -> InterpreterM PreparedPackage
+readPreparedPackage h pkgname = do
+    modmap <- liftIO $ IORef.readIORef (h ^. modules)
+    let mods = maybe [] (map snd) (HMS.lookup pkgname modmap)
+        pkg0 = Prepare.empty pkgname
+    foldM addMod pkg0 mods
+
+  where
+    addMod pkg0 modul = do
+        imports <- Prepare.prepareImports (modul ^. Sugar.moduleImports)
+        foldM
+            (\pkg rule -> Prepare.insert imports rule pkg)
+            pkg0
+            (modul ^. Sugar.modulePolicy)
 
 -- | Get a compiled package.  If it does not exist, it is compiled.
 readCompiledPackage :: Handle -> PackageName -> InterpreterM CompiledPackage
@@ -83,7 +113,7 @@ readCompiledPackage h pkgname = do
     case HMS.lookup pkgname comp of
         Just cp -> return cp
         Nothing -> do
-            prep <- readPackage h pkgname
+            prep <- readPreparedPackage h pkgname
             cp   <- Compile.compile prep
             liftIO $ IORef.atomicModifyIORef_ (h ^. compiled) $
                 HMS.insert pkgname cp
@@ -93,51 +123,32 @@ readCompiledPackage h pkgname = do
 -- with `test_` by the tester.
 readRules :: Handle -> InterpreterM [(PackageName, Var)]
 readRules h = do
-    pkgs <- liftIO $ IORef.readIORef (h ^. packages)
+    pkgs <- liftIO $ IORef.readIORef (h ^. compiled)
     return $ do
         (pkgname, pkg) <- HMS.toList pkgs
         rule           <- Prepare.rules pkg
         return (pkgname, rule)
 
--- | TODO(jaspervdj): This will require a lock if we concurrently load modules.
-insertModule :: Handle -> Sugar.Module SourceSpan -> InterpreterM ()
-insertModule h modul = do
-    -- Lookup an existing package or create a new one if necessary.
-    package0 <- readPackage h pkgname
-
-    -- One by one, add the rules in the sugared module to the package.
-    imports <- Prepare.prepareImports (modul ^. Sugar.moduleImports)
-    package1 <- foldM
-        (\pkg rule -> Prepare.insert imports rule pkg)
-        package0
-        (modul ^. Sugar.modulePolicy)
-
-    -- Save the modified package.
-    liftIO $ IORef.atomicModifyIORef_ (h ^. packages) $
-        HMS.insert pkgname package1
-
-    -- Remove the corresponding compiled module.
-    liftIO $ IORef.atomicModifyIORef_ (h ^. compiled) $ HMS.delete pkgname
-  where
-    pkgname = modul ^. Sugar.modulePackage
-
 insertRule
-    :: Handle -> PackageName -> Sugar.Rule SourceSpan -> InterpreterM ()
-insertRule h pkgname rule = do
-    package0 <- readPackage h pkgname
-    package1 <- Prepare.insert mempty rule package0
-    liftIO $ IORef.atomicModifyIORef_ (h ^. packages) $
-        HMS.insert pkgname package1
-
-    -- Remove the corresponding compiled module.
-    liftIO $ IORef.atomicModifyIORef_ (h ^. compiled) $ HMS.delete pkgname
+    :: Handle -> PackageName -> SourcePointer -> Sugar.Rule SourceSpan
+    -> InterpreterM ()
+insertRule h pkgname sourcep rule =
+    insertModule h sourcep modul
+  where
+    modul = Sugar.Module
+        { _modulePackage = pkgname
+        , _moduleImports = []  -- TODO(jaspervdj): REPL imports here?
+        , _modulePolicy  = [rule]
+        }
 
 compilePackages :: Handle -> InterpreterM ()
 compilePackages h = do
-    preps <- liftIO $ IORef.readIORef (h ^. packages)
+    mods  <- liftIO $ IORef.readIORef (h ^. modules)
     comps <- liftIO $ IORef.readIORef (h ^. compiled)
-    let needComp = preps `HMS.difference` comps
-    newComp <- traverse Compile.compile needComp
+    let needComp = mods `HMS.difference` comps
+    newComp <- ifor needComp $ \pkgname _ -> do
+        prep <- readPreparedPackage h pkgname
+        Compile.compile prep
     liftIO $ IORef.atomicModifyIORef_ (h ^. compiled) $
         \oldComp -> oldComp <> newComp
 
