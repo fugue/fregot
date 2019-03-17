@@ -5,5 +5,8 @@ Enter a rule to add it to the current package.
 
 Other commands:
   :help  show this info
-  :quit  exit the repl
   :load  load a rego file, e.g. `:load foo.rego`
+  :quit  exit the repl
+  :reload  reload the file from the last `:load`
+
+Shortcuts are supported for commands, e.g. `:l` for `:load`.
