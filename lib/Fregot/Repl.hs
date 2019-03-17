@@ -195,7 +195,9 @@ metaCommands =
         \h args -> case args of
             _ | [path] <- T.unpack <$> args -> liftIO $ do
                 IO.hPutStrLn IO.stderr $ "Loading " ++ path ++ "..."
-                void $ runInterpreter h $ \i -> Interpreter.loadModule i path
+                void $ runInterpreter h $ \i -> do
+                    Interpreter.loadModule i path
+                    Interpreter.compilePackages i
                 return True
             _ -> do
                 liftIO $ IO.hPutStrLn IO.stderr $

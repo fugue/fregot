@@ -36,8 +36,9 @@ main opts = do
     sources <- Sources.newHandle
     interpreter <- Interpreter.newHandle sources
     Repl.withHandle sources interpreter $ \repl -> do
-        (lerrs, _) <- runParachuteT $ forM_ (opts ^. paths) $ \path ->
-            Interpreter.loadModule interpreter path
+        (lerrs, _) <- runParachuteT $ do
+            forM_ (opts ^. paths) $ \p -> Interpreter.loadModule interpreter p
+            Interpreter.compilePackages interpreter
         sauce <- IORef.readIORef sources
         Error.hPutErrors IO.stderr sauce Error.TextFmt lerrs
         Repl.run repl
