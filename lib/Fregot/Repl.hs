@@ -16,6 +16,7 @@ import           Control.Monad                (forM_, void, when)
 import           Control.Monad.Parachute
 import           Control.Monad.Trans          (liftIO)
 import           Data.Char                    (isSpace)
+import           Data.Functor                 (($>))
 import qualified Data.HashMap.Strict.Extended as HMS
 import           Data.IORef.Extended          (IORef)
 import qualified Data.IORef.Extended          as IORef
@@ -42,6 +43,8 @@ data Handle = Handle
     { _sources     :: !Sources.Handle
     , _interpreter :: !Interpreter.Handle
     , _replCount   :: !(IORef Int)
+    -- | Last file that was loaded.  Used to implement the `:reload` command.
+    , _lastLoad    :: !(IORef (Maybe FilePath))
     }
 
 data MetaCommand = MetaCommand
@@ -60,6 +63,7 @@ withHandle
     -> IO a
 withHandle _sources _interpreter f = do
     _replCount <- IORef.newIORef 0
+    _lastLoad  <- IORef.newIORef Nothing
     f Handle {..}
 
 -- | Auxiliary function to invoke the interpreter.
@@ -177,6 +181,7 @@ metaShortcuts =
         [ (":h", ":help")
         , (":l", ":load")
         , (":q", ":quit")
+        , (":r", ":reload")
         ]
 
 metaCommands :: [MetaCommand]
@@ -190,19 +195,30 @@ metaCommands =
             (PP.ind $ PP.vcat $ do
                 MetaCommand {..} <- metaCommands
                 return $ PP.pretty _metaName <> "  " <>
-                    PP.pretty _metaDescription)
+                    PP.pretty _metaDescription) <$$>
+            mempty <$$>
+            "Shortcuts are supported for commands, e.g. `:l` for `:load`."
         return True
-    , MetaCommand ":quit" "exit the repl" $ \_ _ -> return False
     , MetaCommand ":load" "load a rego file, e.g. `:load foo.rego`" $
         \h args -> case args of
-            _ | [path] <- T.unpack <$> args -> liftIO $ do
-                IO.hPutStrLn IO.stderr $ "Loading " ++ path ++ "..."
-                void $ runInterpreter h $ \i -> do
-                    Interpreter.loadModule i path
-                    Interpreter.compilePackages i
-                return True
+            _ | [path] <- T.unpack <$> args -> liftIO $ load h path
             _ -> do
                 liftIO $ IO.hPutStrLn IO.stderr $
                     ":load takes one path argument"
                 return True
+    , MetaCommand ":quit" "exit the repl" $ \_ _ -> return False
+    , MetaCommand ":reload" "reload the file from the last `:load`" $
+        \h _ -> liftIO $ do
+            mbLastLoad <- IORef.readIORef (h ^. lastLoad)
+            case mbLastLoad of
+                Just ll -> load h ll
+                Nothing -> IO.hPutStrLn IO.stderr "No files loaded" $> True
     ]
+  where
+    load h path = do
+        IO.hPutStrLn IO.stderr $ "Loading " ++ path ++ "..."
+        IORef.writeIORef (h ^. lastLoad) (Just path)
+        void $ runInterpreter h $ \i -> do
+            Interpreter.loadModule i path
+            Interpreter.compilePackages i
+        return True
