@@ -12,7 +12,7 @@ module Fregot.Repl
 
 import           Control.Lens                 ((^.))
 import           Control.Lens.TH              (makeLenses)
-import           Control.Monad                (forM_, when)
+import           Control.Monad                (forM_, void, when)
 import           Control.Monad.Parachute
 import           Control.Monad.Trans          (liftIO)
 import           Data.Char                    (isSpace)
@@ -60,6 +60,16 @@ withHandle
 withHandle _sources _interpreter f = do
     _replCount <- IORef.newIORef 0
     f Handle {..}
+
+-- | Auxiliary function to invoke the interpreter.
+runInterpreter
+    :: Handle -> (Interpreter.Handle -> Interpreter.InterpreterM a)
+    -> IO (Maybe a)
+runInterpreter h f = do
+    (errors, mbX) <- runParachuteT $ f (h ^. interpreter)
+    sauce <- IORef.readIORef (h ^. sources)
+    Error.hPutErrors IO.stderr sauce Error.TextFmt errors
+    return mbX
 
 parseRuleOrExpr
     :: Handle -> T.Text
@@ -109,19 +119,14 @@ processInput h input = do
     case mbRuleOrTerm of
         Just (Left rule) -> do
             PP.hPutSemDoc IO.stdout $ PP.pretty rule
-            (errors, _mbUnit) <- runParachuteT $
-                Interpreter.insertRule (h ^. interpreter) "repl" rule
-            sauce <- IORef.readIORef (h ^. sources)
-            Error.hPutErrors IO.stderr sauce Error.TextFmt errors
+            void $ runInterpreter h $ \i -> Interpreter.insertRule i "repl" rule
 
         Just (Right expr) -> do
             PP.hPutSemDoc IO.stdout $ PP.pretty expr
-            (errors, mbRows) <- runParachuteT $
-                Interpreter.evalExpr (h ^. interpreter) "repl" expr
+            mbRows <- runInterpreter h $ \i ->
+                Interpreter.evalExpr i "repl" expr
             forM_ mbRows $ \rows -> forM_ rows $ \row ->
                 PP.hPutSemDoc IO.stdout $ "=" PP.<+> PP.pretty row
-            sauce <- IORef.readIORef (h ^. sources)
-            Error.hPutErrors IO.stderr sauce Error.TextFmt errors
         Nothing -> return ()
 
 run :: Handle -> IO ()
@@ -187,9 +192,10 @@ metaCommands =
         return True
     , MetaCommand ":quit" "exit the repl" $ \_ _ -> return False
     , MetaCommand ":load" "load a rego file, e.g. `:load foo.rego`" $
-        \_ args -> case args of
-            [path] -> do
-                liftIO $ IO.hPutStrLn IO.stderr $ "loading " ++ T.unpack path
+        \h args -> case args of
+            _ | [path] <- T.unpack <$> args -> liftIO $ do
+                IO.hPutStrLn IO.stderr $ "Loading " ++ path ++ "..."
+                void $ runInterpreter h $ \i -> Interpreter.loadModule i path
                 return True
             _ -> do
                 liftIO $ IO.hPutStrLn IO.stderr $
