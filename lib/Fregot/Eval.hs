@@ -36,7 +36,7 @@ import           Fregot.Eval.Builtins
 import           Fregot.Eval.Monad
 import           Fregot.Eval.Value
 import           Fregot.Prepare.Ast
-import           Fregot.PrettyPrint        ((<+>))
+import           Fregot.PrettyPrint        ((<$$>), (<+>))
 import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources.SourceSpan (SourceSpan)
 
@@ -81,7 +81,7 @@ evalTerm (CallT source f args)
         case mbCompiledRule of
             Just cr -> do
                 vargs <- mapM evalTerm args
-                evalUserFunction cr vargs
+                evalUserFunction source cr vargs
             Nothing -> raise' source "unknown function" $
                 "Unknown function call: " <+> PP.pretty f
 
@@ -138,7 +138,7 @@ evalVar source v       = do
                     Just crule | crule ^. ruleKind == FunctionRule ->
                         -- We allow calling a null-ary function `report()` both
                         -- as just `report` as well as `report()`
-                        evalUserFunction crule []
+                        evalUserFunction source crule []
                     Just crule -> evalCompiledRule source crule Nothing
 
 evalBuiltin :: SourceSpan -> Builtin -> [Value] -> EvalM Value
@@ -159,7 +159,7 @@ evalBuiltin source (Builtin sig impl) args0 = do
     -- Call the function.  This is currently pure business but it will
     -- definitely involve IO at some point.
     result <- case impl args1 of
-        Left err -> fail $ "evalBuiltin: failed: " ++ show err
+        Left err -> raise' source "builtin error" $ PP.pretty err
         Right x  -> return $ toVal x
 
     -- Return value depends on supplied arguments.
@@ -195,9 +195,9 @@ evalRefArg source indexee refArg = do
             ArrayV a  -> branch [return val | val <- V.toList a]
             SetV s -> branch [return val | val <- HS.toList s]
             ObjectV o -> branch [return val | (_, val) <- V.toList o]
-            _ -> fail $
-                "evalRefArg: cannot index " ++ describeValue indexee ++
-                " with a free variable"
+            _ -> raise' source "reference error" $
+                "Cannot index" <+> PP.pretty (describeValue indexee) <+>
+                " using a free variable"
 
         FreeV unbound -> case indexee of
             ArrayV a -> branch
@@ -212,9 +212,9 @@ evalRefArg source indexee refArg = do
                 [ Unification.bindTerm unbound key >> return val
                 | (key, val) <- V.toList o
                 ]
-            _ -> fail $
-                "evalRefArg: cannot index " ++ describeValue indexee ++
-                " with a free variable"
+            _ -> raise' source "reference error" $
+                "Cannot index" <+> PP.pretty (describeValue indexee) <+>
+                " using a free variable"
 
         k | ObjectV o <- indexee ->
             -- NOTE(jaspervdj): We can omit some warning here.
@@ -319,10 +319,11 @@ evalRuleDefinition callerSource rule mbIndex =
             ]
 
 evalUserFunction
-    :: Rule SourceSpan -> [Value] -> EvalM Value
-evalUserFunction crule callerArgs
-    | crule ^. ruleKind /= FunctionRule = fail
-        "Non-function called as function"
+    :: SourceSpan -> Rule SourceSpan -> [Value] -> EvalM Value
+evalUserFunction calleeSource crule callerArgs
+    | crule ^. ruleKind /= FunctionRule = raise' calleeSource "type error" $
+        PP.pretty (crule ^. ruleName) <+>
+        "was called as function but it is not a function"
     | otherwise = requireComplete (crule ^. ruleAnn) $ branch
         [ evalFunctionDefinition def
         | def <- crule ^. ruleDefs
@@ -375,7 +376,10 @@ evalRuleBody lits0 final = go lits0
         val    <- evalTerm (w ^. withAs)
         input  <- view inputDoc
         input' <- case updateObject (w ^. withPath) val input of
-            Nothing -> fail $ "Issue updating input doc"
+            Nothing -> raise' (w ^. withAnn) "with error" $
+                "Could not update input document." <$$>
+                "Path:" <$$>
+                PP.ind (PP.pretty (NestedVar $ w ^. withPath))
             Just i  -> return i
 
         local (inputDoc .~ input') $ localWiths ws mx

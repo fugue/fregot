@@ -109,16 +109,17 @@ parseRuleOrExpr h input = do
         | null (r ^. ruleBodies)
         , isNothing (r ^. ruleHead . ruleValue) =
             case (r ^. ruleHead . ruleIndex, r ^. ruleHead . ruleArgs) of
-                -- TODO (jaspervdj): undefined
-                (Just idx, _) -> Just $ TermE undefined $
-                    RefT undefined undefined
-                        (r ^. ruleHead . ruleName) [RefBrackArg (TermE undefined idx)]
-                (_, Just args) -> Just $ TermE undefined $
-                    CallT undefined [r ^. ruleHead . ruleName] args
-                _ -> Just $ TermE undefined $
-                    VarT undefined (r ^. ruleHead . ruleName)
+                (Just idx, _) -> Just $ TermE a $
+                    RefT a a
+                        (r ^. ruleHead . ruleName) [RefBrackArg (TermE a idx)]
+                (_, Just args) -> Just $ TermE a $
+                    CallT a [r ^. ruleHead . ruleName] args
+                _ -> Just $ TermE a $
+                    VarT a (r ^. ruleHead . ruleName)
 
         | otherwise = Nothing
+      where
+        a = r ^. ruleHead . ruleAnn
 
 processInput :: Handle -> T.Text -> IO ()
 processInput _h input | T.all isSpace input = return ()

@@ -33,6 +33,8 @@ module Fregot.Prepare.Ast
 
     , Sugar.Scalar (..)
 
+    , Sugar.NestedVar (..)
+
       -- * Constructors
     , literal
     ) where
