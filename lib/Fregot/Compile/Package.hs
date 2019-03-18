@@ -43,7 +43,7 @@ compile prep =
     safeGlobals :: Safe Var
     safeGlobals = Safe $
         HS.fromList (rules prep) <>
-        ["input"]
+        ["data", "input"]
 
     compileRule
         :: Monad m => Rule SourceSpan -> ParachuteT Error m (Rule SourceSpan)
