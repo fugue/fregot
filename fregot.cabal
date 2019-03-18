@@ -59,6 +59,7 @@ Library
     Language.Dot
 
     Control.Monad.Extended
+    Data.Aeson.Extended
     Data.Aeson.TH.Extended
     Data.ByteString.Extended
     Data.HashSet.Extended

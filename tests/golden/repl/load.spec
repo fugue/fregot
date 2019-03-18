@@ -6,5 +6,8 @@
         {"stderr": "${SPEC_NAME}.stderr"},
         {"stdout": "${SPEC_NAME}.stdout"}
     ],
-    "stdin": ":load load.rego\ndata.fregot.tests.repl.load.a\n"
+    "stdin": [
+        ":load load.rego",
+        "data.fregot.tests.repl.load.a"
+    ]
 }

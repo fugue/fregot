@@ -16,8 +16,8 @@ import qualified Control.Concurrent.MVar   as MVar
 import           Control.Exception         (Exception, throwIO)
 import           Control.Monad.Extended    (forM, forM_, forever, ifM, mzero,
                                             unless, when)
-import qualified Data.Aeson                as A
 import qualified Data.Aeson.Encode.Pretty  as Aeson.Pretty
+import qualified Data.Aeson.Extended       as A
 import           Data.Algorithm.Diff
 import           Data.Algorithm.DiffOutput
 import qualified Data.ByteString.Extended  as B
@@ -81,7 +81,7 @@ data Spec = Spec
     { sInputFiles :: !(Maybe String)
     , sCommand    :: !String
     , sArguments  :: ![String]
-    , sStdin      :: !String
+    , sStdin      :: ![String]
     , sEnv        :: ![(String, String)]
     , sAsserts    :: ![Assert]
     }
@@ -91,7 +91,7 @@ instance A.FromJSON Spec where
         <$> o A..:? "input_files"
         <*> o A..:  "command"
         <*> o A..:  "arguments"
-        <*> (fromMaybe "" <$> o A..:? "stdin")
+        <*> (maybe [] A.unMultiple <$> o A..:? "stdin")
         <*> (fromMaybe [] <$> o A..:? "environment")
         <*> o A..:  "asserts"
 
@@ -232,7 +232,7 @@ data Execution = Execution
     { executionInputFile :: Maybe FilePath
     , executionCommand   :: FilePath
     , executionArguments :: [String]
-    , executionStdin     :: String
+    , executionStdin     :: [String]
     , executionAsserts   :: [Assert]
     , executionSpliceEnv :: SpliceEnv
     , executionSpecPath  :: FilePath
@@ -277,7 +277,7 @@ specExecutions specPath spec = do
             let executionInputFile = mbInputFile
             executionCommand   <- splice env2 (sCommand spec)
             executionArguments <- traverse (splice env2) (sArguments spec)
-            executionStdin     <- splice env2 (sStdin spec)
+            executionStdin     <- traverse (splice env2) (sStdin spec)
             executionAsserts   <- traverse (spliceAssert env2) (sAsserts spec)
             let executionSpliceEnv = env2
                 executionSpecPath  = specPath
@@ -336,7 +336,8 @@ runExecution env execution@Execution {..} = do
     (Just hIn, Just hOut, Just hErr, hProc) <-
         Process.createProcess createProcess
 
-    Async.withAsync (IO.hPutStr hIn executionStdin >> IO.hClose hIn) $ \_ ->
+    let writeStdin = mapM_ (IO.hPutStrLn hIn) executionStdin >> IO.hClose hIn
+    Async.withAsync writeStdin $ \_ ->
         Async.withAsync (B.hGetContents hOut) $ \outAsync ->
         Async.withAsync (B.hGetContents hErr) $ \errAsync ->
         Async.withAsync (Process.waitForProcess hProc) $ \exitAsync -> do
