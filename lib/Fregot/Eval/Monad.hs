@@ -49,6 +49,7 @@ import           Control.Monad.Extended    (forM)
 import           Control.Monad.Reader      (MonadReader (..), ask)
 import           Control.Monad.State       (MonadState (..), modify)
 import qualified Data.HashMap.Strict       as HMS
+import           Data.List                 (find)
 import           Data.Unification          (Unification)
 import qualified Data.Unification          as Unification
 import           Fregot.Compile.Package    (CompiledPackage)
@@ -57,6 +58,7 @@ import           Fregot.Error              (Error)
 import qualified Fregot.Error              as Error
 import           Fregot.Eval.Value
 import           Fregot.Prepare.Ast
+import           Fregot.PrettyPrint        ((<$$>))
 import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources.SourceSpan (SourceSpan)
 
@@ -173,15 +175,20 @@ orElses x (alt : alts) = x `orElse` orElses alt alts
 withDefault :: EvalM a -> EvalM a -> EvalM a
 withDefault = flip orElse
 
-requireComplete :: Eq a => EvalM a -> EvalM a
-requireComplete (EvalM f) = EvalM $ \env ctx -> do
+requireComplete
+    :: (Eq a, PP.Pretty PP.Sem a) => SourceSpan -> EvalM a -> EvalM a
+requireComplete source (EvalM f) = EvalM $ \env ctx -> do
     rows <- f env ctx
     case rows of
         (r : more)
-            | all ((== r ^. rowValue) . view rowValue) more -> return [r]
-            | otherwise -> fail
-                -- TODO(jaspervdj): Better error message.
-                "requireComplete: inconsistent result for complete rule"
+            | Just d <- find ((/= r ^. rowValue) . view rowValue) more ->
+                throwIO $ EvalException $ Error.mkError
+                    "eval" source "inconsistent result" $
+                    "Inconsistent result for complete rule, but got:" <$$>
+                    PP.ind (PP.pretty $ r ^. rowValue) <$$>
+                    "And:" <$$>
+                    PP.ind (PP.pretty $ d ^. rowValue)
+            | otherwise -> return [r]
         _          -> return rows
 
 -- | Turn a variable into an instantiated variable.

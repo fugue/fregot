@@ -253,7 +253,7 @@ evalCompiledRule
     -> EvalM Value
 evalCompiledRule callerSource crule mbIndex = case crule ^. ruleKind of
     -- Complete definitions
-    CompleteRule -> requireComplete $
+    CompleteRule -> requireComplete (crule ^. ruleAnn) $
         case crule ^. ruleDefault of
             -- If there is a default, then we fill it in if the rule yields no
             -- rows.
@@ -323,7 +323,7 @@ evalUserFunction
 evalUserFunction crule callerArgs
     | crule ^. ruleKind /= FunctionRule = fail
         "Non-function called as function"
-    | otherwise = requireComplete $ branch
+    | otherwise = requireComplete (crule ^. ruleAnn) $ branch
         [ evalFunctionDefinition def
         | def <- crule ^. ruleDefs
         ]
