@@ -40,19 +40,17 @@ import           Fregot.PrettyPrint        ((<$$>), (<+>))
 import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources.SourceSpan (SourceSpan)
 
-ground :: SourceSpan -> EvalM Value -> EvalM Value
-ground source mval = do
-    val <- mval
-    case val of
-        FreeV v   -> do
-            mbVal <- Unification.lookup v
-            case mbVal of
-                Nothing -> raise' source "unknown variable" $
-                    "Unkown variable:" <+> PP.pretty v
-                Just b  -> return b
-        WildcardV -> raise' source "unknown variable" $
-                    "Unkown variable:" <+> PP.pretty WildcardV
-        _         -> return val
+ground :: SourceSpan -> Value -> EvalM Value
+ground source val = case val of
+    FreeV v   -> do
+        mbVal <- Unification.lookup v
+        case mbVal of
+            Nothing -> raise' source "unknown variable" $
+                "Unkown variable:" <+> PP.pretty v
+            Just b  -> return b
+    WildcardV -> raise' source "unknown variable" $
+                "Unkown variable:" <+> PP.pretty WildcardV
+    _         -> return val
 
 evalTerm :: Term SourceSpan -> EvalM Value
 evalTerm (RefT source lhs arg) = do
@@ -257,19 +255,24 @@ evalCompiledRule callerSource crule mbIndex = case crule ^. ruleKind of
         case crule ^. ruleDefault of
             -- If there is a default, then we fill it in if the rule yields no
             -- rows.
-            Just def -> withDefault (evalTerm def) branches
-            Nothing  -> branches
+            Just def -> withDefault (evalTerm def) $ snd <$> branches
+            Nothing  -> snd <$> branches
 
     -- TODO(jaspervdj): We currently treat objects and sets the same.  This is
     -- wrong.
-    _ ->
+    GenSetRule | isNothing mbIndex ->
         -- If the rule takes an argument, e.g. `resources[id]`, but we refer to
         -- it without argument, e.g. `count(resources)`, we want to evaluate the
         -- document to an set again.
-        (if isNothing mbIndex
-            then fmap (SetV . HS.fromList) . unbranch
-            else id) $
-        branches
+        fmap (SetV . HS.fromList) (unbranch $ snd <$> branches)
+
+    GenObjectRule | isNothing mbIndex -> do
+        -- Same as above, but for objects.
+        bs <- unbranch $ branches
+        return $ ObjectV $ V.fromList [(k, v) | (Just k, v) <- bs]
+
+    _ ->
+        snd <$> branches
   where
     -- Standard branching evaluation of rule definitions.
     branches = branch
@@ -278,7 +281,8 @@ evalCompiledRule callerSource crule mbIndex = case crule ^. ruleKind of
         ]
 
 evalRuleDefinition
-    :: SourceSpan -> RuleDefinition SourceSpan -> Maybe Value -> EvalM Value
+    :: SourceSpan -> RuleDefinition SourceSpan -> Maybe Value
+    -> EvalM (Maybe Value, Value)
 evalRuleDefinition callerSource rule mbIndex =
     withImports (rule ^. ruleDefImports) $
     clearLocals $ do
@@ -298,9 +302,13 @@ evalRuleDefinition callerSource rule mbIndex =
             return $ Just tplv
 
     let ret mbRet = case mbRet of
-            Nothing   -> ground (rule ^. ruleDefAnn) $
-                            return $ fromMaybe (BoolV True) mbIdxVal
-            Just term -> evalTerm term
+            Nothing -> do
+                i <- traverse (ground (rule ^. ruleDefAnn)) mbIdxVal
+                return (Nothing, fromMaybe (BoolV True) i)
+            Just term -> do
+                i <- traverse (ground (rule ^. ruleDefAnn)) mbIdxVal
+                v <- evalTerm term
+                return (i, v)
 
     case rule ^. ruleBodies of
         -- If there is not a single body, we probably have something like
@@ -331,7 +339,7 @@ evalUserFunction calleeSource crule callerArgs
   where
     ret mbTerm = case mbTerm of
         Nothing   -> return (BoolV True)
-        Just term -> ground (crule ^. ruleAnn) $ evalTerm term
+        Just term -> ground (crule ^. ruleAnn) =<< evalTerm term
 
     evalFunctionDefinition def =
         withImports (def ^. ruleDefImports) $
@@ -362,10 +370,13 @@ evalRuleBody lits0 final = go lits0
 
     go (lit : lits)
         | lit ^. literalNegation = localWiths (lit ^. literalWith) $ do
-            negation trueish $ ground (lit ^. literalAnn) $ evalStatement $ lit ^. literalStatement
+            negation trueish $
+                evalStatement (lit ^. literalStatement) >>=
+                ground (lit ^. literalAnn)
             go lits
         | otherwise = localWiths (lit ^. literalWith) $ do
-            r <- ground (lit ^. literalAnn) $ evalStatement $ lit ^. literalStatement
+            v <- evalStatement $ lit ^. literalStatement
+            r <- ground (lit ^. literalAnn) v
             if trueish r then go lits else cut
 
     trueish (BoolV False) = False
