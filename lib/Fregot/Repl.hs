@@ -38,6 +38,8 @@ import           Fregot.Sugar
 import qualified Fregot.Test                  as Test
 import           Fregot.Version               (version)
 import qualified System.Console.Haskeline     as Hl
+import qualified System.Directory             as Directory
+import           System.FilePath              ((</>))
 import qualified System.IO.Extended           as IO
 
 data Handle = Handle
@@ -146,7 +148,13 @@ run h = do
     IO.hPutStrLn IO.stderr $ L.intersperse ' ' "Fugue REGO Toolkit"
     IO.hPutStrLn IO.stderr $
         "fregot v" <> showVersion version <> " repl - use :help for usage info"
-    Hl.runInputT Hl.defaultSettings loop
+
+    home <- Directory.getHomeDirectory
+    let settings = Hl.defaultSettings
+            { Hl.historyFile = Just (home </> ".fregot.repl")
+            }
+
+    Hl.runInputT settings loop
   where
     loop :: Hl.InputT IO ()
     loop = do
