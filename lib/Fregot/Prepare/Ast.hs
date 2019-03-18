@@ -13,7 +13,7 @@ module Fregot.Prepare.Ast
     , RuleElse (..), ruleElseAnn, ruleElseValue, ruleElseBody
 
     , Sugar.PackageName (..)
-    , Sugar.packageNameToString, Sugar.packageNameToText
+    , Sugar.packageNameFromString, Sugar.packageNameFromText
 
     , Sugar.Import (..), Sugar.importAnn, Sugar.importPackage, Sugar.importAs
 

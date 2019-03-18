@@ -15,6 +15,7 @@ module Fregot.Eval.Value
     , updateObject
     ) where
 
+import           Control.Lens         (review)
 import           Data.Hashable        (Hashable (..))
 import qualified Data.HashSet         as HS
 import qualified Data.Text            as T
@@ -88,7 +89,7 @@ describeValue = \case
     SetV     _ -> "set"
     ObjectV  _ -> "object"
     NullV      -> "null"
-    PackageV p -> "package " ++ packageNameToString p
+    PackageV p -> "package " ++ review packageNameFromString p
 
 emptyObject :: Value
 emptyObject = ObjectV V.empty

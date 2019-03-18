@@ -10,7 +10,7 @@ module Fregot.Repl
     , metaCommands
     ) where
 
-import           Control.Lens                 ((^.))
+import           Control.Lens                 ((^.), preview, review)
 import           Control.Lens.TH              (makeLenses)
 import           Control.Monad                (forM_, void, when)
 import           Control.Monad.Parachute
@@ -45,6 +45,8 @@ data Handle = Handle
     , _replCount   :: !(IORef Int)
     -- | Last file that was loaded.  Used to implement the `:reload` command.
     , _lastLoad    :: !(IORef (Maybe FilePath))
+    -- | Currently open package.
+    , _openPackage :: !(IORef PackageName)
     }
 
 data MetaCommand = MetaCommand
@@ -62,8 +64,9 @@ withHandle
     -> (Handle -> IO a)
     -> IO a
 withHandle _sources _interpreter f = do
-    _replCount <- IORef.newIORef 0
-    _lastLoad  <- IORef.newIORef Nothing
+    _replCount   <- IORef.newIORef 0
+    _lastLoad    <- IORef.newIORef Nothing
+    _openPackage <- IORef.newIORef "repl"
     f Handle {..}
 
 -- | Auxiliary function to invoke the interpreter.
@@ -121,16 +124,17 @@ processInput :: Handle -> T.Text -> IO ()
 processInput _h input | T.all isSpace input = return ()
 processInput h input = do
     (sourcep, mbRuleOrTerm) <- parseRuleOrExpr h input
+    pkgname <- IORef.readIORef (h ^. openPackage)
     case mbRuleOrTerm of
         Just (Left rule) -> do
             PP.hPutSemDoc IO.stdout $ PP.pretty rule
             void $ runInterpreter h $ \i ->
-                Interpreter.insertRule i "repl" sourcep rule
+                Interpreter.insertRule i pkgname sourcep rule
 
         Just (Right expr) -> do
             PP.hPutSemDoc IO.stdout $ PP.pretty expr
             mbRows <- runInterpreter h $ \i ->
-                Interpreter.evalExpr i "repl" expr
+                Interpreter.evalExpr i pkgname expr
             forM_ mbRows $ \rows -> forM_ rows $ \row ->
                 PP.hPutSemDoc IO.stdout $ "=" PP.<+> PP.pretty row
         Nothing -> return ()
@@ -159,7 +163,8 @@ run h = do
 
     getMultilineInput :: Hl.InputT IO (Maybe T.Text)
     getMultilineInput = do
-        mbLine0 <- Hl.getInputLine "% "
+        pkg     <- liftIO $ IORef.readIORef (h ^. openPackage)
+        mbLine0 <- Hl.getInputLine $ review packageNameFromString pkg <> "% "
         case mbLine0 of
             Nothing    -> return Nothing
             Just input -> more Multiline.emptyPartial input
@@ -180,6 +185,7 @@ metaShortcuts =
     shortcuts = HMS.fromList
         [ (":h", ":help")
         , (":l", ":load")
+        , (":o", ":open")
         , (":q", ":quit")
         , (":r", ":reload")
         ]
@@ -205,6 +211,15 @@ metaCommands =
             _ -> do
                 liftIO $ IO.hPutStrLn IO.stderr $
                     ":load takes one path argument"
+                return True
+    , MetaCommand ":open" "open a different package, e.g. `:open foo`" $
+        \h args -> case args of
+            _ | [Just pkg] <- preview packageNameFromText <$> args ->
+                -- TODO(jaspervdj): Check if exists?
+                liftIO $ IORef.writeIORef (h ^. openPackage) pkg $> True
+            _ -> do
+                liftIO $ IO.hPutStrLn IO.stderr $
+                    ":open takes a package name as argument"
                 return True
     , MetaCommand ":quit" "exit the repl" $ \_ _ -> return False
     , MetaCommand ":reload" "reload the file from the last `:load`" $

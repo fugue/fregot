@@ -65,6 +65,7 @@ Library
     Data.HashMap.Strict.Extended
     Data.IORef.Extended
     Data.List.NonEmpty.Extended
+    Data.Text.Extended
     Data.Vector.Extended
     System.Directory.Find
     System.IO.Extended
