@@ -31,6 +31,7 @@ module Fregot.Sugar
     , With (..), withAnn, withWith, withAs
 
     , NestedVar (..)
+    , nestedVarToString
     ) where
 
 import           Control.Lens       (Lens', lens, review, (^.))
@@ -194,6 +195,9 @@ $(makeLenses ''With)
 
 -- | This type exists solely for pretty-printing.
 newtype NestedVar = NestedVar {unNestedVar :: [Var]}
+
+nestedVarToString :: NestedVar -> String
+nestedVarToString = L.intercalate "." . map varToString . unNestedVar
 
 instance PP.Pretty PP.Sem NestedVar where
     pretty = mconcat .

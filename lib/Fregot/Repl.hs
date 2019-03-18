@@ -10,35 +10,39 @@ module Fregot.Repl
     , metaCommands
     ) where
 
-import           Control.Lens                 (preview, review, (^.))
-import           Control.Lens.TH              (makeLenses)
-import           Control.Monad.Extended       (foldMapM, forM_, void, when)
+import           Control.Lens                      (preview, review, (^.))
+import           Control.Lens.TH                   (makeLenses)
+import           Control.Monad.Extended            (foldMapM, forM_, void, when)
 import           Control.Monad.Parachute
-import           Control.Monad.Trans          (liftIO)
-import           Data.Char                    (isSpace)
-import           Data.Functor                 (($>))
-import qualified Data.HashMap.Strict.Extended as HMS
-import           Data.IORef.Extended          (IORef)
-import qualified Data.IORef.Extended          as IORef
-import qualified Data.List                    as L
-import           Data.Maybe                   (isNothing)
-import qualified Data.Text                    as T
-import           Data.Version                 (showVersion)
-import qualified Fregot.Error                 as Error
-import qualified Fregot.Interpreter           as Interpreter
-import qualified Fregot.Parser.Internal       as Parser
-import qualified Fregot.Parser.Sugar          as Parser
-import           Fregot.PrettyPrint           ((<$$>))
-import qualified Fregot.PrettyPrint           as PP
-import qualified Fregot.Repl.Multiline        as Multiline
-import           Fregot.Sources               (SourcePointer)
-import qualified Fregot.Sources               as Sources
-import           Fregot.Sources.SourceSpan    (SourceSpan)
+import           Control.Monad.Trans               (liftIO)
+import           Data.Char                         (isSpace)
+import           Data.Functor                      (($>))
+import qualified Data.HashMap.Strict.Extended      as HMS
+import           Data.IORef.Extended               (IORef)
+import qualified Data.IORef.Extended               as IORef
+import qualified Data.List                         as L
+import           Data.Maybe                        (fromMaybe, isNothing)
+import qualified Data.Text                         as T
+import           Data.Version                      (showVersion)
+import qualified Fregot.Error                      as Error
+import qualified Fregot.Eval.Builtins              as Builtins
+import qualified Fregot.Interpreter                as Interpreter
+import qualified Fregot.Parser.Internal            as Parser
+import qualified Fregot.Parser.Sugar               as Parser
+import qualified Fregot.Prepare.Ast                as Prepare
+import           Fregot.PrettyPrint                ((<$$>))
+import qualified Fregot.PrettyPrint                as PP
+import qualified Fregot.Repl.Multiline             as Multiline
+import           Fregot.Sources                    (SourcePointer)
+import qualified Fregot.Sources                    as Sources
+import           Fregot.Sources.SourceSpan         (SourceSpan)
 import           Fregot.Sugar
-import qualified Fregot.Test                  as Test
-import           Fregot.Version               (version)
-import qualified System.Console.Haskeline     as Hl
-import qualified System.IO.Extended           as IO
+import qualified Fregot.Test                       as Test
+import           Fregot.Version                    (version)
+import qualified System.Console.Haskeline.Extended as Hl
+import qualified System.Directory                  as Directory
+import           System.FilePath                   ((</>))
+import qualified System.IO.Extended                as IO
 
 data Handle = Handle
     { _sources     :: !Sources.Handle
@@ -130,8 +134,9 @@ processInput h input = do
     case mbRuleOrTerm of
         Just (Left rule) -> do
             PP.hPutSemDoc IO.stdout $ PP.pretty rule
-            void $ runInterpreter h $ \i ->
+            void $ runInterpreter h $ \i -> do
                 Interpreter.insertRule i pkgname sourcep rule
+                Interpreter.compilePackages i
 
         Just (Right expr) -> do
             PP.hPutSemDoc IO.stdout $ PP.pretty expr
@@ -146,7 +151,19 @@ run h = do
     IO.hPutStrLn IO.stderr $ L.intersperse ' ' "Fugue REGO Toolkit"
     IO.hPutStrLn IO.stderr $
         "fregot v" <> showVersion version <> " repl - use :help for usage info"
-    Hl.runInputT Hl.defaultSettings loop
+
+    home <- Directory.getHomeDirectory
+    let settings = Hl.Settings
+            { Hl.historyFile    = Just (home </> ".fregot.repl")
+            , Hl.autoAddHistory = True
+            , Hl.complete       = Hl.concatCompletion
+                [ Hl.completeFilename
+                , completeBuiltins h
+                , completeRules h
+                ]
+            }
+
+    Hl.runInputT settings loop
   where
     loop :: Hl.InputT IO ()
     loop = do
@@ -235,9 +252,8 @@ metaCommands =
         \h _ -> liftIO $ do
             pkg     <- IORef.readIORef (h ^. openPackage)
             results <- runInterpreter h $ \i -> do
-                tests  <- filter (\t@(p, _) -> Test.isTest t && p == pkg) <$>
-                    Interpreter.readRules i
-                foldMapM (Test.runTest i) tests
+                rules <- map ((,) pkg) <$> Interpreter.readPackageRules i pkg
+                foldMapM (Test.runTest i) $ filter Test.isTest rules
             sauce <- IORef.readIORef (h ^. sources)
             forM_ results (Test.printTestResults IO.stdout sauce)
             return True
@@ -250,3 +266,18 @@ metaCommands =
             Interpreter.loadModule i path
             Interpreter.compilePackages i
         return True
+
+completeBuiltins :: Handle -> Hl.CompletionFunc IO
+completeBuiltins _h = Hl.completeDictionary completeWhitespace $ return
+    [ nestedVarToString (NestedVar vs)
+    | (Prepare.NamedFunction vs, _) <- HMS.toList Builtins.builtins
+    ]
+
+completeRules :: Handle -> Hl.CompletionFunc IO
+completeRules h = Hl.completeDictionary completeWhitespace $ do
+    pkg     <- IORef.readIORef (h ^. openPackage)
+    results <- runInterpreter h $ \i -> Interpreter.readPackageRules i pkg
+    return $ map varToString $ fromMaybe [] results
+
+completeWhitespace :: String
+completeWhitespace = "(){}=;:+-/* \t\n"
