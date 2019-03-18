@@ -15,7 +15,7 @@ before_install:
 - mkdir -p ~/.local/bin
 - export PATH=$HOME/.local/bin:$PATH
 - travis_retry curl -L https://get.haskellstack.org/stable/${TRAVIS_OS_NAME}-x86_64.tar.gz | tar xz
-- --wildcards --strip-components=1 -C ~/.local/bin '*/stack'
+- mv stack-*-${TRAVIS_OS_NAME}-x86_64/stack ~/.local/bin/
 
 script:
 - travis_wait stack --no-terminal --skip-ghc-check --copy-bins --test build
