@@ -250,9 +250,8 @@ metaCommands =
         \h _ -> liftIO $ do
             pkg     <- IORef.readIORef (h ^. openPackage)
             results <- runInterpreter h $ \i -> do
-                tests  <- filter (\t@(p, _) -> Test.isTest t && p == pkg) <$>
-                    Interpreter.readRules i
-                foldMapM (Test.runTest i) tests
+                rules <- map ((,) pkg) <$> Interpreter.readPackageRules i pkg
+                foldMapM (Test.runTest i) $ filter Test.isTest rules
             sauce <- IORef.readIORef (h ^. sources)
             forM_ results (Test.printTestResults IO.stdout sauce)
             return True

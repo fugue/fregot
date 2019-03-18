@@ -4,7 +4,8 @@ module Fregot.Interpreter
     ( InterpreterM
     , Handle
     , newHandle
-    , readRules
+    , readPackageRules
+    , readAllRules
     , loadModule
     , insertRule
 
@@ -119,10 +120,18 @@ readCompiledPackage h pkgname = do
                 HMS.insert pkgname cp
             return cp
 
+-- | Read all rules in a specific package.
+readPackageRules :: Handle -> PackageName -> InterpreterM [Var]
+readPackageRules h pkgname = do
+    pkgs <- liftIO $ IORef.readIORef (h ^. compiled)
+    return $ case HMS.lookup pkgname pkgs of
+        Nothing  -> []
+        Just pkg -> Prepare.rules pkg
+
 -- | Read all available rules.  This is used to enumerate all rules starting
 -- with `test_` by the tester.
-readRules :: Handle -> InterpreterM [(PackageName, Var)]
-readRules h = do
+readAllRules :: Handle -> InterpreterM [(PackageName, Var)]
+readAllRules h = do
     pkgs <- liftIO $ IORef.readIORef (h ^. compiled)
     return $ do
         (pkgname, pkg) <- HMS.toList pkgs

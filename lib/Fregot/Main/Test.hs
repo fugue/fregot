@@ -41,7 +41,7 @@ main opts = do
     (errors, mbResult) <- Parachute.runParachuteT $ do
         forM_ regoPaths $ \path -> Interpreter.loadModule interpreter path
         Interpreter.compilePackages interpreter
-        tests <- filter isTest <$> Interpreter.readRules interpreter
+        tests <- filter isTest <$> Interpreter.readAllRules interpreter
         foldMapM (\t -> runTest interpreter t) tests
 
     sources' <- IORef.readIORef sources
