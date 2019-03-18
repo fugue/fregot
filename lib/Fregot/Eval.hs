@@ -410,6 +410,9 @@ unify _ WildcardV     = return ()
 unify (FreeV alpha) (FreeV beta) = Unification.bindVar alpha beta
 unify (FreeV alpha) v = Unification.bindTerm alpha v
 unify v (FreeV alpha) = Unification.bindTerm alpha v
+unify (ArrayV larr) (ArrayV rarr)
+    | V.length larr /= V.length rarr = cut
+    | otherwise                      = V.zipWithM_ unify larr rarr
 unify lhs rhs
     | lhs == rhs      = return ()
 unify _ _             = cut
