@@ -24,6 +24,7 @@ module Fregot.Eval.Builtins
 
 import           Control.Applicative ((<|>))
 import qualified Data.Aeson          as A
+import           Data.Bifunctor      (first)
 import qualified Data.HashMap.Strict as HMS
 import qualified Data.HashSet        as HS
 import qualified Data.Text           as T
@@ -31,7 +32,8 @@ import qualified Data.Text.Encoding  as T
 import qualified Data.Vector         as V
 import qualified Fregot.Eval.Json    as Json
 import           Fregot.Eval.Value
-import           Fregot.Prepare.Ast  (Function (..), BinOp (..))
+import           Fregot.Prepare.Ast  (BinOp (..), Function (..))
+import qualified Text.Pcre2          as Pcre2
 import           Text.Read           (readMaybe)
 
 class ToVal a where
@@ -149,6 +151,7 @@ builtins = HMS.fromList
     , (NamedFunction ["is_object"],          builtin_is_object)
     , (NamedFunction ["is_string"],          builtin_is_string)
     , (NamedFunction ["json", "unmarshal"],  builtin_json_unmarshal)
+    , (NamedFunction ["re_match"],           builtin_re_match)
     , (NamedFunction ["replace"],            builtin_replace)
     , (NamedFunction ["split"],              builtin_split)
     , (NamedFunction ["startswith"],         builtin_startswith)
@@ -208,6 +211,13 @@ builtin_json_unmarshal :: Builtin
 builtin_json_unmarshal = Builtin (In Out) $ \(Cons str Nil) -> do
     val <- A.eitherDecodeStrict' (T.encodeUtf8 str)
     return $! Json.toValue val
+
+builtin_re_match :: Builtin
+builtin_re_match = Builtin (In (In Out)) $
+    \(Cons pattern (Cons value Nil)) -> do
+        regex <- first show (Pcre2.compile pattern)
+        match <- first show (Pcre2.match regex value)
+        return $! not $ null match
 
 builtin_replace :: Builtin
 builtin_replace = Builtin (In (In (In Out))) $
