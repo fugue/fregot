@@ -10,37 +10,39 @@ module Fregot.Repl
     , metaCommands
     ) where
 
-import           Control.Lens                 (preview, review, (^.))
-import           Control.Lens.TH              (makeLenses)
-import           Control.Monad.Extended       (foldMapM, forM_, void, when)
+import           Control.Lens                      (preview, review, (^.))
+import           Control.Lens.TH                   (makeLenses)
+import           Control.Monad.Extended            (foldMapM, forM_, void, when)
 import           Control.Monad.Parachute
-import           Control.Monad.Trans          (liftIO)
-import           Data.Char                    (isSpace)
-import           Data.Functor                 (($>))
-import qualified Data.HashMap.Strict.Extended as HMS
-import           Data.IORef.Extended          (IORef)
-import qualified Data.IORef.Extended          as IORef
-import qualified Data.List                    as L
-import           Data.Maybe                   (isNothing)
-import qualified Data.Text                    as T
-import           Data.Version                 (showVersion)
-import qualified Fregot.Error                 as Error
-import qualified Fregot.Interpreter           as Interpreter
-import qualified Fregot.Parser.Internal       as Parser
-import qualified Fregot.Parser.Sugar          as Parser
-import           Fregot.PrettyPrint           ((<$$>))
-import qualified Fregot.PrettyPrint           as PP
-import qualified Fregot.Repl.Multiline        as Multiline
-import           Fregot.Sources               (SourcePointer)
-import qualified Fregot.Sources               as Sources
-import           Fregot.Sources.SourceSpan    (SourceSpan)
+import           Control.Monad.Trans               (liftIO)
+import           Data.Char                         (isSpace)
+import           Data.Functor                      (($>))
+import qualified Data.HashMap.Strict.Extended      as HMS
+import           Data.IORef.Extended               (IORef)
+import qualified Data.IORef.Extended               as IORef
+import qualified Data.List                         as L
+import           Data.Maybe                        (isNothing)
+import qualified Data.Text                         as T
+import           Data.Version                      (showVersion)
+import qualified Fregot.Error                      as Error
+import qualified Fregot.Eval.Builtins              as Builtins
+import qualified Fregot.Interpreter                as Interpreter
+import qualified Fregot.Parser.Internal            as Parser
+import qualified Fregot.Parser.Sugar               as Parser
+import qualified Fregot.Prepare.Ast                as Prepare
+import           Fregot.PrettyPrint                ((<$$>))
+import qualified Fregot.PrettyPrint                as PP
+import qualified Fregot.Repl.Multiline             as Multiline
+import           Fregot.Sources                    (SourcePointer)
+import qualified Fregot.Sources                    as Sources
+import           Fregot.Sources.SourceSpan         (SourceSpan)
 import           Fregot.Sugar
-import qualified Fregot.Test                  as Test
-import           Fregot.Version               (version)
-import qualified System.Console.Haskeline     as Hl
-import qualified System.Directory             as Directory
-import           System.FilePath              ((</>))
-import qualified System.IO.Extended           as IO
+import qualified Fregot.Test                       as Test
+import           Fregot.Version                    (version)
+import qualified System.Console.Haskeline.Extended as Hl
+import qualified System.Directory                  as Directory
+import           System.FilePath                   ((</>))
+import qualified System.IO.Extended                as IO
 
 data Handle = Handle
     { _sources     :: !Sources.Handle
@@ -150,8 +152,13 @@ run h = do
         "fregot v" <> showVersion version <> " repl - use :help for usage info"
 
     home <- Directory.getHomeDirectory
-    let settings = Hl.defaultSettings
-            { Hl.historyFile = Just (home </> ".fregot.repl")
+    let settings = Hl.Settings
+            { Hl.historyFile    = Just (home </> ".fregot.repl")
+            , Hl.autoAddHistory = True
+            , Hl.complete       = Hl.concatCompletion
+                [ Hl.completeFilename
+                , completeBuiltins h
+                ]
             }
 
     Hl.runInputT settings loop
@@ -258,3 +265,12 @@ metaCommands =
             Interpreter.loadModule i path
             Interpreter.compilePackages i
         return True
+
+completeBuiltins :: Handle -> Hl.CompletionFunc IO
+completeBuiltins _h = Hl.completeDictionary completeWhitespace $ return
+    [ nestedVarToString (NestedVar vs)
+    | (Prepare.NamedFunction vs, _) <- HMS.toList Builtins.builtins
+    ]
+
+completeWhitespace :: String
+completeWhitespace = "(){}=;:+-/* \t\n"
