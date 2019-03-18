@@ -10,9 +10,9 @@ module Fregot.Repl
     , metaCommands
     ) where
 
-import           Control.Lens                 ((^.), preview, review)
+import           Control.Lens                 (preview, review, (^.))
 import           Control.Lens.TH              (makeLenses)
-import           Control.Monad                (forM_, void, when)
+import           Control.Monad.Extended       (foldMapM, forM_, void, when)
 import           Control.Monad.Parachute
 import           Control.Monad.Trans          (liftIO)
 import           Data.Char                    (isSpace)
@@ -35,6 +35,7 @@ import           Fregot.Sources               (SourcePointer)
 import qualified Fregot.Sources               as Sources
 import           Fregot.Sources.SourceSpan    (SourceSpan)
 import           Fregot.Sugar
+import qualified Fregot.Test                  as Test
 import           Fregot.Version               (version)
 import qualified System.Console.Haskeline     as Hl
 import qualified System.IO.Extended           as IO
@@ -189,6 +190,7 @@ metaShortcuts =
         , (":o", ":open")
         , (":q", ":quit")
         , (":r", ":reload")
+        , (":t", ":test")
         ]
 
 metaCommands :: [MetaCommand]
@@ -229,6 +231,16 @@ metaCommands =
             case mbLastLoad of
                 Just ll -> load h ll
                 Nothing -> IO.hPutStrLn IO.stderr "No files loaded" $> True
+    , MetaCommand ":test" "run tests in the current package" $
+        \h _ -> liftIO $ do
+            pkg     <- IORef.readIORef (h ^. openPackage)
+            results <- runInterpreter h $ \i -> do
+                tests  <- filter (\t@(p, _) -> Test.isTest t && p == pkg) <$>
+                    Interpreter.readRules i
+                foldMapM (Test.runTest i) tests
+            sauce <- IORef.readIORef (h ^. sources)
+            forM_ results (Test.printTestResults IO.stdout sauce)
+            return True
     ]
   where
     load h path = do

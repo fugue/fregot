@@ -9,5 +9,6 @@ Other commands:
   :open  open a different package, e.g. `:open foo`
   :quit  exit the repl
   :reload  reload the file from the last `:load`
+  :test  run tests in the current package
 
 Shortcuts are supported for commands, e.g. `:l` for `:load`.
