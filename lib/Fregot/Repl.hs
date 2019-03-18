@@ -21,7 +21,7 @@ import qualified Data.HashMap.Strict.Extended      as HMS
 import           Data.IORef.Extended               (IORef)
 import qualified Data.IORef.Extended               as IORef
 import qualified Data.List                         as L
-import           Data.Maybe                        (isNothing)
+import           Data.Maybe                        (fromMaybe, isNothing)
 import qualified Data.Text                         as T
 import           Data.Version                      (showVersion)
 import qualified Fregot.Error                      as Error
@@ -134,8 +134,9 @@ processInput h input = do
     case mbRuleOrTerm of
         Just (Left rule) -> do
             PP.hPutSemDoc IO.stdout $ PP.pretty rule
-            void $ runInterpreter h $ \i ->
+            void $ runInterpreter h $ \i -> do
                 Interpreter.insertRule i pkgname sourcep rule
+                Interpreter.compilePackages i
 
         Just (Right expr) -> do
             PP.hPutSemDoc IO.stdout $ PP.pretty expr
@@ -158,6 +159,7 @@ run h = do
             , Hl.complete       = Hl.concatCompletion
                 [ Hl.completeFilename
                 , completeBuiltins h
+                , completeRules h
                 ]
             }
 
@@ -270,6 +272,12 @@ completeBuiltins _h = Hl.completeDictionary completeWhitespace $ return
     [ nestedVarToString (NestedVar vs)
     | (Prepare.NamedFunction vs, _) <- HMS.toList Builtins.builtins
     ]
+
+completeRules :: Handle -> Hl.CompletionFunc IO
+completeRules h = Hl.completeDictionary completeWhitespace $ do
+    pkg     <- IORef.readIORef (h ^. openPackage)
+    results <- runInterpreter h $ \i -> Interpreter.readPackageRules i pkg
+    return $ map varToString $ fromMaybe [] results
 
 completeWhitespace :: String
 completeWhitespace = "(){}=;:+-/* \t\n"
