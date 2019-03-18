@@ -18,6 +18,6 @@ before_install:
 - mv stack-*-${TRAVIS_OS_NAME}-x86_64/stack ~/.local/bin/
 
 script:
-- travis_wait stack --no-terminal --skip-ghc-check --copy-bins --test build
+- travis_wait 50 stack --no-terminal --skip-ghc-check --copy-bins --test build
 - fregot test tests/rego
 - fspec -j2 --pretty-diff tests/golden
