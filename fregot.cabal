@@ -51,6 +51,7 @@ Library
     Fregot.Sources
     Fregot.Sources.SourceSpan
     Fregot.Sugar
+    Fregot.Test
     Fregot.Version
 
     Control.Monad.Parachute
