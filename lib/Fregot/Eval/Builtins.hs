@@ -23,15 +23,17 @@ module Fregot.Eval.Builtins
     ) where
 
 import           Control.Applicative ((<|>))
+import           Control.Lens        (preview, review)
 import qualified Data.Aeson          as A
 import           Data.Bifunctor      (first)
 import qualified Data.HashMap.Strict as HMS
 import qualified Data.HashSet        as HS
-import qualified Data.List           as L
 import qualified Data.Text           as T
 import qualified Data.Text.Encoding  as T
 import qualified Data.Vector         as V
 import qualified Fregot.Eval.Json    as Json
+import           Fregot.Eval.Number  (Number)
+import qualified Fregot.Eval.Number  as Number
 import           Fregot.Eval.Value
 import           Fregot.Prepare.Ast  (BinOp (..), Function (..))
 import qualified Text.Pcre2          as Pcre2
@@ -46,11 +48,14 @@ instance ToVal Value where
 instance ToVal T.Text where
     toVal = StringV
 
+instance ToVal Number where
+    toVal = NumberV
+
 instance ToVal Int where
-    toVal = IntV
+    toVal = toVal . review Number.int
 
 instance ToVal Double where
-    toVal = DoubleV
+    toVal = toVal . review Number.double
 
 instance ToVal Bool where
     toVal = BoolV
@@ -71,12 +76,16 @@ instance FromVal T.Text where
     fromVal (StringV t) = Right t
     fromVal v           = Left $ "Expected string but got " ++ describeValue v
 
+instance FromVal Number where
+    fromVal (NumberV n) = Right n
+    fromVal v           = Left $ "Expected number but got " ++ describeValue v
+
 instance FromVal Int where
-    fromVal (IntV i) =  Right i
-    fromVal v        = Left $ "Expected int but got " ++ describeValue v
+    fromVal (NumberV n) | Just i <- preview Number.int n = Right i
+    fromVal v           = Left $ "Expected int but got " ++ describeValue v
 
 instance FromVal Double where
-    fromVal (DoubleV d) =  Right d
+    fromVal (NumberV n) | Just d <- preview Number.double n = Right d
     fromVal v           = Left $ "Expected double but got " ++ describeValue v
 
 instance FromVal Bool where
@@ -240,23 +249,21 @@ builtin_split = Builtin (In (In Out))
 
 builtin_sum :: Builtin
 builtin_sum = Builtin (In Out)
-    (\(Cons (Collection vals) Nil) -> case vals of
-        []       -> return $! InL 0
-        (x : xs) -> return $! L.foldl' (numericBinOp (+) (+)) x xs)
+    (\(Cons (Collection vals) Nil) -> return $! num $ sum vals)
 
 builtin_startswith :: Builtin
 builtin_startswith = Builtin (In (In Out))
     (\(Cons str (Cons prefix Nil)) -> return $! prefix `T.isPrefixOf` str)
 
 builtin_to_number :: Builtin
-builtin_to_number = Builtin (In Out)
-    (\(Cons txt Nil) ->
+builtin_to_number = Builtin (In Out) $
+    \(Cons txt Nil) ->
         let str = T.unpack txt
             mbRead = (Left <$> readMaybe str) <|> (Right <$> readMaybe str) in
         case mbRead of
             Nothing        -> Left $! "to_number: couldn't read " ++ str
-            Just (Left i)  -> return (IntV i)
-            Just (Right d) -> return (DoubleV d))
+            Just (Left i)  -> return $ review Number.int i
+            Just (Right d) -> return $ review Number.double d
 
 builtin_equal :: Builtin
 builtin_equal = Builtin (In (In Out))
@@ -273,48 +280,41 @@ builtin_not_equal = Builtin (In (In Out))
   (\(Cons x (Cons y Nil)) -> return $! BoolV $! x /= (y :: Value))
 
 builtin_less_than :: Builtin
-builtin_less_than = Builtin (In (In Out))
-  (\(Cons x (Cons y Nil)) -> return $! numericBinOp (<) (<) x y)
+builtin_less_than = Builtin (In (In Out)) $
+  \(Cons x (Cons y Nil)) -> return $! x < num y
 
 builtin_less_than_or_equal :: Builtin
-builtin_less_than_or_equal = Builtin (In (In Out))
-  (\(Cons x (Cons y Nil)) -> return $! numericBinOp (<=) (<=) x y)
+builtin_less_than_or_equal = Builtin (In (In Out)) $
+  \(Cons x (Cons y Nil)) -> return $! x <= num y
 
 builtin_greater_than :: Builtin
-builtin_greater_than = Builtin (In (In Out))
-  (\(Cons x (Cons y Nil)) -> return $! numericBinOp (>) (>) x y)
+builtin_greater_than = Builtin (In (In Out)) $
+  \(Cons x (Cons y Nil)) -> return $! x > num y
 
 builtin_greater_than_or_equal :: Builtin
-builtin_greater_than_or_equal = Builtin (In (In Out))
-  (\(Cons x (Cons y Nil)) -> return $! numericBinOp (>=) (>=) x y)
+builtin_greater_than_or_equal = Builtin (In (In Out)) $
+  \(Cons x (Cons y Nil)) -> return $! x >= num y
 
 builtin_plus :: Builtin
-builtin_plus = Builtin (In (In Out))
-  (\(Cons x (Cons y Nil)) -> return $! numericBinOp (+) (+) x y)
+builtin_plus = Builtin (In (In Out)) $
+  \(Cons x (Cons y Nil)) -> return $! num $ x + y
 
 builtin_minus :: Builtin
-builtin_minus = Builtin (In (In Out))
-  (\(Cons x (Cons y Nil)) -> return $! numericBinOp (-) (-) x y)
+builtin_minus = Builtin (In (In Out)) $
+  \(Cons x (Cons y Nil)) -> return $! num $ x - y
 
 builtin_times :: Builtin
-builtin_times = Builtin (In (In Out))
-  (\(Cons x (Cons y Nil)) -> return $! numericBinOp (*) (*) x y)
+builtin_times = Builtin (In (In Out)) $
+  \(Cons x (Cons y Nil)) -> return $! num $ x * y
 
 builtin_divide :: Builtin
-builtin_divide = Builtin (In (In Out))
-  (\(Cons x (Cons y Nil)) -> return $!  numericBinOp
-    (\i1 i2 -> (fromIntegral i1 :: Double) / fromIntegral i2) (/) x y)
+builtin_divide = Builtin (In (In Out)) $
+  \(Cons x (Cons y Nil)) -> return $! num $ x / y
 
 builtin_bin_or :: Builtin
-builtin_bin_or = Builtin (In (In Out))
-  (\(Cons x (Cons y Nil)) -> return $! SetV $ HS.union x y)
+builtin_bin_or = Builtin (In (In Out)) $
+  \(Cons x (Cons y Nil)) -> return $! SetV $ HS.union x y
 
-numericBinOp
-    :: (ToVal a, ToVal b)
-    => (Int -> Int -> a)
-    -> (Double -> Double -> b)
-    -> (Int :|: Double) -> (Int :|: Double) -> (a :|: b)
-numericBinOp f _ (InL x) (InL y) = InL $! f x y
-numericBinOp _ g (InL x) (InR y) = InR $! g (fromIntegral x) y
-numericBinOp _ g (InR x) (InL y) = InR $! g x (fromIntegral y)
-numericBinOp _ g (InR x) (InR y) = InR $! g x y
+-- | Auxiliary function to fix types.
+num :: Number -> Number
+num = id
