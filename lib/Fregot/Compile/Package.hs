@@ -5,7 +5,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell     #-}
 module Fregot.Compile.Package
-    ( CompiledPackage
+    ( CompiledPackage, packageName, packageRules
     , lookup
     , rules
     , compile

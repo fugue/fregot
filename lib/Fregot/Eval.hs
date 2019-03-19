@@ -263,7 +263,7 @@ evalCompiledRule
     -> Rule SourceSpan
     -> Maybe Value
     -> EvalM Value
-evalCompiledRule callerSource crule mbIndex = case crule ^. ruleKind of
+evalCompiledRule callerSource crule mbIndex = cached $ case crule ^. ruleKind of
     -- Complete definitions
     CompleteRule -> requireComplete (crule ^. ruleAnn) $
         case crule ^. ruleDefault of
@@ -293,6 +293,20 @@ evalCompiledRule callerSource crule mbIndex = case crule ^. ruleKind of
         [ evalRuleDefinition callerSource def mbIndex
         | def <- crule ^. ruleDefs
         ]
+
+    cached mx = do
+        pkgname <- view (package . Package.packageName)
+        let key = (pkgname, crule ^. ruleName)
+
+        version  <- view cacheVersion
+        c        <- view cache
+        mbResult <- liftIO $ Cache.lookup c (key, version)
+        case mbResult of
+            Just values -> branch [return v | v <- values]
+            Nothing     -> do
+                vs <- unbranch mx
+                liftIO $ Cache.insert c (key, version) vs
+                branch [return v | v <- vs]
 
 evalRuleDefinition
     :: SourceSpan -> RuleDefinition SourceSpan -> Maybe Value
