@@ -49,6 +49,7 @@ import           Control.Lens.TH           (makeLenses)
 import           Control.Monad.Extended    (forM)
 import           Control.Monad.Reader      (MonadReader (..), ask)
 import           Control.Monad.State       (MonadState (..), modify)
+import           Control.Monad.Trans       (MonadIO (..))
 import qualified Data.HashMap.Strict       as HMS
 import           Data.List                 (find)
 import           Data.Unification          (Unification)
@@ -140,6 +141,9 @@ instance MonadState Context EvalM where
     get     = EvalM $ \_ ctx  -> return [Row ctx ctx]
     put ctx = EvalM $ \_ _    -> return [Row ctx ()]
     state f = EvalM $ \_ ctx0 -> let (x, ctx1) = f ctx0 in return [Row ctx1 x]
+
+instance MonadIO EvalM where
+    liftIO mio = EvalM $ \_ ctx -> mio >>= \x -> return [Row ctx x]
 
 runEvalM :: Environment -> EvalM a -> IO (Either Error (Document a))
 runEvalM rules0 (EvalM f) = catch

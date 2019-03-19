@@ -25,6 +25,7 @@ module Fregot.Eval
 import           Control.Lens              (use, view, (%=), (.=), (.~), (^.))
 import           Control.Monad.Extended    (foldM, forM, zipWithM_)
 import           Control.Monad.Reader      (local)
+import           Control.Monad.Trans       (liftIO)
 import qualified Data.HashMap.Strict       as HMS
 import qualified Data.HashSet              as HS
 import           Data.Maybe                (fromMaybe, isNothing)
@@ -33,6 +34,7 @@ import qualified Data.Unification          as Unification
 import qualified Data.Vector.Extended      as V
 import qualified Fregot.Compile.Package    as Package
 import           Fregot.Eval.Builtins
+import qualified Fregot.Eval.Cache         as Cache
 import           Fregot.Eval.Monad
 import           Fregot.Eval.Value
 import           Fregot.Prepare.Ast
@@ -394,7 +396,12 @@ evalRuleBody lits0 final = go lits0
     trueish (BoolV False) = False
     trueish _             = True
 
-    localWiths []       mx = mx
+    localWiths []       mx = do
+        -- Since we changed the input, we need to bump up the cache.  This will
+        -- also be the case when we modify `data`.
+        c <- view cache
+        v <- liftIO (Cache.bump c)
+        local (cacheVersion .~ v) mx
     localWiths (w : ws) mx = do
         val    <- evalTerm (w ^. withAs)
         input  <- view inputDoc
