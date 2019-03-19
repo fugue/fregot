@@ -27,6 +27,7 @@ import qualified Data.Aeson          as A
 import           Data.Bifunctor      (first)
 import qualified Data.HashMap.Strict as HMS
 import qualified Data.HashSet        as HS
+import qualified Data.List           as L
 import qualified Data.Text           as T
 import qualified Data.Text.Encoding  as T
 import qualified Data.Vector         as V
@@ -107,6 +108,10 @@ instance FromVal a => FromVal (Collection a) where
 -- | Either-like type for when we have weird ad-hoc polymorphism.
 data a :|: b = InL a | InR b
 
+instance (ToVal a, ToVal b) => ToVal (a :|: b) where
+    toVal (InL x) = toVal x
+    toVal (InR y) = toVal y
+
 instance (FromVal a, FromVal b) => FromVal (a :|: b) where
     -- TODO(jaspervdj): We should use a datatype for expected result types, so
     -- we can join them here nicely and not just return the last error message.
@@ -154,6 +159,7 @@ builtins = HMS.fromList
     , (NamedFunction ["re_match"],           builtin_re_match)
     , (NamedFunction ["replace"],            builtin_replace)
     , (NamedFunction ["split"],              builtin_split)
+    , (NamedFunction ["sum"],                builtin_sum)
     , (NamedFunction ["startswith"],         builtin_startswith)
     , (NamedFunction ["to_number"],          builtin_to_number)
     , (NamedFunction ["trim"],               builtin_trim)
@@ -232,6 +238,12 @@ builtin_split :: Builtin
 builtin_split = Builtin (In (In Out))
     (\(Cons str (Cons delim Nil)) -> return $! T.splitOn delim str)
 
+builtin_sum :: Builtin
+builtin_sum = Builtin (In Out)
+    (\(Cons (Collection vals) Nil) -> case vals of
+        []       -> return $! InL 0
+        (x : xs) -> return $! L.foldl' (numericBinOp (+) (+)) x xs)
+
 builtin_startswith :: Builtin
 builtin_startswith = Builtin (In (In Out))
     (\(Cons str (Cons prefix Nil)) -> return $! prefix `T.isPrefixOf` str)
@@ -301,8 +313,8 @@ numericBinOp
     :: (ToVal a, ToVal b)
     => (Int -> Int -> a)
     -> (Double -> Double -> b)
-    -> (Int :|: Double) -> (Int :|: Double) -> Value
-numericBinOp f _ (InL x) (InL y) = toVal $! f x y
-numericBinOp _ g (InL x) (InR y) = toVal $! g (fromIntegral x) y
-numericBinOp _ g (InR x) (InL y) = toVal $! g x (fromIntegral y)
-numericBinOp _ g (InR x) (InR y) = toVal $! g x y
+    -> (Int :|: Double) -> (Int :|: Double) -> (a :|: b)
+numericBinOp f _ (InL x) (InL y) = InL $! f x y
+numericBinOp _ g (InL x) (InR y) = InR $! g (fromIntegral x) y
+numericBinOp _ g (InR x) (InL y) = InR $! g x (fromIntegral y)
+numericBinOp _ g (InR x) (InR y) = InR $! g x y
