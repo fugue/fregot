@@ -93,9 +93,6 @@ type Document a = [Row a]
 
 data Environment = Environment
     { _packages :: !(HMS.HashMap PackageName CompiledPackage)
-
-    -- NOTE(jaspervdj): We'll need to update package as well if call a rule from
-    -- another package.
     , _package  :: !CompiledPackage
     , _inputDoc :: !Value
     , _imports  :: !(Imports SourceSpan)
