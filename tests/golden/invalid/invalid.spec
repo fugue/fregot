@@ -9,7 +9,7 @@
             "stderr": "${SPEC_INPUT_FILE}.stderr"
         },
         {
-            "stderr": "${SPEC_INPUT_FILE}.stdout"
+            "stdout": "${SPEC_INPUT_FILE}.stdout"
         }
     ]
 }

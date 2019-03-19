@@ -1,8 +1,1 @@
-fregot ([34mcompile error[0m):
-  "unknown-var-01.rego" (line 4, column 3):
-  unknown variable:
-
-    4|   b
-         [31m^[0m
-
-  Undefined variable: b
+passed: 1, failed: 0, errored: 0

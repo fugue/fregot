@@ -1,16 +1,1 @@
-fregot ([34mcompile error[0m):
-  "default-index.rego" (line 3, column 1):
-  complete definition mismatch:
-
-    3| default power_level = 9001
-       [31m^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
-
-  is a complete rule
-
-  "default-index.rego" (line 5, column 1):
-  complete definition mismatch:
-
-    5| power_level[character] = level {
-       [31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
-
-  generates an object
+passed: 0, failed: 0, errored: 0

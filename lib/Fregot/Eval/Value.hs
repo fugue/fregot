@@ -17,21 +17,23 @@ module Fregot.Eval.Value
 
 import           Control.Lens         (review)
 import           Data.Hashable        (Hashable (..))
+import qualified Data.HashMap.Strict  as HMS
 import qualified Data.HashSet         as HS
 import qualified Data.Text            as T
 import qualified Data.Vector.Extended as V
 import           Fregot.PrettyPrint   ((<+>))
 import qualified Fregot.PrettyPrint   as PP
-import           Fregot.Sugar
+import           Fregot.Sugar         (PackageName, Var)
+import qualified Fregot.Sugar         as Sugar
 import           GHC.Generics         (Generic)
 
 -- | An instantiated variable.  These have a unique (within the evaluation
 -- context) number identifying them.  The var is just there for debugging
 -- purposes.
-data InstVar = InstVar Int Var
+data InstVar = InstVar {-# UNPACK #-} !Int {-# UNPACK #-} !Var
 
 instance Show InstVar where
-    show (InstVar n v) = T.unpack (unVar v) ++ "_" ++ show n
+    show (InstVar n v) = T.unpack (Sugar.unVar v) ++ "_" ++ show n
 
 instance Eq InstVar where
     InstVar x _ == InstVar y _ = x == y
@@ -46,16 +48,15 @@ instance PP.Pretty a InstVar where
     pretty = PP.pretty . show
 
 data Value
-    = FreeV   !InstVar
+    = FreeV   {-# UNPACK #-} !InstVar
     | WildcardV
-    | StringV !T.Text
-    | IntV    !Int
-    | DoubleV !Double
-    | BoolV   !Bool
-    | ArrayV  !(V.Vector Value)
-    | SetV    !(HS.HashSet Value)
-    -- TODO(jaspervdj): Low-hanging optimization fruit here.
-    | ObjectV !(V.Vector (Value, Value))
+    | StringV {-# UNPACK #-} !T.Text
+    | IntV    {-# UNPACK #-} !Int
+    | DoubleV {-# UNPACK #-} !Double
+    | BoolV                  !Bool
+    | ArrayV  {-# UNPACK #-} !(V.Vector Value)
+    | SetV                   !(HS.HashSet Value)
+    | ObjectV                !(HMS.HashMap Value Value)
     | NullV
     -- | Packages are definitely not first-class values but we can pretend that
     -- they are.
@@ -73,7 +74,7 @@ instance PP.Pretty PP.Sem Value where
     pretty (BoolV   b)  = PP.literal $ if b then "true" else "false"
     pretty (ArrayV  a)  = PP.array (V.toList a)
     pretty (SetV    s)  = PP.set (HS.toList s)
-    pretty (ObjectV o)  = PP.object [(k, v) | (k, v) <- V.toList o]
+    pretty (ObjectV o)  = PP.object [(k, v) | (k, v) <- HMS.toList o]
     pretty NullV        = PP.literal "null"
     pretty (PackageV p) = PP.keyword "package" <+> PP.pretty p
 
@@ -89,26 +90,25 @@ describeValue = \case
     SetV     _ -> "set"
     ObjectV  _ -> "object"
     NullV      -> "null"
-    PackageV p -> "package " ++ review packageNameFromString p
+    PackageV p -> "package " ++ review Sugar.packageNameFromString p
 
 emptyObject :: Value
-emptyObject = ObjectV V.empty
+emptyObject = ObjectV HMS.empty
 
 -- | Updates a path in the object.  This is mainly used to implement the `with`
 -- modifier.
 updateObject :: [Var] -> Value -> Value -> Maybe Value
 updateObject []       insertee _           = Just insertee
 updateObject (v : vs) insertee (ObjectV o) =
-    case V.findIndex ((== k) . fst) o of
+    case HMS.lookup k o of
         Nothing -> do
             nest <- updateObject vs insertee emptyObject
-            return $ ObjectV $ V.cons (k, nest) o
-        Just idx -> do
-            let (_, val) = o V.! idx
+            return $ ObjectV $ HMS.insert k nest o
+        Just val -> do
             nest <- updateObject vs insertee val
-            return $ ObjectV $ o V.// [(idx, (k, nest))]
+            return $ ObjectV $ HMS.insert k nest o
   where
-    k = StringV (unVar v)
+    k = StringV (Sugar.unVar v)
 
 -- TODO(jaspervdj): Better error
 updateObject _ _ _ = Nothing
