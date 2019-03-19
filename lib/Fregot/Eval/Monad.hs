@@ -14,6 +14,7 @@ module Fregot.Eval.Monad
     , Document
 
     , Environment (..), packages, package, inputDoc, imports
+    , cache, cacheVersion
 
     , EvalException (..)
 
@@ -56,6 +57,8 @@ import           Fregot.Compile.Package    (CompiledPackage)
 import qualified Fregot.Compile.Package    as Package
 import           Fregot.Error              (Error)
 import qualified Fregot.Error              as Error
+import           Fregot.Eval.Cache         (Cache)
+import qualified Fregot.Eval.Cache         as Cache
 import           Fregot.Eval.Value
 import           Fregot.Prepare.Ast
 import           Fregot.PrettyPrint        ((<$$>))
@@ -92,11 +95,13 @@ type Document a = [Row a]
 --------------------------------------------------------------------------------
 
 data Environment = Environment
-    { _packages :: !(HMS.HashMap PackageName CompiledPackage)
-    , _package  :: !CompiledPackage
-    , _inputDoc :: !Value
-    , _imports  :: !(Imports SourceSpan)
-    } deriving (Show)
+    { _packages     :: !(HMS.HashMap PackageName CompiledPackage)
+    , _package      :: !CompiledPackage
+    , _inputDoc     :: !Value
+    , _imports      :: !(Imports SourceSpan)
+    , _cache        :: !(Cache (PackageName, Var) [Value])
+    , _cacheVersion :: !Cache.Version
+    }
 
 $(makeLenses ''Environment)
 

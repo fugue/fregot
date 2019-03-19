@@ -29,7 +29,10 @@ import           Fregot.Compile.Package    (CompiledPackage)
 import qualified Fregot.Compile.Package    as Compile
 import           Fregot.Error              (Error)
 import qualified Fregot.Eval               as Eval
+import           Fregot.Eval.Cache         (Cache)
+import qualified Fregot.Eval.Cache         as Cache
 import           Fregot.Eval.Value         (emptyObject)
+import           Fregot.Eval.Value         (Value)
 import qualified Fregot.Parser             as Parser
 import qualified Fregot.Prepare            as Prepare
 import           Fregot.Prepare.Package    (PreparedPackage)
@@ -46,12 +49,14 @@ type InterpreterM a = ParachuteT Error IO a
 type ModuleBatch = [(SourcePointer, Sugar.Module SourceSpan)]
 
 data Handle = Handle
-    { _sources  :: !Sources.Handle
+    { _sources      :: !Sources.Handle
     -- | List of modules, and files we loaded them from.  Grouped by package
     -- name.
-    , _modules  :: !(IORef (HMS.HashMap PackageName ModuleBatch))
+    , _modules      :: !(IORef (HMS.HashMap PackageName ModuleBatch))
     -- | Map of compiled packages.  Dynamically generated from the modules.
-    , _compiled :: !(IORef (HMS.HashMap PackageName CompiledPackage))
+    , _compiled     :: !(IORef (HMS.HashMap PackageName CompiledPackage))
+    , _cache        :: !(Cache (PackageName, Var) [Value])
+    , _cacheVersion :: !Cache.Version
     }
 
 $(makeLenses ''Handle)
@@ -60,8 +65,10 @@ newHandle
     :: Sources.Handle
     -> IO Handle
 newHandle _sources = do
-    _modules  <- liftIO $ IORef.newIORef HMS.empty
-    _compiled <- liftIO $ IORef.newIORef HMS.empty
+    _modules      <- liftIO $ IORef.newIORef HMS.empty
+    _compiled     <- liftIO $ IORef.newIORef HMS.empty
+    _cache        <- liftIO $ Cache.new
+    _cacheVersion <- liftIO $ Cache.bump _cache
     return Handle {..}
 
 insertModule
@@ -167,7 +174,15 @@ eval
 eval h pkgname mx = do
     comp <- liftIO $ IORef.readIORef (h ^. compiled)
     pkg  <- readCompiledPackage h pkgname
-    let env = Eval.Environment comp pkg emptyObject mempty
+    let env = Eval.Environment
+            { Eval._packages     = comp
+            , Eval._package      = pkg
+            , Eval._inputDoc     = emptyObject
+            , Eval._imports      = mempty
+            , Eval._cache        = h ^. cache
+            , Eval._cacheVersion = h ^. cacheVersion
+            }
+
     either fatal return =<< liftIO (Eval.runEvalM env mx)
 
 evalExpr
