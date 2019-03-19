@@ -100,7 +100,7 @@ newtype Collection a = Collection [a]
 instance FromVal a => FromVal (Collection a) where
     fromVal (ArrayV  c) = Collection <$> traverse fromVal (V.toList c)
     fromVal (SetV    c) = Collection <$> traverse fromVal (HS.toList c)
-    fromVal (ObjectV c) = Collection <$> traverse (fromVal . snd) (V.toList c)
+    fromVal (ObjectV c) = Collection <$> traverse (fromVal . snd) (HMS.toList c)
     fromVal v           = Left $
         "Expected collection but got " ++ describeValue v
 

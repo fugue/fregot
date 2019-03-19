@@ -23,7 +23,7 @@ module Fregot.Eval
     ) where
 
 import           Control.Lens              (use, view, (%=), (.=), (.~), (^.))
-import           Control.Monad.Extended    (forM, zipWithM_)
+import           Control.Monad.Extended    (foldM, forM, zipWithM_)
 import           Control.Monad.Reader      (local)
 import qualified Data.HashMap.Strict       as HMS
 import qualified Data.HashSet              as HS
@@ -51,6 +51,20 @@ ground source val = case val of
     WildcardV -> raise' source "unknown variable" $
                 "Unkown variable:" <+> PP.pretty WildcardV
     _         -> return val
+
+mkObject :: SourceSpan -> [(Value, Value)] -> EvalM Value
+mkObject source assoc = fmap ObjectV $ foldM
+    (\obj (k, v) -> case HMS.lookup k obj of
+        Nothing           -> return $! HMS.insert k v obj
+        Just v' | v' == v -> return obj
+        Just v'           -> raise' source "inconsistent object" $
+            "Object key-value pairs must be consistent, but got:" <$$>
+            PP.ind (PP.pretty v) <$$>
+            "And:" <$$>
+            PP.ind (PP.pretty v') <$$>
+            "For key:" <$$>
+            PP.ind (PP.pretty k))
+    HMS.empty assoc
 
 evalTerm :: Term SourceSpan -> EvalM Value
 evalTerm (RefT source lhs arg) = do
@@ -94,14 +108,12 @@ evalTerm (ArrayT _ a) = do
 evalTerm (SetT _ s) = do
     bs <- mapM evalTerm s
     return $ SetV $ HS.fromList bs
-evalTerm (ObjectT _ o) = do
+evalTerm (ObjectT source o) = do
     obj <- forM o $ \(kt, vt) -> do
         key <- evalTerm kt
         val <- evalTerm vt
         return (key, val)
-
-    -- TODO(jaspervdj): Check for key consistency and optimizations.
-    return $ ObjectV $ V.fromList obj
+    mkObject source obj
 
 evalTerm (ArrayCompT _ chead cbody) = do
     rows <- unbranch $ evalRuleBody cbody (evalTerm chead)
@@ -111,10 +123,10 @@ evalTerm (SetCompT _ shead cbody) = do
     rows <- unbranch $ evalRuleBody cbody (evalTerm shead)
     return $ SetV $ HS.fromList rows
 
-evalTerm (ObjectCompT _ khead vhead cbody) = do
+evalTerm (ObjectCompT source khead vhead cbody) = do
     rows <- unbranch $ evalRuleBody cbody $
         (,) <$> evalTerm khead <*> evalTerm vhead
-    return $ ObjectV $ V.fromList rows
+    mkObject source rows
 
 evalVar :: SourceSpan -> Var -> EvalM Value
 evalVar _source "_"     = return WildcardV
@@ -192,7 +204,7 @@ evalRefArg source indexee refArg = do
         WildcardV -> case indexee of
             ArrayV a  -> branch [return val | val <- V.toList a]
             SetV s -> branch [return val | val <- HS.toList s]
-            ObjectV o -> branch [return val | (_, val) <- V.toList o]
+            ObjectV o -> branch [return val | (_, val) <- HMS.toList o]
             _ -> raise' source "reference error" $
                 "Cannot index" <+> PP.pretty (describeValue indexee) <+>
                 " using a free variable"
@@ -208,7 +220,7 @@ evalRefArg source indexee refArg = do
                 ]
             ObjectV o -> branch
                 [ Unification.bindTerm unbound key >> return val
-                | (key, val) <- V.toList o
+                | (key, val) <- HMS.toList o
                 ]
             _ -> raise' source "reference error" $
                 "Cannot index" <+> PP.pretty (describeValue indexee) <+>
@@ -216,7 +228,7 @@ evalRefArg source indexee refArg = do
 
         k | ObjectV o <- indexee ->
             -- NOTE(jaspervdj): We can omit some warning here.
-            maybe cut return $! V.lookup k o
+            maybe cut return $! HMS.lookup k o
 
         _   | Just i <- toInt idx
             , ArrayV a <- indexee ->
@@ -269,7 +281,7 @@ evalCompiledRule callerSource crule mbIndex = case crule ^. ruleKind of
     GenObjectRule | isNothing mbIndex -> do
         -- Same as above, but for objects.
         bs <- unbranch $ branches
-        return $ ObjectV $ V.fromList [(k, v) | (Just k, v) <- bs]
+        mkObject callerSource [(k, v) | (Just k, v) <- bs]
 
     _ ->
         snd <$> branches
