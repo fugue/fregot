@@ -22,18 +22,19 @@ module Fregot.Eval
     , evalTerm
     ) where
 
-import           Control.Lens              (use, view, (%=), (.=), (.~), (^.))
+import           Control.Lens              (review, use, view, (%=), (.=), (.~),
+                                            (^.), (^?))
 import           Control.Monad.Extended    (foldM, forM, zipWithM_)
 import           Control.Monad.Reader      (local)
 import qualified Data.HashMap.Strict       as HMS
 import qualified Data.HashSet              as HS
 import           Data.Maybe                (fromMaybe, isNothing)
-import qualified Data.Scientific           as Scientific
 import qualified Data.Unification          as Unification
 import qualified Data.Vector.Extended      as V
 import qualified Fregot.Compile.Package    as Package
 import           Fregot.Eval.Builtins
 import           Fregot.Eval.Monad
+import qualified Fregot.Eval.Number        as Number
 import           Fregot.Eval.Value
 import           Fregot.Prepare.Ast
 import           Fregot.PrettyPrint        ((<$$>), (<+>))
@@ -211,7 +212,7 @@ evalRefArg source indexee refArg = do
 
         FreeV unbound -> case indexee of
             ArrayV a -> branch
-                [ Unification.bindTerm unbound (IntV i) >> return val
+                [ Unification.bindTerm unbound (NumberV $ review Number.int i) >> return val
                 | (i, val) <- zip [0 :: Int ..] (V.toList a)
                 ]
             SetV s -> branch
@@ -230,7 +231,7 @@ evalRefArg source indexee refArg = do
             -- NOTE(jaspervdj): We can omit some warning here.
             maybe cut return $! HMS.lookup k o
 
-        _   | Just i <- toInt idx
+        _   | Just i <- idx ^? _NumberV . Number.int
             , ArrayV a <- indexee ->
             if i >= 0 && i < V.length a then return (a V.! i) else cut
 
@@ -247,12 +248,6 @@ evalRefArg source indexee refArg = do
         _ -> raise' source "index type error" $
             "evalRefArg: cannot index" <+> PP.pretty (describeValue indexee) <+>
             "with a" <+> PP.pretty (describeValue idx)
-
-  where
-    toInt (IntV i)    = Just i
-    toInt (DoubleV d) =
-        let i = floor d in if fromIntegral i == d then Just i else Nothing
-    toInt _           = Nothing
 
 -- | Returns the value of the index value (if given) as well as the result of
 -- the rule.
@@ -422,8 +417,7 @@ evalStatement (TermS e) = evalTerm e
 
 evalScalar :: Scalar a -> EvalM Value
 evalScalar (String t) = return $ StringV t
-evalScalar (Number n) = return $ either DoubleV IntV $
-                            Scientific.floatingOrInteger n
+evalScalar (Number n) = return $ NumberV $ Number.fromScientific n
 evalScalar (Bool   b) = return $ BoolV   b
 evalScalar Null       = return $ NullV
 
