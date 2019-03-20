@@ -13,6 +13,11 @@ test_max {
   max([]) == null
 }
 
+test_min {
+  min([1, 2]) == 1
+  min([]) == null
+}
+
 test_product {
   product([]) == 1
   product([1, 2, 3, 4, 5]) == 120
