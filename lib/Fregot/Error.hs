@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveDataTypeable         #-}
 {-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
@@ -25,10 +26,15 @@ module Fregot.Error
 
     , mkError
     , mkMultiError
+
+    , catchIO
     ) where
 
-import           Control.Lens              (preview, (^.), _head, anyOf)
+import           Control.Exception         (try)
+import           Control.Lens              (anyOf, preview, (^.), _head)
 import           Control.Lens.TH           (makeLenses)
+import           Control.Monad.Except      (MonadError, throwError)
+import           Control.Monad.Trans       (MonadIO (..))
 import           Data.Data                 (Data)
 import           Data.List                 (sortBy)
 import           Data.List.NonEmpty        (NonEmpty)
@@ -41,6 +47,7 @@ import qualified Fregot.Sources            as Sources
 import           Fregot.Sources.SourceSpan
 import           GHC.Generics              (Generic)
 import qualified System.IO                 as IO
+import qualified System.IO.Error           as IO
 import qualified Text.Parsec               as Parsec
 
 -- | Part of a message that belongs to a specific location.
@@ -172,3 +179,33 @@ mkMultiError sub title' bodies = Error
             , _body       = Just body'
             }
     }
+
+-- | Perform the IO action, raising IO exceptions as an `Error` instead.
+--
+-- TODO(jaspervdj): Add an optional SourceSpan parameter?
+catchIO :: (MonadError [Error] m, MonadIO m) => IO a -> m a
+catchIO mio = do
+    errOrX <- liftIO $ try mio
+    case errOrX of
+        Left  e -> throwError [fromIOException e]
+        Right x -> return x
+
+fromIOException :: IO.IOError -> Error
+fromIOException e = Error
+    { _severity     = FatalSeverity
+    , _subsystem   = "io"
+    , _sourceSpans = []
+    , _hints       = []
+    , _details     = [doc]
+    }
+  where
+    doc | errorType == IO.doesNotExistErrorType =
+            "No such file:" <+> maybe "<unknown>" PP.pretty fileName
+        | otherwise =
+             PP.keyword (PP.pretty $ show errorType) <> ":" <$$>
+             PP.pretty errorString <>
+             maybe "" (\fn -> " (" <> PP.pretty fn <> ")") fileName
+
+    errorType   = IO.ioeGetErrorType e
+    errorString = IO.ioeGetErrorString e
+    fileName    = IO.ioeGetFileName e

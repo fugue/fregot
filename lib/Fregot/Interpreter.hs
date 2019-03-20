@@ -27,7 +27,7 @@ import           Data.Maybe                (fromMaybe)
 import qualified Data.Text.IO              as T
 import           Fregot.Compile.Package    (CompiledPackage)
 import qualified Fregot.Compile.Package    as Compile
-import           Fregot.Error              (Error)
+import           Fregot.Error              (Error, catchIO)
 import qualified Fregot.Eval               as Eval
 import           Fregot.Eval.Value         (emptyObject)
 import qualified Fregot.Parser             as Parser
@@ -80,7 +80,7 @@ insertModule h sourcep modul = do
 loadModule :: Handle -> FilePath -> InterpreterM ()
 loadModule h path = do
     -- Read the source code and parse the module.
-    input <- liftIO $ T.readFile path
+    input <- catchIO $ T.readFile path
     liftIO $ IORef.atomicModifyIORef_ (h ^. sources) $
         Sources.insert sourcep input
     modul <- Parser.lexAndParse Parser.parseModule sourcep input
