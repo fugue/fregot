@@ -167,6 +167,7 @@ builtins = HMS.fromList
     , (NamedFunction ["is_string"],          builtin_is_string)
     , (NamedFunction ["json", "unmarshal"],  builtin_json_unmarshal)
     , (NamedFunction ["max"],                builtin_max)
+    , (NamedFunction ["min"],                builtin_min)
     , (NamedFunction ["product"],            builtin_product)
     , (NamedFunction ["re_match"],           builtin_re_match)
     , (NamedFunction ["replace"],            builtin_replace)
@@ -236,6 +237,12 @@ builtin_max = Builtin (In Out) $
     \(Cons (Collection vals) Nil) -> return $! case vals of
         [] -> NullV  -- TODO(jaspervdj): Should be undefined.
         _  -> maximum (vals :: [Value])
+
+builtin_min :: Builtin
+builtin_min = Builtin (In Out) $
+    \(Cons (Collection vals) Nil) -> return $! case vals of
+        [] -> NullV  -- TODO(jaspervdj): Should be undefined.
+        _  -> minimum (vals :: [Value])
 
 builtin_product :: Builtin
 builtin_product = Builtin (In Out) $
