@@ -6,6 +6,10 @@ test_array_concat {
   array.concat(["hey"], [1]) == ["hey", 1]
 }
 
+test_format_int {
+  format_int(100, 2) == "1100100"
+}
+
 test_max {
   max([1, 2]) == 2
   max([]) == null
