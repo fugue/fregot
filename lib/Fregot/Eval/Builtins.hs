@@ -4,6 +4,7 @@
 {-# LANGUAGE GADTs             #-}
 {-# LANGUAGE KindSignatures    #-}
 {-# LANGUAGE LambdaCase        #-}
+{-# LANGUAGE MultiWayIf        #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PolyKinds         #-}
 {-# LANGUAGE TypeOperators     #-}
@@ -167,6 +168,7 @@ builtins = HMS.fromList
     , (NamedFunction ["count"],              builtin_count)
     , (NamedFunction ["endswith"],           builtin_endswith)
     , (NamedFunction ["format_int"],         builtin_format_int)
+    , (NamedFunction ["indexof"],            builtin_indexof)
     , (NamedFunction ["is_object"],          builtin_is_object)
     , (NamedFunction ["is_string"],          builtin_is_string)
     , (NamedFunction ["json", "unmarshal"],  builtin_json_unmarshal)
@@ -228,6 +230,14 @@ builtin_endswith = Builtin (In (In Out))
 builtin_format_int :: Builtin
 builtin_format_int = Builtin (In (In Out)) $ \(Cons x (Cons base Nil)) ->
     return $! T.pack $ showIntAtBase base intToDigit (x :: Int) ""
+
+builtin_indexof :: Builtin
+builtin_indexof = Builtin (In (In Out)) $ \(Cons haystack (Cons needle Nil)) ->
+    let (prefix, match) = T.breakOn needle haystack in
+    return $! if
+        | T.null needle -> 0
+        | T.null match  -> -1
+        | otherwise     -> T.length prefix
 
 builtin_is_object :: Builtin
 builtin_is_object = Builtin (In Out) $ \(Cons val Nil) -> case val of

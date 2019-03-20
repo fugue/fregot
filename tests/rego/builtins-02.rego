@@ -10,6 +10,12 @@ test_format_int {
   format_int(100, 2) == "1100100"
 }
 
+test_indexof {
+  indexof("hello world", "w") == 6
+  indexof("hello world", "a") == 0 - 1  # TODO(jaspervdj): negative literals
+  indexof("hello world", "") == 0
+}
+
 test_max {
   max([1, 2]) == 2
   max([]) == null
