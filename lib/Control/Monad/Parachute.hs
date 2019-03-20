@@ -1,4 +1,6 @@
-{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveFunctor          #-}
+{-# LANGUAGE FlexibleInstances      #-}
+{-# LANGUAGE MultiParamTypeClasses  #-}
 module Control.Monad.Parachute
     ( ParachuteT (..)
     , runParachuteT
@@ -11,7 +13,8 @@ module Control.Monad.Parachute
     , catch
     ) where
 
-import           Control.Monad.Trans (MonadIO (..))
+import           Control.Monad.Except (MonadError (..))
+import           Control.Monad.Trans  (MonadIO (..))
 
 data ParachuteResult e a
     = Ok !a
@@ -43,6 +46,10 @@ instance MonadIO m => MonadIO (ParachuteT e m) where
         x <- liftIO io
         pure (errors, Ok x)
 
+instance Monad m => MonadError [e] (ParachuteT e m) where
+    throwError = fatals
+    catchError = catch
+
 runParachuteT :: Monad m => ParachuteT e m a -> m ([e], Maybe a)
 runParachuteT p = do
     (errors, ma) <- unParachuteT p []
@@ -52,6 +59,9 @@ runParachuteT p = do
 
 fatal :: Monad m => e -> ParachuteT e m a
 fatal x = ParachuteT $ \errors -> return (x : errors, Fatal)
+
+fatals :: Monad m => [e] -> ParachuteT e m a
+fatals xs = ParachuteT $ \errors -> return (xs ++ errors, Fatal)
 
 tellErrors :: Monad m => [e] -> ParachuteT e m ()
 tellErrors es = ParachuteT $ \errors -> return (es ++ errors, Ok ())
