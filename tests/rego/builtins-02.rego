@@ -8,6 +8,11 @@ test_sum {
   sum([0.5, 0.5, 0.5]) == 1.5
 }
 
+test_max {
+  max([1, 2]) == 2
+  max([]) == null
+}
+
 test_product {
   product([]) == 1
   product([1, 2, 3, 4, 5]) == 120
