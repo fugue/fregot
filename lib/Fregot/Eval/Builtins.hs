@@ -28,6 +28,7 @@ import qualified Data.Aeson          as A
 import           Data.Bifunctor      (first)
 import qualified Data.HashMap.Strict as HMS
 import qualified Data.HashSet        as HS
+import qualified Data.List           as L
 import qualified Data.Text           as T
 import qualified Data.Text.Encoding  as T
 import qualified Data.Vector         as V
@@ -168,6 +169,7 @@ builtins = HMS.fromList
     , (NamedFunction ["product"],            builtin_product)
     , (NamedFunction ["re_match"],           builtin_re_match)
     , (NamedFunction ["replace"],            builtin_replace)
+    , (NamedFunction ["sort"],               builtin_sort)
     , (NamedFunction ["split"],              builtin_split)
     , (NamedFunction ["sum"],                builtin_sum)
     , (NamedFunction ["startswith"],         builtin_startswith)
@@ -243,6 +245,10 @@ builtin_trim :: Builtin
 builtin_trim = Builtin (In (In Out))
     (\(Cons str (Cons cutset Nil)) ->
         return $! T.dropAround (\c -> T.any (== c) cutset) str)
+
+builtin_sort :: Builtin
+builtin_sort = Builtin (In Out) $
+    \(Cons (Collection vals) Nil) -> return $! L.sort (vals :: [Value])
 
 builtin_split :: Builtin
 builtin_split = Builtin (In (In Out))
