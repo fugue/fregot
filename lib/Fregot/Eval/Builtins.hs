@@ -165,6 +165,7 @@ builtins = HMS.fromList
     , (NamedFunction ["is_object"],          builtin_is_object)
     , (NamedFunction ["is_string"],          builtin_is_string)
     , (NamedFunction ["json", "unmarshal"],  builtin_json_unmarshal)
+    , (NamedFunction ["product"],            builtin_product)
     , (NamedFunction ["re_match"],           builtin_re_match)
     , (NamedFunction ["replace"],            builtin_replace)
     , (NamedFunction ["split"],              builtin_split)
@@ -248,8 +249,12 @@ builtin_split = Builtin (In (In Out))
     (\(Cons str (Cons delim Nil)) -> return $! T.splitOn delim str)
 
 builtin_sum :: Builtin
-builtin_sum = Builtin (In Out)
-    (\(Cons (Collection vals) Nil) -> return $! num $ sum vals)
+builtin_sum = Builtin (In Out) $
+    \(Cons (Collection vals) Nil) -> return $! num $ sum vals
+
+builtin_product :: Builtin
+builtin_product = Builtin (In Out) $
+    \(Cons (Collection vals) Nil) -> return $! num $ product vals
 
 builtin_startswith :: Builtin
 builtin_startswith = Builtin (In (In Out))
