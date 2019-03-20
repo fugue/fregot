@@ -26,6 +26,7 @@ import           Control.Applicative ((<|>))
 import           Control.Lens        (preview, review)
 import qualified Data.Aeson          as A
 import           Data.Bifunctor      (first)
+import           Data.Char           (intToDigit)
 import qualified Data.HashMap.Strict as HMS
 import qualified Data.HashSet        as HS
 import qualified Data.List           as L
@@ -37,6 +38,7 @@ import           Fregot.Eval.Number  (Number)
 import qualified Fregot.Eval.Number  as Number
 import           Fregot.Eval.Value
 import           Fregot.Prepare.Ast  (BinOp (..), Function (..))
+import           Numeric             (showIntAtBase)
 import qualified Text.Pcre2          as Pcre2
 import           Text.Read           (readMaybe)
 
@@ -164,6 +166,7 @@ builtins = HMS.fromList
     , (NamedFunction ["contains"],           builtin_contains)
     , (NamedFunction ["count"],              builtin_count)
     , (NamedFunction ["endswith"],           builtin_endswith)
+    , (NamedFunction ["format_int"],         builtin_format_int)
     , (NamedFunction ["is_object"],          builtin_is_object)
     , (NamedFunction ["is_string"],          builtin_is_string)
     , (NamedFunction ["json", "unmarshal"],  builtin_json_unmarshal)
@@ -221,6 +224,10 @@ builtin_count = Builtin (In Out)
 builtin_endswith :: Builtin
 builtin_endswith = Builtin (In (In Out))
     (\(Cons str (Cons suffix Nil)) -> return $! suffix `T.isSuffixOf` str)
+
+builtin_format_int :: Builtin
+builtin_format_int = Builtin (In (In Out)) $ \(Cons x (Cons base Nil)) ->
+    return $! T.pack $ showIntAtBase base intToDigit (x :: Int) ""
 
 builtin_is_object :: Builtin
 builtin_is_object = Builtin (In Out) $ \(Cons val Nil) -> case val of
