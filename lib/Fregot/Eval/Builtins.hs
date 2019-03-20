@@ -159,6 +159,7 @@ builtins :: HMS.HashMap Function Builtin
 builtins = HMS.fromList
     [ (NamedFunction ["all"],                builtin_all)
     , (NamedFunction ["any"],                builtin_any)
+    , (NamedFunction ["array", "concat"],    builtin_array_concat)
     , (NamedFunction ["concat"],             builtin_concat)
     , (NamedFunction ["contains"],           builtin_contains)
     , (NamedFunction ["count"],              builtin_count)
@@ -197,6 +198,10 @@ builtin_all = Builtin (In Out)
 builtin_any :: Builtin
 builtin_any = Builtin (In Out)
     (\(Cons arr Nil) -> return $! V.or (arr :: V.Vector Bool))
+
+builtin_array_concat :: Builtin
+builtin_array_concat = Builtin (In (In Out)) $
+    \(Cons l (Cons r Nil)) -> return (l <> r :: V.Vector Value)
 
 builtin_concat :: Builtin
 builtin_concat = Builtin (In (In Out))
