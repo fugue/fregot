@@ -50,20 +50,22 @@ instance Hashable InstVar where
 instance PP.Pretty a InstVar where
     pretty = PP.pretty . show
 
+-- | Please not that the ordering of these constructors is not arbitrary, it is
+-- intended to match the sorting order that OPA implements.
 data Value
-    = FreeV   {-# UNPACK #-} !InstVar
-    | WildcardV
-    | StringV {-# UNPACK #-} !T.Text
-    | NumberV                !Number
+    = NullV
     | BoolV                  !Bool
+    | NumberV                !Number
+    | StringV {-# UNPACK #-} !T.Text
     | ArrayV  {-# UNPACK #-} !(V.Vector Value)
     | SetV                   !(HS.HashSet Value)
     | ObjectV                !(HMS.HashMap Value Value)
-    | NullV
+    | FreeV   {-# UNPACK #-} !InstVar
+    | WildcardV
     -- | Packages are definitely not first-class values but we can pretend that
     -- they are.
     | PackageV !PackageName
-    deriving (Eq, Generic, Show)
+    deriving (Eq, Generic, Ord, Show)
 
 instance Hashable Value
 
