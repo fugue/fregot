@@ -166,6 +166,7 @@ builtins = HMS.fromList
     , (NamedFunction ["is_object"],          builtin_is_object)
     , (NamedFunction ["is_string"],          builtin_is_string)
     , (NamedFunction ["json", "unmarshal"],  builtin_json_unmarshal)
+    , (NamedFunction ["max"],                builtin_max)
     , (NamedFunction ["product"],            builtin_product)
     , (NamedFunction ["re_match"],           builtin_re_match)
     , (NamedFunction ["replace"],            builtin_replace)
@@ -230,6 +231,16 @@ builtin_json_unmarshal = Builtin (In Out) $ \(Cons str Nil) -> do
     val <- A.eitherDecodeStrict' (T.encodeUtf8 str)
     return $! Json.toValue val
 
+builtin_max :: Builtin
+builtin_max = Builtin (In Out) $
+    \(Cons (Collection vals) Nil) -> return $! case vals of
+        [] -> NullV  -- TODO(jaspervdj): Should be undefined.
+        _  -> maximum (vals :: [Value])
+
+builtin_product :: Builtin
+builtin_product = Builtin (In Out) $
+    \(Cons (Collection vals) Nil) -> return $! num $ product vals
+
 builtin_re_match :: Builtin
 builtin_re_match = Builtin (In (In Out)) $
     \(Cons pattern (Cons value Nil)) -> do
@@ -257,10 +268,6 @@ builtin_split = Builtin (In (In Out))
 builtin_sum :: Builtin
 builtin_sum = Builtin (In Out) $
     \(Cons (Collection vals) Nil) -> return $! num $ sum vals
-
-builtin_product :: Builtin
-builtin_product = Builtin (In Out) $
-    \(Cons (Collection vals) Nil) -> return $! num $ product vals
 
 builtin_startswith :: Builtin
 builtin_startswith = Builtin (In (In Out))
