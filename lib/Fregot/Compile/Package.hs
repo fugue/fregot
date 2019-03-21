@@ -8,7 +8,8 @@ module Fregot.Compile.Package
     ( CompiledPackage
     , lookup
     , rules
-    , compile
+    , compilePackage
+    , compileTerm
     ) where
 
 import           Control.Lens                (iforM, traverseOf, (^.))
@@ -31,20 +32,21 @@ import           Prelude                     hiding (head, lookup)
 
 type CompiledPackage = Package ()
 
-compile :: Monad m => PreparedPackage -> ParachuteT Error m CompiledPackage
-compile prep =
+arities :: Arities
+arities = \func -> case HMS.lookup func Builtins.builtins of
+    -- TODO(jaspervdj): User-defined function arities.
+    Nothing      -> 0
+    Just builtin -> Builtins.arity builtin
+
+-- | Construct the safe-to-use global variables.
+safeGlobals :: PreparedPackage -> Safe Var
+safeGlobals prep = Safe $ HS.fromList (rules prep) <> ["data", "input"]
+
+compilePackage
+    :: Monad m => PreparedPackage -> ParachuteT Error m CompiledPackage
+compilePackage prep =
     traverseOf (packageRules . traverse) compileRule prep
   where
-    arities :: Arities
-    arities = \func -> case HMS.lookup func Builtins.builtins of
-        Nothing      -> 0
-        Just builtin -> Builtins.arity builtin
-
-    safeGlobals :: Safe Var
-    safeGlobals = Safe $
-        HS.fromList (rules prep) <>
-        ["data", "input"]
-
     compileRule
         :: Monad m => Rule SourceSpan -> ParachuteT Error m (Rule SourceSpan)
     compileRule = traverseOf (ruleDefs . traverse) compileRuleDefinition
@@ -58,7 +60,7 @@ compile prep =
         traverseOf (ruleElses . traverse . ruleElseBody) orderRuleBody >>=
         traverseOf (ruleValue . traverse ) orderTerm
       where
-        safe = safeGlobals <> safeLocals <> safeImports
+        safe = safeGlobals prep <> safeLocals <> safeImports
 
         safeLocals = Safe $ HS.toHashSetOf
             (ruleArgs . traverse . traverse . termCosmosNoClosures . termVars)
@@ -66,11 +68,21 @@ compile prep =
 
         safeImports = Safe $ HS.fromMap $ () <$ def ^. ruleDefImports
 
-        runOrder (x, Unsafe unsafe) = do
-            _ <- iforM unsafe $ \var (source :| _) -> tellError $ Error.mkError
-                "compile" source "unknown variable" $
-                "Undefined variable:" <+> PP.pretty var
-            return x
-
         orderRuleBody = runOrder . orderForSafety arities safe
         orderTerm = runOrder . orderTermForSafety arities safe
+
+compileTerm
+    :: Monad m
+    => PreparedPackage -> Term SourceSpan
+    -> ParachuteT Error m (Term SourceSpan)
+compileTerm pkg = runOrder . orderTermForSafety arities (safeGlobals pkg)
+
+-- | Designed to match the return type of `orderTermForSafety`.
+runOrder
+    :: (Monad m, PP.Pretty PP.Sem v)
+    => (a, Unsafe v SourceSpan) -> ParachuteT Error m a
+runOrder (x, Unsafe unsafe) = do
+    _ <- iforM unsafe $ \var (source :| _) -> tellError $ Error.mkError
+        "compile" source "unknown variable" $
+        "Undefined variable:" <+> PP.pretty var
+    return x

@@ -115,7 +115,7 @@ readCompiledPackage h pkgname = do
         Just cp -> return cp
         Nothing -> do
             prep <- readPreparedPackage h pkgname
-            cp   <- Compile.compile prep
+            cp   <- Compile.compilePackage prep
             liftIO $ IORef.atomicModifyIORef_ (h ^. compiled) $
                 HMS.insert pkgname cp
             return cp
@@ -157,7 +157,7 @@ compilePackages h = do
     let needComp = mods `HMS.difference` comps
     newComp <- ifor needComp $ \pkgname _ -> do
         prep <- readPreparedPackage h pkgname
-        Compile.compile prep
+        Compile.compilePackage prep
     liftIO $ IORef.atomicModifyIORef_ (h ^. compiled) $
         \oldComp -> oldComp <> newComp
 
@@ -174,9 +174,10 @@ evalExpr
     :: Handle -> PackageName -> Sugar.Expr SourceSpan
     -> InterpreterM (Eval.Document Eval.Value)
 evalExpr h pkgname expr = do
-    term <- Prepare.prepareExpr expr
-    -- TODO(jaserpvdj): Compile.compileTerm ?
-    eval h pkgname (Eval.evalTerm term)
+    pkg   <- readCompiledPackage h pkgname
+    pterm <- Prepare.prepareExpr expr
+    cterm <- Compile.compileTerm pkg pterm
+    eval h pkgname (Eval.evalTerm cterm)
 
 evalVar
     :: Handle -> SourceSpan -> PackageName -> Var
