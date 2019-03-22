@@ -1,0 +1,10 @@
+passed: 0, failed: 0, errored: 1
+fregot.tests.invalid.unkown_var_02.test_kv:
+fregot ([34meval error[0m):
+  "unknown-var-02.rego" (line 3, column 1):
+  unknown variable:
+
+    3| test_kv[k] = v {
+       [31m^^^^^^^^^^^^^^[0m
+
+  Unkown variable: k_0

@@ -17,7 +17,7 @@ import           Control.Monad.Except (MonadError (..))
 import           Control.Monad.Trans  (MonadIO (..))
 
 data ParachuteResult e a
-    = Ok !a
+    = Ok a
     | Fatal
     deriving (Functor)
 
