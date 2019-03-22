@@ -77,14 +77,15 @@ orderForClosures arities safe body =
     (body', mconcat unsafes)
   where
     -- Variables appearing in the body.
-    bodyVars =
-        HS.toHashSetOf (ruleBodyTerms . termCosmosNoClosures . termVars) body
+    bodyVars = HS.toHashSetOf
+        (ruleBodyTerms . termCosmosNoClosures . termVars . traverse)
+        body
 
     -- Order predicate.
     step () reordered lit =
         -- Variables appearing in closures in this statement.
         let inClosureVars = HS.toHashSetOf
-                (literalTerms . termCosmosClosures . termCosmosVars)
+                (literalTerms . termCosmosClosures . termCosmosVars . traverse)
                 lit
 
             -- Variabels that are both in the body as well as in the closures
@@ -120,7 +121,7 @@ orderForSafety arities safe0 body0
             unsafes = Map.fromList $ do
                 (idx, lit) <- idxBody
                 let inLit = HS.toHashSetOf
-                        (literalTerms . termCosmosNoClosures . termVars)
+                        (literalTerms . termCosmosNoClosures . termVars . traverse)
                         lit
                 return (idx, inLit `HS.difference` unSafe safe0)
 
