@@ -38,9 +38,9 @@ import qualified Text.Parsec           as Parsec
 import qualified Text.Parsec.Pos       as Parsec
 
 data SourceSpan = SourceSpan
-    { _sourcePointer :: !SourcePointer
-    , _start         :: !Position
-    , _end           :: !Position
+    { _sourcePointer ::                !SourcePointer
+    , _start         :: {-# UNPACK #-} !Position
+    , _end           :: {-# UNPACK #-} !Position
     } deriving (Eq, Generic, Ord, Show, Typeable)
 
 $(makeLenses ''SourceSpan)

@@ -117,27 +117,39 @@ newtype EvalM a = EvalM {unBranchM :: Environment -> Context -> IO [Row a]}
 
 instance Applicative EvalM where
     pure x = EvalM $ \_ ctx -> return [Row ctx x]
+    {-# INLINE pure #-}
+
     EvalM mf <*> EvalM mx = EvalM $ \rs ctx0 -> do
         rows1 <- mf rs ctx0
         fmap concat $ forM rows1 $ \row1 -> do
             rows2 <- mx rs (row1 ^. rowContext)
             forM rows2 $ \row2 -> return $!
                 row2 & rowValue .~ (row1 ^. rowValue) (row2 ^. rowValue)
+    {-# INLINE (<*>) #-}
 
 instance Monad EvalM where
     EvalM mx >>= f = EvalM $ \rs ctx0 -> do
         xrows <- mx rs ctx0
         fmap concat $ forM xrows $ \(Row ctx1 x) ->
             unBranchM (f x) rs ctx1
+    {-# INLINE (>>=) #-}
 
 instance MonadReader Environment EvalM where
     ask = EvalM $ \rs ctx -> return [Row ctx rs]
+    {-# INLINE ask #-}
+
     local l (EvalM f) = EvalM $ \rs ctx -> f (l rs) ctx
+    {-# INLINE local #-}
 
 instance MonadState Context EvalM where
-    get     = EvalM $ \_ ctx  -> return [Row ctx ctx]
+    get = EvalM $ \_ ctx  -> return [Row ctx ctx]
+    {-# INLINE get #-}
+
     put ctx = EvalM $ \_ _    -> return [Row ctx ()]
+    {-# INLINE put #-}
+
     state f = EvalM $ \_ ctx0 -> let (x, ctx1) = f ctx0 in return [Row ctx1 x]
+    {-# INLINE state #-}
 
 runEvalM :: Environment -> EvalM a -> IO (Either Error (Document a))
 runEvalM rules0 (EvalM f) = catch
@@ -147,14 +159,17 @@ runEvalM rules0 (EvalM f) = catch
 branch :: [EvalM a] -> EvalM a
 branch options = EvalM $ \rs ctx ->
     fmap concat $ forM options $ \(EvalM opt) -> opt rs ctx
+{-# INLINE branch #-}
 
 unbranch :: EvalM a -> EvalM [a]
 unbranch (EvalM f) = EvalM $ \rs ctx -> do
     rows <- f rs ctx
     return [Row ctx (map (view rowValue) rows)]
+{-# INLINE unbranch #-}
 
 cut :: EvalM a
 cut = EvalM $ \_ _ -> return []
+{-# INLINE cut #-}
 
 negation :: (a -> Bool) -> EvalM a -> EvalM ()
 negation trueish (EvalM f) = EvalM $ \rs ctx -> do

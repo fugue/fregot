@@ -33,7 +33,7 @@ string
     :: Stream s m Char => ParsecT s u m Text
 string = do
     str <- stringQuoted '"' <|> stringQuoted '\''
-    return $ T.pack $ foldr (maybe id (:)) "" str
+    return $! T.pack str
   where
     stringQuoted end = between
         (char end)
@@ -41,7 +41,7 @@ string = do
         (many $ stringChar end)
 
     stringChar end =
-        (Just <$> stringLetter end) <|> stringEscape <?> "string character"
+        stringLetter end <|> stringEscape <?> "string character"
 
     stringLetter end =
         satisfy (\c -> (c /= end) && (c /= '\\') && (c > '\026'))
@@ -49,7 +49,7 @@ string = do
     stringEscape = do
         _ <- char '\\'
         esc <- escapeCode
-        return (Just esc)
+        return esc
 
     escapeCode =
         (char '"')  <|>
