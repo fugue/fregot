@@ -23,7 +23,8 @@ markSafe :: (Eq v, Hashable v) => v -> Safe v
 markSafe = Safe . HS.singleton
 
 markTermSafe :: Term a -> Safe Var
-markTermSafe t = Safe (HS.toHashSetOf (termCosmosNoClosures . termVars) t)
+markTermSafe t =
+    Safe (HS.toHashSetOf (termCosmosNoClosures . termVars . traverse) t)
 
 isSafe :: (Eq v, Hashable v) => v -> Safe v -> Bool
 isSafe v (Safe s) = HS.member v s

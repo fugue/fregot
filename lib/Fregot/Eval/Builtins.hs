@@ -4,6 +4,7 @@
 {-# LANGUAGE GADTs             #-}
 {-# LANGUAGE KindSignatures    #-}
 {-# LANGUAGE LambdaCase        #-}
+{-# LANGUAGE MultiWayIf        #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PolyKinds         #-}
 {-# LANGUAGE TypeOperators     #-}
@@ -23,16 +24,22 @@ module Fregot.Eval.Builtins
     ) where
 
 import           Control.Applicative ((<|>))
+import           Control.Lens        (preview, review)
 import qualified Data.Aeson          as A
 import           Data.Bifunctor      (first)
+import           Data.Char           (intToDigit)
 import qualified Data.HashMap.Strict as HMS
 import qualified Data.HashSet        as HS
+import qualified Data.List           as L
 import qualified Data.Text           as T
 import qualified Data.Text.Encoding  as T
 import qualified Data.Vector         as V
 import qualified Fregot.Eval.Json    as Json
+import           Fregot.Eval.Number  (Number)
+import qualified Fregot.Eval.Number  as Number
 import           Fregot.Eval.Value
 import           Fregot.Prepare.Ast  (BinOp (..), Function (..))
+import           Numeric             (showIntAtBase)
 import qualified Text.Pcre2          as Pcre2
 import           Text.Read           (readMaybe)
 
@@ -45,11 +52,14 @@ instance ToVal Value where
 instance ToVal T.Text where
     toVal = StringV
 
+instance ToVal Number where
+    toVal = NumberV
+
 instance ToVal Int where
-    toVal = IntV
+    toVal = toVal . review Number.int
 
 instance ToVal Double where
-    toVal = DoubleV
+    toVal = toVal . review Number.double
 
 instance ToVal Bool where
     toVal = BoolV
@@ -70,12 +80,16 @@ instance FromVal T.Text where
     fromVal (StringV t) = Right t
     fromVal v           = Left $ "Expected string but got " ++ describeValue v
 
+instance FromVal Number where
+    fromVal (NumberV n) = Right n
+    fromVal v           = Left $ "Expected number but got " ++ describeValue v
+
 instance FromVal Int where
-    fromVal (IntV i) =  Right i
-    fromVal v        = Left $ "Expected int but got " ++ describeValue v
+    fromVal (NumberV n) | Just i <- preview Number.int n = Right i
+    fromVal v           = Left $ "Expected int but got " ++ describeValue v
 
 instance FromVal Double where
-    fromVal (DoubleV d) =  Right d
+    fromVal (NumberV n) | Just d <- preview Number.double n = Right d
     fromVal v           = Left $ "Expected double but got " ++ describeValue v
 
 instance FromVal Bool where
@@ -106,6 +120,10 @@ instance FromVal a => FromVal (Collection a) where
 
 -- | Either-like type for when we have weird ad-hoc polymorphism.
 data a :|: b = InL a | InR b
+
+instance (ToVal a, ToVal b) => ToVal (a :|: b) where
+    toVal (InL x) = toVal x
+    toVal (InR y) = toVal y
 
 instance (FromVal a, FromVal b) => FromVal (a :|: b) where
     -- TODO(jaspervdj): We should use a datatype for expected result types, so
@@ -144,16 +162,24 @@ builtins :: HMS.HashMap Function Builtin
 builtins = HMS.fromList
     [ (NamedFunction ["all"],                builtin_all)
     , (NamedFunction ["any"],                builtin_any)
+    , (NamedFunction ["array", "concat"],    builtin_array_concat)
     , (NamedFunction ["concat"],             builtin_concat)
     , (NamedFunction ["contains"],           builtin_contains)
     , (NamedFunction ["count"],              builtin_count)
     , (NamedFunction ["endswith"],           builtin_endswith)
+    , (NamedFunction ["format_int"],         builtin_format_int)
+    , (NamedFunction ["indexof"],            builtin_indexof)
     , (NamedFunction ["is_object"],          builtin_is_object)
     , (NamedFunction ["is_string"],          builtin_is_string)
     , (NamedFunction ["json", "unmarshal"],  builtin_json_unmarshal)
+    , (NamedFunction ["max"],                builtin_max)
+    , (NamedFunction ["min"],                builtin_min)
+    , (NamedFunction ["product"],            builtin_product)
     , (NamedFunction ["re_match"],           builtin_re_match)
     , (NamedFunction ["replace"],            builtin_replace)
+    , (NamedFunction ["sort"],               builtin_sort)
     , (NamedFunction ["split"],              builtin_split)
+    , (NamedFunction ["sum"],                builtin_sum)
     , (NamedFunction ["startswith"],         builtin_startswith)
     , (NamedFunction ["to_number"],          builtin_to_number)
     , (NamedFunction ["trim"],               builtin_trim)
@@ -178,6 +204,10 @@ builtin_any :: Builtin
 builtin_any = Builtin (In Out)
     (\(Cons arr Nil) -> return $! V.or (arr :: V.Vector Bool))
 
+builtin_array_concat :: Builtin
+builtin_array_concat = Builtin (In (In Out)) $
+    \(Cons l (Cons r Nil)) -> return (l <> r :: V.Vector Value)
+
 builtin_concat :: Builtin
 builtin_concat = Builtin (In (In Out))
     (\(Cons delim (Cons (Collection texts) Nil)) ->
@@ -197,6 +227,18 @@ builtin_endswith :: Builtin
 builtin_endswith = Builtin (In (In Out))
     (\(Cons str (Cons suffix Nil)) -> return $! suffix `T.isSuffixOf` str)
 
+builtin_format_int :: Builtin
+builtin_format_int = Builtin (In (In Out)) $ \(Cons x (Cons base Nil)) ->
+    return $! T.pack $ showIntAtBase base intToDigit (x :: Int) ""
+
+builtin_indexof :: Builtin
+builtin_indexof = Builtin (In (In Out)) $ \(Cons haystack (Cons needle Nil)) ->
+    let (prefix, match) = T.breakOn needle haystack in
+    return $! if
+        | T.null needle -> 0
+        | T.null match  -> -1
+        | otherwise     -> T.length prefix
+
 builtin_is_object :: Builtin
 builtin_is_object = Builtin (In Out) $ \(Cons val Nil) -> case val of
     ObjectV _ -> return True
@@ -211,6 +253,22 @@ builtin_json_unmarshal :: Builtin
 builtin_json_unmarshal = Builtin (In Out) $ \(Cons str Nil) -> do
     val <- A.eitherDecodeStrict' (T.encodeUtf8 str)
     return $! Json.toValue val
+
+builtin_max :: Builtin
+builtin_max = Builtin (In Out) $
+    \(Cons (Collection vals) Nil) -> return $! case vals of
+        [] -> NullV  -- TODO(jaspervdj): Should be undefined.
+        _  -> maximum (vals :: [Value])
+
+builtin_min :: Builtin
+builtin_min = Builtin (In Out) $
+    \(Cons (Collection vals) Nil) -> return $! case vals of
+        [] -> NullV  -- TODO(jaspervdj): Should be undefined.
+        _  -> minimum (vals :: [Value])
+
+builtin_product :: Builtin
+builtin_product = Builtin (In Out) $
+    \(Cons (Collection vals) Nil) -> return $! num $ product vals
 
 builtin_re_match :: Builtin
 builtin_re_match = Builtin (In (In Out)) $
@@ -228,23 +286,31 @@ builtin_trim = Builtin (In (In Out))
     (\(Cons str (Cons cutset Nil)) ->
         return $! T.dropAround (\c -> T.any (== c) cutset) str)
 
+builtin_sort :: Builtin
+builtin_sort = Builtin (In Out) $
+    \(Cons (Collection vals) Nil) -> return $! L.sort (vals :: [Value])
+
 builtin_split :: Builtin
 builtin_split = Builtin (In (In Out))
     (\(Cons str (Cons delim Nil)) -> return $! T.splitOn delim str)
+
+builtin_sum :: Builtin
+builtin_sum = Builtin (In Out) $
+    \(Cons (Collection vals) Nil) -> return $! num $ sum vals
 
 builtin_startswith :: Builtin
 builtin_startswith = Builtin (In (In Out))
     (\(Cons str (Cons prefix Nil)) -> return $! prefix `T.isPrefixOf` str)
 
 builtin_to_number :: Builtin
-builtin_to_number = Builtin (In Out)
-    (\(Cons txt Nil) ->
+builtin_to_number = Builtin (In Out) $
+    \(Cons txt Nil) ->
         let str = T.unpack txt
             mbRead = (Left <$> readMaybe str) <|> (Right <$> readMaybe str) in
         case mbRead of
             Nothing        -> Left $! "to_number: couldn't read " ++ str
-            Just (Left i)  -> return (IntV i)
-            Just (Right d) -> return (DoubleV d))
+            Just (Left i)  -> return $ review Number.int i
+            Just (Right d) -> return $ review Number.double d
 
 builtin_equal :: Builtin
 builtin_equal = Builtin (In (In Out))
@@ -261,48 +327,41 @@ builtin_not_equal = Builtin (In (In Out))
   (\(Cons x (Cons y Nil)) -> return $! BoolV $! x /= (y :: Value))
 
 builtin_less_than :: Builtin
-builtin_less_than = Builtin (In (In Out))
-  (\(Cons x (Cons y Nil)) -> return $! numericBinOp (<) (<) x y)
+builtin_less_than = Builtin (In (In Out)) $
+  \(Cons x (Cons y Nil)) -> return $! x < num y
 
 builtin_less_than_or_equal :: Builtin
-builtin_less_than_or_equal = Builtin (In (In Out))
-  (\(Cons x (Cons y Nil)) -> return $! numericBinOp (<=) (<=) x y)
+builtin_less_than_or_equal = Builtin (In (In Out)) $
+  \(Cons x (Cons y Nil)) -> return $! x <= num y
 
 builtin_greater_than :: Builtin
-builtin_greater_than = Builtin (In (In Out))
-  (\(Cons x (Cons y Nil)) -> return $! numericBinOp (>) (>) x y)
+builtin_greater_than = Builtin (In (In Out)) $
+  \(Cons x (Cons y Nil)) -> return $! x > num y
 
 builtin_greater_than_or_equal :: Builtin
-builtin_greater_than_or_equal = Builtin (In (In Out))
-  (\(Cons x (Cons y Nil)) -> return $! numericBinOp (>=) (>=) x y)
+builtin_greater_than_or_equal = Builtin (In (In Out)) $
+  \(Cons x (Cons y Nil)) -> return $! x >= num y
 
 builtin_plus :: Builtin
-builtin_plus = Builtin (In (In Out))
-  (\(Cons x (Cons y Nil)) -> return $! numericBinOp (+) (+) x y)
+builtin_plus = Builtin (In (In Out)) $
+  \(Cons x (Cons y Nil)) -> return $! num $ x + y
 
 builtin_minus :: Builtin
-builtin_minus = Builtin (In (In Out))
-  (\(Cons x (Cons y Nil)) -> return $! numericBinOp (-) (-) x y)
+builtin_minus = Builtin (In (In Out)) $
+  \(Cons x (Cons y Nil)) -> return $! num $ x - y
 
 builtin_times :: Builtin
-builtin_times = Builtin (In (In Out))
-  (\(Cons x (Cons y Nil)) -> return $! numericBinOp (*) (*) x y)
+builtin_times = Builtin (In (In Out)) $
+  \(Cons x (Cons y Nil)) -> return $! num $ x * y
 
 builtin_divide :: Builtin
-builtin_divide = Builtin (In (In Out))
-  (\(Cons x (Cons y Nil)) -> return $!  numericBinOp
-    (\i1 i2 -> (fromIntegral i1 :: Double) / fromIntegral i2) (/) x y)
+builtin_divide = Builtin (In (In Out)) $
+  \(Cons x (Cons y Nil)) -> return $! num $ x / y
 
 builtin_bin_or :: Builtin
-builtin_bin_or = Builtin (In (In Out))
-  (\(Cons x (Cons y Nil)) -> return $! SetV $ HS.union x y)
+builtin_bin_or = Builtin (In (In Out)) $
+  \(Cons x (Cons y Nil)) -> return $! SetV $ HS.union x y
 
-numericBinOp
-    :: (ToVal a, ToVal b)
-    => (Int -> Int -> a)
-    -> (Double -> Double -> b)
-    -> (Int :|: Double) -> (Int :|: Double) -> Value
-numericBinOp f _ (InL x) (InL y) = toVal $! f x y
-numericBinOp _ g (InL x) (InR y) = toVal $! g (fromIntegral x) y
-numericBinOp _ g (InR x) (InL y) = toVal $! g x (fromIntegral y)
-numericBinOp _ g (InR x) (InR y) = toVal $! g x y
+-- | Auxiliary function to fix types.
+num :: Number -> Number
+num = id

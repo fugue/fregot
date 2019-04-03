@@ -12,7 +12,7 @@ import qualified Test.Tasty.HUnit      as Tasty
 tests :: Tasty.TestTree
 tests = Tasty.testGroup "Fregot.Prepare.Lens.Tests"
     [ Tasty.testCase "vars in closures" $ HS.toHashSetOf
-        (ruleBodyTerms . termCosmosClosures . termCosmosVars)
+        (ruleBodyTerms . termCosmosClosures . termCosmosVars . traverse)
         [ l $ UnifyS () (v "a") (v "b")
         , l $ TermS (ArrayCompT () (v "c") [l $ TermS (v "c")])
         , l $ TermS $ ArrayT ()
@@ -22,7 +22,7 @@ tests = Tasty.testGroup "Fregot.Prepare.Lens.Tests"
             ]
         ] @?= ["c", "d", "e"]
     , Tasty.testCase "vars not in closures" $ HS.toHashSetOf
-        (ruleBodyTerms . termCosmosNoClosures . termVars)
+        (ruleBodyTerms . termCosmosNoClosures . termVars . traverse)
         [ l $ UnifyS () (v "a") (v "b")
         , l $ TermS (ArrayCompT () (v "c") [l $ TermS (v "c")])
         , l $ TermS $ ArrayT ()

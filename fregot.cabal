@@ -24,6 +24,7 @@ Library
     Fregot.Eval.Cache
     Fregot.Eval.Json
     Fregot.Eval.Monad
+    Fregot.Eval.Number
     Fregot.Eval.Value
     Fregot.Find
     Fregot.Interpreter

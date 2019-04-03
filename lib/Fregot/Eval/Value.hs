@@ -9,18 +9,21 @@
 {-# LANGUAGE TemplateHaskell            #-}
 module Fregot.Eval.Value
     ( InstVar (..)
-    , Value (..)
+    , Value (..), _FreeV, _WildcardV, _StringV, _NumberV, _BoolV, _ArrayV, _SetV
+    , _ObjectV, _NullV, _PackageV
     , describeValue
     , emptyObject
     , updateObject
     ) where
 
 import           Control.Lens         (review)
+import           Control.Lens.TH      (makePrisms)
 import           Data.Hashable        (Hashable (..))
 import qualified Data.HashMap.Strict  as HMS
 import qualified Data.HashSet         as HS
 import qualified Data.Text            as T
 import qualified Data.Vector.Extended as V
+import           Fregot.Eval.Number   (Number)
 import           Fregot.PrettyPrint   ((<+>))
 import qualified Fregot.PrettyPrint   as PP
 import           Fregot.Sugar         (PackageName, Var)
@@ -47,21 +50,22 @@ instance Hashable InstVar where
 instance PP.Pretty a InstVar where
     pretty = PP.pretty . show
 
+-- | Please not that the ordering of these constructors is not arbitrary, it is
+-- intended to match the sorting order that OPA implements.
 data Value
-    = FreeV   {-# UNPACK #-} !InstVar
-    | WildcardV
-    | StringV {-# UNPACK #-} !T.Text
-    | IntV    {-# UNPACK #-} !Int
-    | DoubleV {-# UNPACK #-} !Double
+    = NullV
     | BoolV                  !Bool
+    | NumberV                !Number
+    | StringV {-# UNPACK #-} !T.Text
     | ArrayV  {-# UNPACK #-} !(V.Vector Value)
     | SetV                   !(HS.HashSet Value)
     | ObjectV                !(HMS.HashMap Value Value)
-    | NullV
+    | FreeV   {-# UNPACK #-} !InstVar
+    | WildcardV
     -- | Packages are definitely not first-class values but we can pretend that
     -- they are.
     | PackageV !PackageName
-    deriving (Eq, Generic, Show)
+    deriving (Eq, Generic, Ord, Show)
 
 instance Hashable Value
 
@@ -69,8 +73,7 @@ instance PP.Pretty PP.Sem Value where
     pretty (FreeV   v)  = PP.pretty v
     pretty WildcardV    = "_"
     pretty (StringV t)  = PP.literal $ PP.pretty $ show $ T.unpack t
-    pretty (IntV    i)  = PP.literal $ PP.pretty i
-    pretty (DoubleV d)  = PP.literal $ PP.pretty d
+    pretty (NumberV n)  = PP.literal $ PP.pretty n
     pretty (BoolV   b)  = PP.literal $ if b then "true" else "false"
     pretty (ArrayV  a)  = PP.array (V.toList a)
     pretty (SetV    s)  = PP.set (HS.toList s)
@@ -78,13 +81,14 @@ instance PP.Pretty PP.Sem Value where
     pretty NullV        = PP.literal "null"
     pretty (PackageV p) = PP.keyword "package" <+> PP.pretty p
 
+$(makePrisms ''Value)
+
 describeValue :: Value -> String
 describeValue = \case
     FreeV   v  -> "free variable (" ++ show v ++ ")"
     WildcardV  -> "wildcard"
     StringV  _ -> "string"
-    IntV     _ -> "number"
-    DoubleV  _ -> "number"
+    NumberV  _ -> "number"
     BoolV    _ -> "boolean"
     ArrayV   _ -> "array"
     SetV     _ -> "set"

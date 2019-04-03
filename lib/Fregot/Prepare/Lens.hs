@@ -77,10 +77,10 @@ instance Plated (Term a) where
                                 f k <*> f v <*> ruleBodyTerms f b
 
 -- | Fold over the direct vars of a term.
-termVars :: Traversal' (Term a) Var
-termVars = _VarT . traverse
+termVars :: Traversal' (Term a) (a, Var)
+termVars = _VarT
 
-termCosmosVars :: Fold (Term a) Var
+termCosmosVars :: Fold (Term a) (a, Var)
 termCosmosVars = cosmos . termVars
 
 -- | Fold over all closures in a term recursively.

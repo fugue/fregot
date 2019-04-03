@@ -111,7 +111,10 @@ parseTokenStream = do
     Parsec.eof
     return $! mkTokenStream (V.fromList tokens) 0
 
-data TokenPos = TokenPos !Position !Token !Position
+data TokenPos = TokenPos
+    {-# UNPACK #-} !Position
+                   !Token
+    {-# UNPACK #-} !Position
     deriving (Generic, Show)
 
 parseTokenPos :: TokenParser TokenPos
