@@ -13,6 +13,8 @@ module Fregot.Eval.Monad
     , Row (..), rowContext, rowValue
     , Document
 
+    , EvalCache
+
     , Environment (..), packages, package, inputDoc, imports
     , cache, cacheVersion
 
@@ -93,6 +95,8 @@ instance PP.Pretty PP.Sem a => PP.Pretty PP.Sem (Row a) where
 
 type Document a = [Row a]
 
+type EvalCache = Cache (PackageName, Var) (Maybe Value, Value)
+
 --------------------------------------------------------------------------------
 
 data Environment = Environment
@@ -100,7 +104,7 @@ data Environment = Environment
     , _package      :: !CompiledPackage
     , _inputDoc     :: !Value
     , _imports      :: !(Imports SourceSpan)
-    , _cache        :: !(Cache (PackageName, Var) [Value])
+    , _cache        :: !EvalCache
     , _cacheVersion :: !Cache.Version
     }
 

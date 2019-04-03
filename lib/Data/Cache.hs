@@ -39,11 +39,14 @@ trim c
         & size %~ pred
         & queue %~ HashPSQ.deleteMin
 
-insert :: (Hashable k, Ord k) => k -> v -> Cache k v -> Cache k v
-insert key val c = trim $!
-    let (mbOldVal, q) = HashPSQ.insertView key (c ^. tick) val (c ^. queue)
+insert :: (Hashable k, Ord k) => k -> (Maybe v -> v) -> Cache k v -> Cache k v
+insert key f c = trim $!
+    let (grew, q) = HashPSQ.alter
+            (\mbOld ->
+                (isNothing mbOld, Just (c ^. tick, f (snd <$> mbOld))))
+            key (c ^. queue)
     in c
-        & size %~ (if isNothing mbOldVal then succ else id)
+        & size %~ (if grew then succ else id)
         & tick %~ succ
         & queue .~ q
 

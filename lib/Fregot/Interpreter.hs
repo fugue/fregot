@@ -29,10 +29,9 @@ import           Fregot.Compile.Package    (CompiledPackage)
 import qualified Fregot.Compile.Package    as Compile
 import           Fregot.Error              (Error, catchIO)
 import qualified Fregot.Eval               as Eval
-import           Fregot.Eval.Cache         (Cache)
 import qualified Fregot.Eval.Cache         as Cache
+import           Fregot.Eval.Monad         (EvalCache)
 import           Fregot.Eval.Value         (emptyObject)
-import           Fregot.Eval.Value         (Value)
 import qualified Fregot.Parser             as Parser
 import qualified Fregot.Prepare            as Prepare
 import           Fregot.Prepare.Package    (PreparedPackage)
@@ -55,7 +54,7 @@ data Handle = Handle
     , _modules      :: !(IORef (HMS.HashMap PackageName ModuleBatch))
     -- | Map of compiled packages.  Dynamically generated from the modules.
     , _compiled     :: !(IORef (HMS.HashMap PackageName CompiledPackage))
-    , _cache        :: !(Cache (PackageName, Var) [Value])
+    , _cache        :: !EvalCache
     , _cacheVersion :: !Cache.Version
     }
 

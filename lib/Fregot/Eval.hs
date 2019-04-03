@@ -258,7 +258,7 @@ evalCompiledRule
     -> Rule SourceSpan
     -> Maybe Value
     -> EvalM Value
-evalCompiledRule callerSource crule mbIndex = cached $ case crule ^. ruleKind of
+evalCompiledRule callerSource crule mbIndex = case crule ^. ruleKind of
     -- Complete definitions
     CompleteRule -> requireComplete (crule ^. ruleAnn) $
         case crule ^. ruleDefault of
@@ -283,13 +283,9 @@ evalCompiledRule callerSource crule mbIndex = cached $ case crule ^. ruleKind of
     _ ->
         snd <$> branches
   where
-    -- Standard branching evaluation of rule definitions.
-    branches = branch
-        [ evalRuleDefinition callerSource def mbIndex
-        | def <- crule ^. ruleDefs
-        ]
-
-    cached mx = do
+    -- Standard branching evaluation of rule definitions, with caching.
+    branches :: EvalM (Maybe Value, Value)
+    branches = do
         pkgname <- view (package . Package.packageName)
         let key = (pkgname, crule ^. ruleName)
 
@@ -297,11 +293,17 @@ evalCompiledRule callerSource crule mbIndex = cached $ case crule ^. ruleKind of
         c        <- view cache
         mbResult <- liftIO $ Cache.lookup c (key, version)
         case mbResult of
-            Just values -> branch [return v | v <- values]
-            Nothing     -> do
-                vs <- unbranch mx
-                liftIO $ Cache.insert c (key, version) vs
-                branch [return v | v <- vs]
+            Just rows -> do
+                -- NOTE(jaspervdj): The problem is that it really depends on
+                -- whether we are evaluating the rule with out without index.
+                branch [return v | v <- rows]
+            Nothing   -> branch
+                [ do
+                    x <- evalRuleDefinition callerSource def mbIndex
+                    liftIO $ Cache.push c (key, version) x
+                    return x
+                | def <- crule ^. ruleDefs
+                ]
 
 evalRuleDefinition
     :: SourceSpan -> RuleDefinition SourceSpan -> Maybe Value
@@ -405,23 +407,26 @@ evalRuleBody lits0 final = go lits0
     trueish (BoolV False) = False
     trueish _             = True
 
-    localWiths []       mx = do
+    localWiths []    mx = mx
+    localWiths withs mx = do
         -- Since we changed the input, we need to bump up the cache.  This will
         -- also be the case when we modify `data`.
-        c <- view cache
-        v <- liftIO (Cache.bump c)
-        local (cacheVersion .~ v) mx
-    localWiths (w : ws) mx = do
-        val    <- evalTerm (w ^. withAs)
-        input  <- view inputDoc
-        input' <- case updateObject (w ^. withPath) val input of
-            Nothing -> raise' (w ^. withAnn) "with error" $
-                "Could not update input document." <$$>
-                "Path:" <$$>
-                PP.ind (PP.pretty (NestedVar $ w ^. withPath))
-            Just i  -> return i
+        let updateInput input0 [] = do
+                c <- view cache
+                v <- liftIO (Cache.bump c)
+                local (cacheVersion .~ v) $ local (inputDoc .~ input0) $ mx
+            updateInput input0 (w : ws) = do
+                val    <- evalTerm (w ^. withAs)
+                input1 <- case updateObject (w ^. withPath) val input0 of
+                    Nothing -> raise' (w ^. withAnn) "with error" $
+                        "Could not update input document." <$$>
+                        "Path:" <$$>
+                        PP.ind (PP.pretty (NestedVar $ w ^. withPath))
+                    Just i  -> return i
+                updateInput input1 ws
 
-        local (inputDoc .~ input') $ localWiths ws mx
+        input <- view inputDoc
+        updateInput input withs
 
 evalStatement :: Statement SourceSpan -> EvalM Value
 evalStatement (UnifyS _ x y) = do
