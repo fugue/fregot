@@ -113,6 +113,8 @@ instance Show EvalException where
 
 instance Exception EvalException
 
+--------------------------------------------------------------------------------
+
 newtype Stream i m a = Stream {unStream :: m (Step i m a)}
     deriving (Functor)
 
@@ -143,6 +145,11 @@ bindStream (Stream mxstep) f = Stream $ do
 {-# SPECIALIZE bindStream
     :: Stream i IO a -> (a -> Stream i IO b) -> Stream i IO b #-}
 
+emptyStream :: Monad m => Stream i m a
+emptyStream = Stream (pure Done)
+{-# INLINE emptyStream #-}
+{-# SPECIALIZE emptyStream :: Stream i IO a #-}
+
 appendStream :: Monad m => Stream i m a -> Stream i m a -> Stream i m a
 appendStream (Stream mlstep) right = Stream $ do
     lstep <- mlstep
@@ -154,6 +161,16 @@ appendStream (Stream mlstep) right = Stream $ do
 {-# INLINE appendStream #-}
 {-# SPECIALIZE appendStream
     :: Stream i IO a -> Stream i IO a -> Stream i IO a #-}
+
+instance Monad m => Semigroup (Stream i m a) where
+    (<>) = appendStream
+    {-# INLINE (<>) #-}
+    {-# SPECIALIZE (<>) :: Stream i IO a -> Stream i IO a -> Stream i IO a #-}
+
+instance Monad m => Monoid (Stream i m a) where
+    mempty = emptyStream
+    {-# INLINE mempty #-}
+    {-# SPECIALIZE mempty :: Stream i IO a #-}
 
 instance Monad m => Applicative (Stream i m) where
     pure = pureStream
@@ -207,15 +224,20 @@ collapseStream = go []
 {-# INLINE collapseStream #-}
 {-# SPECIALIZE collapseStream :: Stream i IO a -> Stream i IO [a] #-}
 
-peekStream :: Monad m => Stream i m a -> m (Maybe (a, Stream i m a))
-peekStream (Stream mstep) = do
+-- | Check if a stream is empty.  If it is not, this returns a new stream, so we
+-- don't have to unnecessarily duplicate effects.
+peekStream :: Monad m => Stream i m a -> Stream i m (Maybe (Stream i m a))
+peekStream (Stream mstep) = Stream $ do
     step <- mstep
     case step of
-        Done          -> return Nothing
-        Suspend _ s   -> peekStream s
-        s@(Yield e _) -> return $! Just (e, Stream $ return s)
-        s@(Single e)  -> return $! Just (e, Stream $ return s)
-{-# SPECIALIZE peekStream :: Stream i IO a -> IO (Maybe (a, Stream i IO a)) #-}
+        Done          -> return $! Single Nothing
+        Suspend i s   -> return $! Suspend i $ peekStream s
+        s@(Yield _ _) -> return $! Single (Just $ Stream $ return s)
+        s@(Single _)  -> return $! Single (Just $ Stream $ return s)
+{-# SPECIALIZE peekStream
+    :: Stream i IO a -> Stream i IO (Maybe (Stream i IO a)) #-}
+
+--------------------------------------------------------------------------------
 
 newtype EvalM a = EvalM
     { unEvalM :: Environment -> Context -> Stream SourceSpan IO (Row a)
@@ -266,8 +288,8 @@ suspend source (EvalM f) =
 
 branch :: [EvalM a] -> EvalM a
 branch options = EvalM $ \rs ctx ->
-    let go []               = Stream (pure Done)
-        go (EvalM o : opts) = appendStream (o rs ctx) (go opts) in
+    let go []               = mempty
+        go (EvalM o : opts) = o rs ctx <> go opts in
     go options
 {-# INLINE branch #-}
 
@@ -279,25 +301,22 @@ unbranch (EvalM f) = EvalM $ \rs ctx ->
 {-# INLINE unbranch #-}
 
 cut :: EvalM a
-cut = EvalM $ \_ _ -> Stream (pure Done)
+cut = EvalM $ \_ _ -> mempty
 {-# INLINE cut #-}
 
 negation :: (a -> Bool) -> EvalM a -> EvalM ()
-negation trueish (EvalM f) = EvalM $ \rs ctx ->
-    let stream = filterStream (\(Row _ x) -> trueish x) (f rs ctx) in
-    Stream $ do
-        isNull <- peekStream stream
-        case isNull of
-            Nothing -> unStream $ pure (Row ctx ())
-            Just _  -> pure Done
+negation trueish (EvalM f) = EvalM $ \rs ctx -> do
+    peek <- peekStream $ filterStream (trueish . view rowValue) (f rs ctx)
+    case peek of
+        Nothing -> pure (Row ctx ())
+        Just _  -> mempty
 
 orElse :: EvalM a -> EvalM a -> EvalM a
 orElse (EvalM x) (EvalM alt) = EvalM $ \env ctx -> do
-    Stream $ do
-        peek <- peekStream (x env ctx)
-        case peek of
-            Nothing      -> unStream $ alt env ctx
-            Just (_, x') -> unStream x'
+    peek <- peekStream (x env ctx)
+    case peek of
+        Nothing -> alt env ctx
+        Just x' -> x'
 
 orElses :: EvalM a -> [EvalM a] -> EvalM a
 orElses x []           = x
@@ -320,7 +339,7 @@ requireComplete source (EvalM f) = EvalM $ \env ctx -> do
                     "And:" <$$>
                     PP.ind (PP.pretty $ d ^. rowValue)
             | otherwise -> pure r
-        _ -> Stream (pure Done)
+        _ -> mempty
 
 -- | Turn a variable into an instantiated variable.
 --
