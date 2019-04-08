@@ -45,7 +45,7 @@ module Fregot.Eval.Monad
 import           Control.Exception         (Exception, catch, throwIO)
 import           Control.Lens              (view, (&), (.~), (^.))
 import           Control.Lens.TH           (makeLenses)
-import           Control.Monad.Extended    (forM)
+import           Control.Monad             (join, liftM2)
 import           Control.Monad.Reader      (MonadReader (..), ask)
 import           Control.Monad.State       (MonadState (..), modify)
 import qualified Data.HashMap.Strict       as HMS
@@ -112,76 +112,146 @@ instance Show EvalException where
 
 instance Exception EvalException
 
-newtype EvalM a = EvalM {unBranchM :: Environment -> Context -> IO [Row a]}
+newtype Stream m a = Stream {unStream :: m (Step m a)}
     deriving (Functor)
 
+data Step m a
+    = Yield !a (Stream m a)
+    | Append !(Stream m a) (Stream m a)
+    | Done
+    deriving (Functor)
+
+pureStream :: Monad m => a -> Stream m a
+pureStream x = Stream $! pure $! Yield x $! Stream $! pure Done
+{-# INLINE pureStream #-}
+
+bindStream :: Monad m => Stream m a -> (a -> Stream m b) -> Stream m b
+bindStream (Stream mxstep) f = Stream $ do
+    xstep <- mxstep
+    case xstep of
+        Done        -> return Done
+        Append x xs ->
+            return $ Append (x `bindStream` f) (xs `bindStream` f)
+        Yield x xs ->
+            return $ Append (f x) (xs `bindStream` f)
+{-# INLINE bindStream #-}
+
+instance Monad m => Applicative (Stream m) where
+    pure = pureStream
+    {-# INLINE pure #-}
+    fs <*> xs = join (fmap (\f -> xs >>= return . f) fs)
+    {-# INLINE (<*>) #-}
+
+instance Monad m => Monad (Stream m) where
+    (>>=) = bindStream
+    {-# INLINE (>>=) #-}
+
+streamToList :: Monad m => Stream m a -> m [a]
+streamToList (Stream mstep) = do
+    step <- mstep
+    case step of
+        Done           -> return []
+        Yield x stream -> (x :) <$> streamToList stream
+        Append xs ys   -> liftM2 (++) (streamToList xs) (streamToList ys)
+
+filterStream :: Monad m => (a -> Bool) -> Stream m a -> Stream m a
+filterStream f (Stream mstep) = Stream $ do
+    step <- mstep
+    case step of
+        Done            -> return Done
+        Yield x xs
+            | f x       -> return $! Yield x (filterStream f xs)
+            | otherwise -> unStream (filterStream f xs)
+        Append x y      -> return $!
+            Append (filterStream f x) (filterStream f y)
+
+peekStream :: Monad m => Stream m a -> m (Maybe (a, Stream m a))
+peekStream (Stream mstep) = do
+    step <- mstep
+    case step of
+        Done             -> return Nothing
+        s@(Yield e _) -> return $ Just (e, Stream $ return s)
+        Append x y       -> do
+            nx <- peekStream x
+            case nx of
+                Nothing      -> peekStream y
+                Just (e, x') -> return $ Just (e, Stream $ return $ Append x' y)
+
+newtype EvalM a = EvalM
+    { unEvalM :: Environment -> Context -> Stream IO (Row a)
+    } deriving (Functor)
+
 instance Applicative EvalM where
-    pure x = EvalM $ \_ ctx -> return [Row ctx x]
+    pure x = EvalM $ \_ ctx -> return (Row ctx x)
     {-# INLINE pure #-}
 
     EvalM mf <*> EvalM mx = EvalM $ \rs ctx0 -> do
-        rows1 <- mf rs ctx0
-        fmap concat $ forM rows1 $ \row1 -> do
-            rows2 <- mx rs (row1 ^. rowContext)
-            forM rows2 $ \row2 -> return $!
-                row2 & rowValue .~ (row1 ^. rowValue) (row2 ^. rowValue)
+        row1 <- mf rs ctx0
+        row2 <- mx rs (row1 ^. rowContext)
+        return $! row2 & rowValue .~ (row1 ^. rowValue) (row2 ^. rowValue)
     {-# INLINE (<*>) #-}
 
 instance Monad EvalM where
     EvalM mx >>= f = EvalM $ \rs ctx0 -> do
-        xrows <- mx rs ctx0
-        fmap concat $ forM xrows $ \(Row ctx1 x) ->
-            unBranchM (f x) rs ctx1
+        Row ctx1 x <- mx rs ctx0
+        unEvalM (f x) rs ctx1
     {-# INLINE (>>=) #-}
 
 instance MonadReader Environment EvalM where
-    ask = EvalM $ \rs ctx -> return [Row ctx rs]
+    ask = EvalM $ \rs ctx -> return (Row ctx rs)
     {-# INLINE ask #-}
 
     local l (EvalM f) = EvalM $ \rs ctx -> f (l rs) ctx
     {-# INLINE local #-}
 
 instance MonadState Context EvalM where
-    get = EvalM $ \_ ctx  -> return [Row ctx ctx]
+    get = EvalM $ \_ ctx  -> return (Row ctx ctx)
     {-# INLINE get #-}
 
-    put ctx = EvalM $ \_ _    -> return [Row ctx ()]
+    put ctx = EvalM $ \_ _ -> return (Row ctx ())
     {-# INLINE put #-}
 
-    state f = EvalM $ \_ ctx0 -> let (x, ctx1) = f ctx0 in return [Row ctx1 x]
+    state f = EvalM $ \_ ctx0 -> let (x, ctx1) = f ctx0 in return (Row ctx1 x)
     {-# INLINE state #-}
 
 runEvalM :: Environment -> EvalM a -> IO (Either Error (Document a))
 runEvalM rules0 (EvalM f) = catch
-    (Right <$> f rules0 emptyContext)
+    (Right <$> streamToList (f rules0 emptyContext))
     (\(EvalException err) -> return (Left err))
 
 branch :: [EvalM a] -> EvalM a
 branch options = EvalM $ \rs ctx ->
-    fmap concat $ forM options $ \(EvalM opt) -> opt rs ctx
+    let go []               = Stream (pure Done)
+        go (EvalM o : opts) = Stream (pure $ Append (o rs ctx) (go opts)) in
+    go options
 {-# INLINE branch #-}
 
 unbranch :: EvalM a -> EvalM [a]
-unbranch (EvalM f) = EvalM $ \rs ctx -> do
-    rows <- f rs ctx
-    return [Row ctx (map (view rowValue) rows)]
+unbranch (EvalM f) = EvalM $ \rs ctx -> Stream $ do
+    rows <- streamToList (f rs ctx)
+    return $ Yield (Row ctx (map (view rowValue) rows)) (Stream (pure Done))
 {-# INLINE unbranch #-}
 
 cut :: EvalM a
-cut = EvalM $ \_ _ -> return []
+cut = EvalM $ \_ _ -> Stream (pure Done)
 {-# INLINE cut #-}
 
 negation :: (a -> Bool) -> EvalM a -> EvalM ()
-negation trueish (EvalM f) = EvalM $ \rs ctx -> do
-    rows <- filter (\(Row _ x) -> trueish x) <$> (f rs ctx)
-    return $! if null rows then [Row ctx ()] else []
+negation trueish (EvalM f) = EvalM $ \rs ctx ->
+    let stream = filterStream (\(Row _ x) -> trueish x) (f rs ctx) in
+    Stream $ do
+        isNull <- peekStream stream
+        case isNull of
+            Nothing -> unStream $ pure (Row ctx ())
+            Just _  -> pure Done
 
 orElse :: EvalM a -> EvalM a -> EvalM a
 orElse (EvalM x) (EvalM alt) = EvalM $ \env ctx -> do
-    rows <- x env ctx
-    case rows of
-        [] -> alt env ctx
-        xs -> return xs
+    Stream $ do
+        peek <- peekStream (x env ctx)
+        case peek of
+            Nothing      -> unStream $ alt env ctx
+            Just (_, x') -> unStream x'
 
 orElses :: EvalM a -> [EvalM a] -> EvalM a
 orElses x []           = x
@@ -192,8 +262,8 @@ withDefault = flip orElse
 
 requireComplete
     :: (Eq a, PP.Pretty PP.Sem a) => SourceSpan -> EvalM a -> EvalM a
-requireComplete source (EvalM f) = EvalM $ \env ctx -> do
-    rows <- f env ctx
+requireComplete source (EvalM f) = EvalM $ \env ctx -> Stream $ do
+    rows <- streamToList (f env ctx)
     case rows of
         (r : more)
             | Just d <- find ((/= r ^. rowValue) . view rowValue) more ->
@@ -203,8 +273,8 @@ requireComplete source (EvalM f) = EvalM $ \env ctx -> do
                     PP.ind (PP.pretty $ r ^. rowValue) <$$>
                     "And:" <$$>
                     PP.ind (PP.pretty $ d ^. rowValue)
-            | otherwise -> return [r]
-        _          -> return rows
+            | otherwise -> unStream $ pure r
+        _ -> pure Done
 
 -- | Turn a variable into an instantiated variable.
 --
@@ -245,7 +315,7 @@ withPackage pkg = local (package .~ pkg)
 -- | Raise an error.  We currently don't allow catching exceptions, but they are
 -- handled at the top level `runEvalM` and converted to an `Either`.
 raise :: Error -> EvalM a
-raise err = EvalM (\_ _ -> throwIO (EvalException err))
+raise err = EvalM (\_ _ -> Stream $ throwIO (EvalException err))
 
 raise' :: SourceSpan -> PP.SemDoc -> PP.SemDoc -> EvalM a
 raise' source title body = raise (Error.mkError "eval" source title body)
