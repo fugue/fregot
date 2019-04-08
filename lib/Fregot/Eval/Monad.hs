@@ -117,13 +117,17 @@ newtype Stream i m a = Stream {unStream :: m (Step i m a)}
     deriving (Functor)
 
 data Step i m a
-    = Yield !a (Stream i m a)
+    = Yield   !a (Stream i m a)
     | Suspend !i (Stream i m a)
     | Done
+    -- The 'Single' constructor is not really necessary since we can also
+    -- represent this using 'Yield x (Stream (return Done))'.  However, since we
+    -- deal we deal with singletons so often, this makes our code much faster.
+    | Single  !a
     deriving (Functor)
 
 pureStream :: Monad m => a -> Stream i m a
-pureStream x = Stream $! pure $! Yield x $! Stream $! pure Done
+pureStream x = Stream $! pure $! Single x
 {-# INLINE pureStream #-}
 {-# SPECIALIZE pureStream :: a -> Stream i IO a #-}
 
@@ -131,9 +135,10 @@ bindStream :: Monad m => Stream i m a -> (a -> Stream i m b) -> Stream i m b
 bindStream (Stream mxstep) f = Stream $ do
     xstep <- mxstep
     case xstep of
-        Done       -> return Done
+        Done         -> return Done
         Suspend i xs -> return $ Suspend i (xs `bindStream` f)
-        Yield x xs -> unStream $ appendStream (f x) (xs `bindStream` f)
+        Yield x xs   -> unStream $ appendStream (f x) (xs `bindStream` f)
+        Single x     -> unStream (f x)
 {-# INLINE bindStream #-}
 {-# SPECIALIZE bindStream
     :: Stream i IO a -> (a -> Stream i IO b) -> Stream i IO b #-}
@@ -142,9 +147,10 @@ appendStream :: Monad m => Stream i m a -> Stream i m a -> Stream i m a
 appendStream (Stream mlstep) right = Stream $ do
     lstep <- mlstep
     case lstep of
-        Done            -> unStream right
+        Done              -> unStream right
         Suspend i lstream -> return $! Suspend i (appendStream lstream right)
-        Yield x lstream -> return $! Yield x (appendStream lstream right)
+        Yield x lstream   -> return $! Yield x (appendStream lstream right)
+        Single x          -> return $! Yield x right
 {-# INLINE appendStream #-}
 {-# SPECIALIZE appendStream
     :: Stream i IO a -> Stream i IO a -> Stream i IO a #-}
@@ -168,9 +174,10 @@ streamToList :: Monad m => Stream i m a -> m [a]
 streamToList (Stream mstep) = do
     step <- mstep
     case step of
-        Done           -> return []
+        Done             -> return []
         Suspend _ stream -> streamToList stream
-        Yield x stream -> (x :) <$> streamToList stream
+        Yield x stream   -> (x :) <$> streamToList stream
+        Single x         -> return [x]
 {-# SPECIALIZE streamToList :: Stream i IO a -> IO [a] #-}
 
 filterStream :: Monad m => (a -> Bool) -> Stream i m a -> Stream i m a
@@ -178,10 +185,13 @@ filterStream f (Stream mstep) = Stream $ do
     step <- mstep
     case step of
         Done            -> return Done
-        Suspend i xs      -> return $! Suspend i (filterStream f xs)
+        Suspend i xs    -> return $! Suspend i (filterStream f xs)
         Yield x xs
             | f x       -> return $! Yield x (filterStream f xs)
             | otherwise -> unStream (filterStream f xs)
+        Single x
+            | f x       -> return $! Single x
+            | otherwise -> return Done
 {-# SPECIALIZE filterStream :: (a -> Bool) -> Stream i IO a -> Stream i IO a #-}
 
 peekStream :: Monad m => Stream i m a -> m (Maybe (a, Stream i m a))
@@ -189,8 +199,9 @@ peekStream (Stream mstep) = do
     step <- mstep
     case step of
         Done          -> return Nothing
-        Suspend _ s     -> peekStream s
+        Suspend _ s   -> peekStream s
         s@(Yield e _) -> return $ Just (e, Stream $ return s)
+        s@(Single e)  -> return $ Just (e, Stream $ return s)
 {-# SPECIALIZE peekStream :: Stream i IO a -> IO (Maybe (a, Stream i IO a)) #-}
 
 newtype EvalM a = EvalM
