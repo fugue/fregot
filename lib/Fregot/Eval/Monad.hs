@@ -20,6 +20,7 @@ module Fregot.Eval.Monad
     , EvalM
     , runEvalM
 
+    , suspend
     , branch
     , unbranch
     , cut
@@ -112,78 +113,88 @@ instance Show EvalException where
 
 instance Exception EvalException
 
-newtype Stream m a = Stream {unStream :: m (Step m a)}
+newtype Stream i m a = Stream {unStream :: m (Step i m a)}
     deriving (Functor)
 
-data Step m a
-    = Yield !a (Stream m a)
+data Step i m a
+    = Yield !a (Stream i m a)
+    | Suspend !i (Stream i m a)
     | Done
     deriving (Functor)
 
-pureStream :: Monad m => a -> Stream m a
+pureStream :: Monad m => a -> Stream i m a
 pureStream x = Stream $! pure $! Yield x $! Stream $! pure Done
 {-# INLINE pureStream #-}
-{-# SPECIALIZE pureStream :: a -> Stream IO a #-}
+{-# SPECIALIZE pureStream :: a -> Stream i IO a #-}
 
-bindStream :: Monad m => Stream m a -> (a -> Stream m b) -> Stream m b
+bindStream :: Monad m => Stream i m a -> (a -> Stream i m b) -> Stream i m b
 bindStream (Stream mxstep) f = Stream $ do
     xstep <- mxstep
     case xstep of
         Done       -> return Done
+        Suspend i xs -> return $ Suspend i (xs `bindStream` f)
         Yield x xs -> unStream $ appendStream (f x) (xs `bindStream` f)
 {-# INLINE bindStream #-}
-{-# SPECIALIZE bindStream :: Stream IO a -> (a -> Stream IO b) -> Stream IO b #-}
+{-# SPECIALIZE bindStream
+    :: Stream i IO a -> (a -> Stream i IO b) -> Stream i IO b #-}
 
-appendStream :: Monad m => Stream m a -> Stream m a -> Stream m a
+appendStream :: Monad m => Stream i m a -> Stream i m a -> Stream i m a
 appendStream (Stream mlstep) right = Stream $ do
     lstep <- mlstep
     case lstep of
         Done            -> unStream right
+        Suspend i lstream -> return $! Suspend i (appendStream lstream right)
         Yield x lstream -> return $! Yield x (appendStream lstream right)
 {-# INLINE appendStream #-}
-{-# SPECIALIZE appendStream :: Stream IO a -> Stream IO a -> Stream IO a #-}
+{-# SPECIALIZE appendStream
+    :: Stream i IO a -> Stream i IO a -> Stream i IO a #-}
 
-instance Monad m => Applicative (Stream m) where
+instance Monad m => Applicative (Stream i m) where
     pure = pureStream
     {-# INLINE pure #-}
-    {-# SPECIALIZE pure :: a -> Stream IO a #-}
+    {-# SPECIALIZE pure :: a -> Stream i IO a #-}
     fs <*> xs = join (fmap (\f -> xs >>= return . f) fs)
     {-# INLINE (<*>) #-}
-    {-# SPECIALIZE (<*>) :: Stream IO (a -> b) -> Stream IO a -> Stream IO b #-}
+    {-# SPECIALIZE (<*>)
+        :: Stream i IO (a -> b) -> Stream i IO a -> Stream i IO b #-}
 
-instance Monad m => Monad (Stream m) where
+instance Monad m => Monad (Stream i m) where
     (>>=) = bindStream
     {-# INLINE (>>=) #-}
-    {-# SPECIALIZE (>>=) :: Stream IO a -> (a -> Stream IO b) -> Stream IO b #-}
+    {-# SPECIALIZE (>>=)
+        :: Stream i IO a -> (a -> Stream i IO b) -> Stream i IO b #-}
 
-streamToList :: Monad m => Stream m a -> m [a]
+streamToList :: Monad m => Stream i m a -> m [a]
 streamToList (Stream mstep) = do
     step <- mstep
     case step of
         Done           -> return []
+        Suspend _ stream -> streamToList stream
         Yield x stream -> (x :) <$> streamToList stream
-{-# SPECIALIZE streamToList :: Stream IO a -> IO [a] #-}
+{-# SPECIALIZE streamToList :: Stream i IO a -> IO [a] #-}
 
-filterStream :: Monad m => (a -> Bool) -> Stream m a -> Stream m a
+filterStream :: Monad m => (a -> Bool) -> Stream i m a -> Stream i m a
 filterStream f (Stream mstep) = Stream $ do
     step <- mstep
     case step of
         Done            -> return Done
+        Suspend i xs      -> return $! Suspend i (filterStream f xs)
         Yield x xs
             | f x       -> return $! Yield x (filterStream f xs)
             | otherwise -> unStream (filterStream f xs)
-{-# SPECIALIZE filterStream :: (a -> Bool) -> Stream IO a -> Stream IO a #-}
+{-# SPECIALIZE filterStream :: (a -> Bool) -> Stream i IO a -> Stream i IO a #-}
 
-peekStream :: Monad m => Stream m a -> m (Maybe (a, Stream m a))
+peekStream :: Monad m => Stream i m a -> m (Maybe (a, Stream i m a))
 peekStream (Stream mstep) = do
     step <- mstep
     case step of
         Done          -> return Nothing
+        Suspend _ s     -> peekStream s
         s@(Yield e _) -> return $ Just (e, Stream $ return s)
-{-# SPECIALIZE peekStream :: Stream IO a -> IO (Maybe (a, Stream IO a)) #-}
+{-# SPECIALIZE peekStream :: Stream i IO a -> IO (Maybe (a, Stream i IO a)) #-}
 
 newtype EvalM a = EvalM
-    { unEvalM :: Environment -> Context -> Stream IO (Row a)
+    { unEvalM :: Environment -> Context -> Stream SourceSpan IO (Row a)
     } deriving (Functor)
 
 instance Applicative EvalM where
@@ -223,6 +234,11 @@ runEvalM :: Environment -> EvalM a -> IO (Either Error (Document a))
 runEvalM rules0 (EvalM f) = catch
     (Right <$> streamToList (f rules0 emptyContext))
     (\(EvalException err) -> return (Left err))
+
+suspend :: SourceSpan -> EvalM a -> EvalM a
+suspend source (EvalM f) =
+    EvalM $ \rs ctx -> Stream $ return $ Suspend source (f rs ctx)
+{-# INLINE suspend #-}
 
 branch :: [EvalM a] -> EvalM a
 branch options = EvalM $ \rs ctx ->
