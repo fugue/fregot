@@ -46,9 +46,11 @@ module Fregot.Eval.Monad
 import           Control.Exception         (Exception, catch, throwIO)
 import           Control.Lens              (view, (&), (.~), (^.))
 import           Control.Lens.TH           (makeLenses)
-import           Control.Monad             (join)
 import           Control.Monad.Reader      (MonadReader (..), ask)
 import           Control.Monad.State       (MonadState (..), modify)
+import           Control.Monad.Stream      (Stream)
+import qualified Control.Monad.Stream      as Stream
+import           Control.Monad.Trans       (liftIO)
 import qualified Data.HashMap.Strict       as HMS
 import           Data.List                 (find)
 import           Data.Unification          (Unification)
@@ -113,132 +115,6 @@ instance Show EvalException where
 
 instance Exception EvalException
 
---------------------------------------------------------------------------------
-
-newtype Stream i m a = Stream {unStream :: m (Step i m a)}
-    deriving (Functor)
-
-data Step i m a
-    = Yield   !a (Stream i m a)
-    | Suspend !i (Stream i m a)
-    | Done
-    -- The 'Single' constructor is not really necessary since we can also
-    -- represent this using 'Yield x (Stream (return Done))'.  However, since we
-    -- deal we deal with singletons so often, this makes our code much faster.
-    | Single  !a
-    deriving (Functor)
-
-pureStream :: Monad m => a -> Stream i m a
-pureStream x = Stream $! pure $! Single x
-{-# INLINE pureStream #-}
-{-# SPECIALIZE pureStream :: a -> Stream i IO a #-}
-
-bindStream :: Monad m => Stream i m a -> (a -> Stream i m b) -> Stream i m b
-bindStream (Stream mxstep) f = Stream $ do
-    xstep <- mxstep
-    case xstep of
-        Done         -> return Done
-        Suspend i xs -> return $ Suspend i (xs `bindStream` f)
-        Yield x xs   -> unStream $ appendStream (f x) (xs `bindStream` f)
-        Single x     -> unStream (f x)
-{-# INLINE bindStream #-}
-{-# SPECIALIZE bindStream
-    :: Stream i IO a -> (a -> Stream i IO b) -> Stream i IO b #-}
-
-emptyStream :: Monad m => Stream i m a
-emptyStream = Stream (pure Done)
-{-# INLINE emptyStream #-}
-{-# SPECIALIZE emptyStream :: Stream i IO a #-}
-
-appendStream :: Monad m => Stream i m a -> Stream i m a -> Stream i m a
-appendStream (Stream mlstep) right = Stream $ do
-    lstep <- mlstep
-    case lstep of
-        Done              -> unStream right
-        Suspend i lstream -> return $! Suspend i (appendStream lstream right)
-        Yield x lstream   -> return $! Yield x (appendStream lstream right)
-        Single x          -> return $! Yield x right
-{-# INLINE appendStream #-}
-{-# SPECIALIZE appendStream
-    :: Stream i IO a -> Stream i IO a -> Stream i IO a #-}
-
-instance Monad m => Semigroup (Stream i m a) where
-    (<>) = appendStream
-    {-# INLINE (<>) #-}
-    {-# SPECIALIZE (<>) :: Stream i IO a -> Stream i IO a -> Stream i IO a #-}
-
-instance Monad m => Monoid (Stream i m a) where
-    mempty = emptyStream
-    {-# INLINE mempty #-}
-    {-# SPECIALIZE mempty :: Stream i IO a #-}
-
-instance Monad m => Applicative (Stream i m) where
-    pure = pureStream
-    {-# INLINE pure #-}
-    {-# SPECIALIZE pure :: a -> Stream i IO a #-}
-    fs <*> xs = join (fmap (\f -> xs >>= return . f) fs)
-    {-# INLINE (<*>) #-}
-    {-# SPECIALIZE (<*>)
-        :: Stream i IO (a -> b) -> Stream i IO a -> Stream i IO b #-}
-
-instance Monad m => Monad (Stream i m) where
-    (>>=) = bindStream
-    {-# INLINE (>>=) #-}
-    {-# SPECIALIZE (>>=)
-        :: Stream i IO a -> (a -> Stream i IO b) -> Stream i IO b #-}
-
-streamToList :: Monad m => Stream i m a -> m [a]
-streamToList (Stream mstep) = do
-    step <- mstep
-    case step of
-        Done             -> return []
-        Suspend _ stream -> streamToList stream
-        Yield x stream   -> (x :) <$> streamToList stream
-        Single x         -> return [x]
-{-# SPECIALIZE streamToList :: Stream i IO a -> IO [a] #-}
-
-filterStream :: Monad m => (a -> Bool) -> Stream i m a -> Stream i m a
-filterStream f (Stream mstep) = Stream $ do
-    step <- mstep
-    case step of
-        Done            -> return Done
-        Suspend i xs    -> return $! Suspend i (filterStream f xs)
-        Yield x xs
-            | f x       -> return $! Yield x (filterStream f xs)
-            | otherwise -> unStream (filterStream f xs)
-        Single x
-            | f x       -> return $! Single x
-            | otherwise -> return Done
-{-# SPECIALIZE filterStream :: (a -> Bool) -> Stream i IO a -> Stream i IO a #-}
-
-collapseStream :: Monad m => Stream i m a -> Stream i m [a]
-collapseStream = go []
-  where
-    go acc (Stream mstep) = Stream $ do
-        step <- mstep
-        case step of
-            Done        -> return $! Single $ reverse acc
-            Single  x   -> return $! Single $ reverse (x : acc)
-            Suspend i s -> return $! Suspend i $ go acc s
-            Yield   x s -> unStream $ go (x : acc) s
-{-# INLINE collapseStream #-}
-{-# SPECIALIZE collapseStream :: Stream i IO a -> Stream i IO [a] #-}
-
--- | Check if a stream is empty.  If it is not, this returns a new stream, so we
--- don't have to unnecessarily duplicate effects.
-peekStream :: Monad m => Stream i m a -> Stream i m (Maybe (Stream i m a))
-peekStream (Stream mstep) = Stream $ do
-    step <- mstep
-    case step of
-        Done          -> return $! Single Nothing
-        Suspend i s   -> return $! Suspend i $ peekStream s
-        s@(Yield _ _) -> return $! Single (Just $ Stream $ return s)
-        s@(Single _)  -> return $! Single (Just $ Stream $ return s)
-{-# SPECIALIZE peekStream
-    :: Stream i IO a -> Stream i IO (Maybe (Stream i IO a)) #-}
-
---------------------------------------------------------------------------------
-
 newtype EvalM a = EvalM
     { unEvalM :: Environment -> Context -> Stream SourceSpan IO (Row a)
     } deriving (Functor)
@@ -278,12 +154,12 @@ instance MonadState Context EvalM where
 
 runEvalM :: Environment -> EvalM a -> IO (Either Error (Document a))
 runEvalM rules0 (EvalM f) = catch
-    (Right <$> streamToList (f rules0 emptyContext))
+    (Right <$> Stream.toList (f rules0 emptyContext))
     (\(EvalException err) -> return (Left err))
 
 suspend :: SourceSpan -> EvalM a -> EvalM a
 suspend source (EvalM f) =
-    EvalM $ \rs ctx -> Stream $ return $ Suspend source (f rs ctx)
+    EvalM $ \rs ctx -> Stream.suspend source (f rs ctx)
 {-# INLINE suspend #-}
 
 branch :: [EvalM a] -> EvalM a
@@ -297,7 +173,7 @@ unbranch :: EvalM a -> EvalM [a]
 unbranch (EvalM f) = EvalM $ \rs ctx ->
     -- NOTE(jaspervdj): We are effectively dropping a part of the context here
     -- which I'm not sure is safe.
-    Row ctx . map (view rowValue) <$> collapseStream (f rs ctx)
+    Row ctx . map (view rowValue) <$> Stream.collapse (f rs ctx)
 {-# INLINE unbranch #-}
 
 cut :: EvalM a
@@ -306,14 +182,14 @@ cut = EvalM $ \_ _ -> mempty
 
 negation :: (a -> Bool) -> EvalM a -> EvalM ()
 negation trueish (EvalM f) = EvalM $ \rs ctx -> do
-    peek <- peekStream $ filterStream (trueish . view rowValue) (f rs ctx)
+    peek <- Stream.peek $ Stream.filter (trueish . view rowValue) (f rs ctx)
     case peek of
         Nothing -> pure (Row ctx ())
         Just _  -> mempty
 
 orElse :: EvalM a -> EvalM a -> EvalM a
 orElse (EvalM x) (EvalM alt) = EvalM $ \env ctx -> do
-    peek <- peekStream (x env ctx)
+    peek <- Stream.peek (x env ctx)
     case peek of
         Nothing -> alt env ctx
         Just x' -> x'
@@ -328,11 +204,11 @@ withDefault = flip orElse
 requireComplete
     :: (Eq a, PP.Pretty PP.Sem a) => SourceSpan -> EvalM a -> EvalM a
 requireComplete source (EvalM f) = EvalM $ \env ctx -> do
-    rows <- collapseStream (f env ctx)
+    rows <- Stream.collapse (f env ctx)
     case rows of
         (r : more)
             | Just d <- find ((/= r ^. rowValue) . view rowValue) more ->
-                Stream $ throwIO $ EvalException $ Error.mkError
+                liftIO $ throwIO $ EvalException $ Error.mkError
                     "eval" source "inconsistent result" $
                     "Inconsistent result for complete rule, but got:" <$$>
                     PP.ind (PP.pretty $ r ^. rowValue) <$$>
@@ -380,7 +256,7 @@ withPackage pkg = local (package .~ pkg)
 -- | Raise an error.  We currently don't allow catching exceptions, but they are
 -- handled at the top level `runEvalM` and converted to an `Either`.
 raise :: Error -> EvalM a
-raise err = EvalM (\_ _ -> Stream $ throwIO (EvalException err))
+raise err = EvalM (\_ _ -> liftIO $ throwIO (EvalException err))
 
 raise' :: SourceSpan -> PP.SemDoc -> PP.SemDoc -> EvalM a
 raise' source title body = raise (Error.mkError "eval" source title body)
