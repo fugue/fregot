@@ -1,0 +1,34 @@
+version: 2
+
+workflows:
+  version: 2
+  build-workflow:
+    jobs:
+    - build:
+        filters:
+          tags:
+            only: /.*/
+
+jobs:
+  build:
+    # This image has most Haskell stuff preinstalled.
+    docker:
+    - image: 'fpco/stack-build:latest'
+
+    steps:
+    - checkout
+    - restore_cache:
+        key: 'v1-fregot-{{ arch }}-{{ .Branch }}'
+    - run:
+        name: 'Install'
+        command: 'stack --no-terminal --skip-ghc-check --copy-bins --test build'
+    - run:
+        name: 'Run Rego tests'
+        command: 'fregot test tests/rego'
+    - run:
+        name: 'Run Golden tests'
+        command: 'fspec -j2 --pretty-diff tests/golden'
+    - save_cache:
+        key: 'v1-fregot-{{ arch }}-{{ .Branch }}-{{ .Revision }}'
+        paths:
+        - '~/.stack'
