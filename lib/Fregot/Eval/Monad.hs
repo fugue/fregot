@@ -308,19 +308,19 @@ withDefault = flip orElse
 
 requireComplete
     :: (Eq a, PP.Pretty PP.Sem a) => SourceSpan -> EvalM a -> EvalM a
-requireComplete source (EvalM f) = EvalM $ \env ctx -> Stream $ do
-    rows <- streamToList (f env ctx)
+requireComplete source (EvalM f) = EvalM $ \env ctx -> do
+    rows <- collapseStream (f env ctx)
     case rows of
         (r : more)
             | Just d <- find ((/= r ^. rowValue) . view rowValue) more ->
-                throwIO $ EvalException $ Error.mkError
+                Stream $ throwIO $ EvalException $ Error.mkError
                     "eval" source "inconsistent result" $
                     "Inconsistent result for complete rule, but got:" <$$>
                     PP.ind (PP.pretty $ r ^. rowValue) <$$>
                     "And:" <$$>
                     PP.ind (PP.pretty $ d ^. rowValue)
-            | otherwise -> unStream $ pure r
-        _ -> pure Done
+            | otherwise -> pure r
+        _ -> Stream (pure Done)
 
 -- | Turn a variable into an instantiated variable.
 --
