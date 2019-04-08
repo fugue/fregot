@@ -194,14 +194,27 @@ filterStream f (Stream mstep) = Stream $ do
             | otherwise -> return Done
 {-# SPECIALIZE filterStream :: (a -> Bool) -> Stream i IO a -> Stream i IO a #-}
 
+collapseStream :: Monad m => Stream i m a -> Stream i m [a]
+collapseStream = go []
+  where
+    go acc (Stream mstep) = Stream $ do
+        step <- mstep
+        case step of
+            Done        -> return $! Single $ reverse acc
+            Single  x   -> return $! Single $ reverse (x : acc)
+            Suspend i s -> return $! Suspend i $ go acc s
+            Yield   x s -> unStream $ go (x : acc) s
+{-# INLINE collapseStream #-}
+{-# SPECIALIZE collapseStream :: Stream i IO a -> Stream i IO [a] #-}
+
 peekStream :: Monad m => Stream i m a -> m (Maybe (a, Stream i m a))
 peekStream (Stream mstep) = do
     step <- mstep
     case step of
         Done          -> return Nothing
         Suspend _ s   -> peekStream s
-        s@(Yield e _) -> return $ Just (e, Stream $ return s)
-        s@(Single e)  -> return $ Just (e, Stream $ return s)
+        s@(Yield e _) -> return $! Just (e, Stream $ return s)
+        s@(Single e)  -> return $! Just (e, Stream $ return s)
 {-# SPECIALIZE peekStream :: Stream i IO a -> IO (Maybe (a, Stream i IO a)) #-}
 
 newtype EvalM a = EvalM
@@ -259,9 +272,10 @@ branch options = EvalM $ \rs ctx ->
 {-# INLINE branch #-}
 
 unbranch :: EvalM a -> EvalM [a]
-unbranch (EvalM f) = EvalM $ \rs ctx -> Stream $ do
-    rows <- streamToList (f rs ctx)
-    return $ Yield (Row ctx (map (view rowValue) rows)) (Stream (pure Done))
+unbranch (EvalM f) = EvalM $ \rs ctx ->
+    -- NOTE(jaspervdj): We are effectively dropping a part of the context here
+    -- which I'm not sure is safe.
+    Row ctx . map (view rowValue) <$> collapseStream (f rs ctx)
 {-# INLINE unbranch #-}
 
 cut :: EvalM a
