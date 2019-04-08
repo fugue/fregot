@@ -45,7 +45,7 @@ module Fregot.Eval.Monad
 import           Control.Exception         (Exception, catch, throwIO)
 import           Control.Lens              (view, (&), (.~), (^.))
 import           Control.Lens.TH           (makeLenses)
-import           Control.Monad             (join, liftM2)
+import           Control.Monad             (join)
 import           Control.Monad.Reader      (MonadReader (..), ask)
 import           Control.Monad.State       (MonadState (..), modify)
 import qualified Data.HashMap.Strict       as HMS
@@ -117,34 +117,44 @@ newtype Stream m a = Stream {unStream :: m (Step m a)}
 
 data Step m a
     = Yield !a (Stream m a)
-    | Append !(Stream m a) (Stream m a)
     | Done
     deriving (Functor)
 
 pureStream :: Monad m => a -> Stream m a
 pureStream x = Stream $! pure $! Yield x $! Stream $! pure Done
 {-# INLINE pureStream #-}
+{-# SPECIALIZE pureStream :: a -> Stream IO a #-}
 
 bindStream :: Monad m => Stream m a -> (a -> Stream m b) -> Stream m b
 bindStream (Stream mxstep) f = Stream $ do
     xstep <- mxstep
     case xstep of
-        Done        -> return Done
-        Append x xs ->
-            return $ Append (x `bindStream` f) (xs `bindStream` f)
-        Yield x xs ->
-            return $ Append (f x) (xs `bindStream` f)
+        Done       -> return Done
+        Yield x xs -> unStream $ appendStream (f x) (xs `bindStream` f)
 {-# INLINE bindStream #-}
+{-# SPECIALIZE bindStream :: Stream IO a -> (a -> Stream IO b) -> Stream IO b #-}
+
+appendStream :: Monad m => Stream m a -> Stream m a -> Stream m a
+appendStream (Stream mlstep) right = Stream $ do
+    lstep <- mlstep
+    case lstep of
+        Done            -> unStream right
+        Yield x lstream -> return $! Yield x (appendStream lstream right)
+{-# INLINE appendStream #-}
+{-# SPECIALIZE appendStream :: Stream IO a -> Stream IO a -> Stream IO a #-}
 
 instance Monad m => Applicative (Stream m) where
     pure = pureStream
     {-# INLINE pure #-}
+    {-# SPECIALIZE pure :: a -> Stream IO a #-}
     fs <*> xs = join (fmap (\f -> xs >>= return . f) fs)
     {-# INLINE (<*>) #-}
+    {-# SPECIALIZE (<*>) :: Stream IO (a -> b) -> Stream IO a -> Stream IO b #-}
 
 instance Monad m => Monad (Stream m) where
     (>>=) = bindStream
     {-# INLINE (>>=) #-}
+    {-# SPECIALIZE (>>=) :: Stream IO a -> (a -> Stream IO b) -> Stream IO b #-}
 
 streamToList :: Monad m => Stream m a -> m [a]
 streamToList (Stream mstep) = do
@@ -152,7 +162,7 @@ streamToList (Stream mstep) = do
     case step of
         Done           -> return []
         Yield x stream -> (x :) <$> streamToList stream
-        Append xs ys   -> liftM2 (++) (streamToList xs) (streamToList ys)
+{-# SPECIALIZE streamToList :: Stream IO a -> IO [a] #-}
 
 filterStream :: Monad m => (a -> Bool) -> Stream m a -> Stream m a
 filterStream f (Stream mstep) = Stream $ do
@@ -162,20 +172,15 @@ filterStream f (Stream mstep) = Stream $ do
         Yield x xs
             | f x       -> return $! Yield x (filterStream f xs)
             | otherwise -> unStream (filterStream f xs)
-        Append x y      -> return $!
-            Append (filterStream f x) (filterStream f y)
+{-# SPECIALIZE filterStream :: (a -> Bool) -> Stream IO a -> Stream IO a #-}
 
 peekStream :: Monad m => Stream m a -> m (Maybe (a, Stream m a))
 peekStream (Stream mstep) = do
     step <- mstep
     case step of
-        Done             -> return Nothing
+        Done          -> return Nothing
         s@(Yield e _) -> return $ Just (e, Stream $ return s)
-        Append x y       -> do
-            nx <- peekStream x
-            case nx of
-                Nothing      -> peekStream y
-                Just (e, x') -> return $ Just (e, Stream $ return $ Append x' y)
+{-# SPECIALIZE peekStream :: Stream IO a -> IO (Maybe (a, Stream IO a)) #-}
 
 newtype EvalM a = EvalM
     { unEvalM :: Environment -> Context -> Stream IO (Row a)
@@ -222,7 +227,7 @@ runEvalM rules0 (EvalM f) = catch
 branch :: [EvalM a] -> EvalM a
 branch options = EvalM $ \rs ctx ->
     let go []               = Stream (pure Done)
-        go (EvalM o : opts) = Stream (pure $ Append (o rs ctx) (go opts)) in
+        go (EvalM o : opts) = appendStream (o rs ctx) (go opts) in
     go options
 {-# INLINE branch #-}
 
