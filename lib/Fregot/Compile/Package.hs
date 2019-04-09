@@ -19,7 +19,7 @@ import           Control.Monad.Parachute     (ParachuteT, tellError, tellErrors)
 import qualified Data.HashMap.Strict         as HMS
 import qualified Data.HashSet.Extended       as HS
 import           Data.List.NonEmpty.Extended (NonEmpty (..))
-import           Data.Maybe                  (fromMaybe)
+import           Data.Maybe                  (isNothing)
 import           Fregot.Compile.Order
 import           Fregot.Error                (Error)
 import qualified Fregot.Error                as Error
@@ -36,7 +36,7 @@ import           Prelude                     hiding (head, lookup)
 type CompiledPackage = Package ()
 
 aritiesFromPackage :: PreparedPackage -> Arities
-aritiesFromPackage prep = \func -> fromMaybe 0 $
+aritiesFromPackage prep = \func ->
     (do
         builtin <- HMS.lookup func Builtins.builtins
         return $ Builtins.arity builtin) <|>
@@ -70,25 +70,29 @@ compilePackage prep =
         -- Order the bodies and terms.
         ordered <-
             traverseOf (ruleBodies . traverse) orderRuleBody def >>=
-            traverseOf (ruleValue . traverse ) orderTerm >>=
+            traverseOf (ruleValue . traverse) orderTerm >>=
             traverseOf (ruleElses . traverse . ruleElseBody) orderRuleBody >>=
             traverseOf (ruleElses . traverse . ruleElseValue . traverse) orderTerm
 
-        -- Var safety check for every rule body (index and value).
+        -- General check for every rule body (index and value).
         forOf_ (ruleBodies . traverse) ordered $ \body -> do
             let safe1 = safe <> ovRuleBody arities safe body
             forOf_ (ruleIndex . traverse) def $ \v ->
-                tellErrors $ checkTermVars safe1 v
+                tellErrors $ checkTerm arities safe1 v
             forOf_ (ruleValue . traverse) def $ \v ->
-                tellErrors $ checkTermVars safe1 v
+                tellErrors $ checkTerm arities safe1 v
 
-        -- Var safety check the elses (index and else value).
+        -- General check the elses (index and else value).
         forOf_ (ruleElses . traverse) ordered $ \els -> do
             let safe1 = safe <> ovRuleBody arities safe (els ^. ruleElseBody)
             forOf_ (ruleIndex . traverse) def $ \v ->
-                tellErrors $ checkTermVars safe1 v
+                tellErrors $ checkTerm arities safe1 v
             forOf_ (ruleElseValue . traverse) els $ \v ->
-                tellErrors $ checkTermVars safe1 v
+                tellErrors $ checkTerm arities safe1 v
+
+        -- Call check inside rule bodies.
+        forOf_ (ruleBodies . traverse . ruleBodyTerms) ordered $
+            \term -> tellErrors $ checkTermCalls arities term
 
         return ordered
       where
@@ -111,11 +115,17 @@ compileTerm
     -> ParachuteT Error m (Term SourceSpan)
 compileTerm pkg term0 = do
     ordered <- runOrder $ orderTermForSafety arities safe term0
-    tellErrors $ checkTermVars safe ordered
+    tellErrors $ checkTerm arities safe ordered
     return ordered
   where
     safe    = safeGlobals pkg
     arities = aritiesFromPackage pkg
+
+-- | Various checks on terms.
+checkTerm :: Arities -> Safe Var -> Term SourceSpan -> [Error]
+checkTerm arities safe term =
+    checkTermVars safe term <>
+    checkTermCalls arities term
 
 -- | Check that all variables in the term occurr in the safe set.
 checkTermVars
@@ -128,6 +138,18 @@ checkTermVars (Safe safe) term =
         "assigned a value."
     | (source, var) <- term ^.. termCosmosNoClosures . termVars
     , not $ var `HS.member` safe
+    ]
+
+-- | Check that all calls in the term are known functions.
+checkTermCalls
+    :: Arities
+    -> Term SourceSpan
+    -> [Error]
+checkTermCalls arities term =
+    [ Error.mkError "var check" source "unknown function" $
+        "Function" <+> PP.pretty fun <+> "is not defined."
+    | (source, fun) <- term ^.. termCosmosCalls
+    , isNothing (arities fun)
     ]
 
 -- | Designed to match the return type of `orderTermForSafety`.

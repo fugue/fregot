@@ -13,6 +13,7 @@ import           Control.Lens          ((^.))
 import           Data.Hashable         (Hashable)
 import qualified Data.HashSet.Extended as HS
 import           Data.List             (foldl')
+import           Data.Maybe            (fromMaybe)
 import           Fregot.Prepare.Ast
 import           Fregot.Prepare.Lens
 
@@ -29,7 +30,7 @@ markTermSafe t =
 isSafe :: (Eq v, Hashable v) => v -> Safe v -> Bool
 isSafe v (Safe s) = HS.member v s
 
-type Arities = Function -> Int
+type Arities = Function -> Maybe Int
 
 ovRuleBody :: Arities -> Safe Var -> RuleBody a -> Safe Var
 ovRuleBody arities safe@(Safe initial) body =
@@ -58,7 +59,7 @@ ovTerm arities safe (RefT _ x k) =
     markTermSafe k
 
 ovTerm arities safe (CallT _ function args) =
-    let arity = arities function in
+    let arity = fromMaybe 0 (arities function) in
     foldMap (ovTerm arities safe) (take arity args) <>
     foldMap markTermSafe (drop arity args)
 
