@@ -31,12 +31,13 @@ import qualified Fregot.Interpreter                as Interpreter
 import qualified Fregot.Parser.Internal            as Parser
 import qualified Fregot.Parser.Sugar               as Parser
 import qualified Fregot.Prepare.Ast                as Prepare
-import           Fregot.PrettyPrint                ((<$$>))
+import           Fregot.PrettyPrint                ((<$$>), (<+>))
 import qualified Fregot.PrettyPrint                as PP
 import qualified Fregot.Repl.Multiline             as Multiline
 import           Fregot.Sources                    (SourcePointer)
 import qualified Fregot.Sources                    as Sources
 import           Fregot.Sources.SourceSpan         (SourceSpan)
+import qualified Fregot.Sources.SourceSpan         as SourceSpan
 import           Fregot.Sugar
 import qualified Fregot.Test                       as Test
 import           Fregot.Version                    (version)
@@ -155,8 +156,13 @@ processInput h input = do
             case step of
                 Nothing                      -> PP.hPutSemDoc IO.stdout $ "(debug) internal error"
                 Just Interpreter.Done        -> PP.hPutSemDoc IO.stdout $ "(debug) finished"
-                Just (Interpreter.Yield x)   -> PP.hPutSemDoc IO.stdout $ "(debug) =" PP.<+> PP.pretty x
-                Just (Interpreter.Suspend i) -> PP.hPutSemDoc IO.stdout $ PP.pretty i
+                Just (Interpreter.Yield x)   -> PP.hPutSemDoc IO.stdout $ "(debug) =" <+> PP.pretty x
+                Just (Interpreter.Suspend loc) -> do
+                    sauce <- IORef.readIORef (h ^. sources)
+                    PP.hPutSemDoc IO.stdout $
+                        case SourceSpan.citeSourceSpan PP.hint sauce loc of
+                            Nothing -> "at" <+> PP.pretty loc
+                            Just d  -> d
                 Just (Interpreter.Error e)   -> do
                     PP.hPutSemDoc IO.stdout $ "(debug) error"
                     sauce <- IORef.readIORef (h ^. sources)
@@ -167,7 +173,7 @@ processInput h input = do
             mbRows <- runInterpreter h $ \i ->
                 Interpreter.evalExpr i pkgname expr
             forM_ mbRows $ \rows -> forM_ rows $ \row ->
-                PP.hPutSemDoc IO.stdout $ "=" PP.<+> PP.pretty row
+                PP.hPutSemDoc IO.stdout $ "=" <+> PP.pretty row
 
         Nothing -> return ()
 

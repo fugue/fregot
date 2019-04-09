@@ -16,6 +16,7 @@ module Fregot.Sources.SourceSpan
     , prettyPos
     , prettyLoc
     , prettySourceSpan
+    , citeSourceSpan
 
     , sourceSpanToSourcePos
     , sourcePosToSourceSpan
@@ -71,10 +72,12 @@ prettySourceSpan sources ss title doc =
     title' <$$$>? snip <$$$>? doc
   where
     title' = if isNothing doc && isNothing snip then title else title <> ":"
-    snip   = fmap PP.ind $ citeSourceSpan sources ss
+    snip   = fmap PP.ind $ citeSourceSpan PP.error sources ss
 
-citeSourceSpan :: Sources.Sources -> SourceSpan -> Maybe PP.SemDoc
-citeSourceSpan sources ss = case sInput of
+citeSourceSpan
+    :: (PP.SemDoc -> PP.SemDoc) -> Sources.Sources -> SourceSpan
+    -> Maybe PP.SemDoc
+citeSourceSpan decorate sources ss = case sInput of
     [] -> Nothing
     [x] -> Just $
         prefix (ss ^. start . line) <> PP.pretty x <$$>
@@ -87,7 +90,7 @@ citeSourceSpan sources ss = case sInput of
     prefix i        = justifyRight prefixWidth (T.pack (show i) <> "| ")
     prefixWidth     = length (show $ ss ^. end . line) + 2
     caretty c1 c2   = PP.indent (prefixWidth + c1 - 1) $
-                          PP.error (PP.pretty $ T.replicate (c2 - c1 + 1) "^")
+                          decorate (PP.pretty $ T.replicate (c2 - c1 + 1) "^")
 
     sInput = sourceSpanInput sources ss
 
