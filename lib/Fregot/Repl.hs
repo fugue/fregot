@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE TemplateHaskell   #-}
@@ -44,6 +45,10 @@ import qualified System.Directory                  as Directory
 import           System.FilePath                   ((</>))
 import qualified System.IO.Extended                as IO
 
+data Mode
+    = SteppingMode
+    | RegularMode
+
 data Handle = Handle
     { _sources     :: !Sources.Handle
     , _interpreter :: !Interpreter.Handle
@@ -52,6 +57,9 @@ data Handle = Handle
     , _lastLoad    :: !(IORef (Maybe FilePath))
     -- | Currently open package.
     , _openPackage :: !(IORef PackageName)
+
+    -- | Current mode; either debugging or regular evaluation.
+    , _mode        :: !(IORef Mode)
     }
 
 data MetaCommand = MetaCommand
@@ -72,6 +80,7 @@ withHandle _sources _interpreter f = do
     _replCount   <- IORef.newIORef 0
     _lastLoad    <- IORef.newIORef Nothing
     _openPackage <- IORef.newIORef "repl"
+    _mode        <- IORef.newIORef RegularMode
     f Handle {..}
 
 -- | Auxiliary function to invoke the interpreter.
@@ -127,10 +136,13 @@ parseRuleOrExpr h input = do
         a = r ^. ruleHead . ruleAnn
 
 processInput :: Handle -> T.Text -> IO ()
-processInput _h input | T.all isSpace input = return ()
+processInput _h input | T.all isSpace input =
+    -- TODO(jaspervdj): Step if in stepping mode.
+    return ()
 processInput h input = do
     (sourcep, mbRuleOrTerm) <- parseRuleOrExpr h input
     pkgname <- IORef.readIORef (h ^. openPackage)
+    emode   <- IORef.readIORef (h ^. mode)
     case mbRuleOrTerm of
         Just (Left rule) -> do
             PP.hPutSemDoc IO.stdout $ PP.pretty rule
@@ -138,12 +150,25 @@ processInput h input = do
                 Interpreter.insertRule i pkgname sourcep rule
                 Interpreter.compilePackages i
 
-        Just (Right expr) -> do
+        Just (Right expr) | SteppingMode <- emode -> do
+            step <- runInterpreter h $ \i -> Interpreter.step i pkgname expr
+            case step of
+                Nothing                      -> PP.hPutSemDoc IO.stdout $ "(debug) internal error"
+                Just Interpreter.Done        -> PP.hPutSemDoc IO.stdout $ "(debug) finished"
+                Just (Interpreter.Yield x)   -> PP.hPutSemDoc IO.stdout $ "(debug) =" PP.<+> PP.pretty x
+                Just (Interpreter.Suspend i) -> PP.hPutSemDoc IO.stdout $ PP.pretty i
+                Just (Interpreter.Error e)   -> do
+                    PP.hPutSemDoc IO.stdout $ "(debug) error"
+                    sauce <- IORef.readIORef (h ^. sources)
+                    Error.hPutErrors IO.stderr sauce Error.TextFmt [e]
+
+        Just (Right expr) | RegularMode <- emode -> do
             PP.hPutSemDoc IO.stdout $ PP.pretty expr
             mbRows <- runInterpreter h $ \i ->
                 Interpreter.evalExpr i pkgname expr
             forM_ mbRows $ \rows -> forM_ rows $ \row ->
                 PP.hPutSemDoc IO.stdout $ "=" PP.<+> PP.pretty row
+
         Nothing -> return ()
 
 run :: Handle -> IO ()
@@ -182,8 +207,8 @@ run h = do
 
     getMultilineInput :: Hl.InputT IO (Maybe T.Text)
     getMultilineInput = do
-        pkg     <- liftIO $ IORef.readIORef (h ^. openPackage)
-        mbLine0 <- Hl.getInputLine $ review packageNameFromString pkg <> "% "
+        prompt  <- liftIO getPrompt
+        mbLine0 <- Hl.getInputLine prompt
         case mbLine0 of
             Nothing    -> return Nothing
             Just input -> more Multiline.emptyPartial input
@@ -195,6 +220,17 @@ run h = do
                 case mbNextLine of
                     Nothing       -> return $ Just $ Multiline.finish p1
                     Just nextLine -> more p1 nextLine
+
+    getPrompt :: IO String
+    getPrompt = do
+        pkg   <- IORef.readIORef (h ^. openPackage)
+        emode <- IORef.readIORef (h ^. mode)
+        return $
+            review packageNameFromString pkg <>
+            (case emode of
+                RegularMode  -> ""
+                SteppingMode -> "(debug)") <>
+            "% "
 
 metaShortcuts :: HMS.HashMap T.Text MetaCommand
 metaShortcuts =
@@ -212,7 +248,12 @@ metaShortcuts =
 
 metaCommands :: [MetaCommand]
 metaCommands =
-    [ MetaCommand ":help" "show this info" $ \_ _ -> do
+    [ MetaCommand ":debug" "Toggle debug mode" $ \h _ -> do
+        liftIO $ IORef.atomicModifyIORef_ (h ^. mode) $ \case
+            RegularMode  -> SteppingMode
+            SteppingMode -> RegularMode
+        return True
+    , MetaCommand ":help" "show this info" $ \_ _ -> do
         liftIO $ PP.hPutSemDoc IO.stderr $
             "Enter an expression to evaluate it." <$$>
             "Enter a rule to add it to the current package." <$$>

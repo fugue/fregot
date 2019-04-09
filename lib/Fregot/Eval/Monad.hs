@@ -20,6 +20,9 @@ module Fregot.Eval.Monad
     , EvalM
     , runEvalM
 
+    , Step (..)
+    , stepEvalM
+
     , suspend
     , branch
     , unbranch
@@ -156,6 +159,22 @@ runEvalM :: Environment -> EvalM a -> IO (Either Error (Document a))
 runEvalM rules0 (EvalM f) = catch
     (Right <$> Stream.toList (f rules0 emptyContext))
     (\(EvalException err) -> return (Left err))
+
+data Step a
+    = Yield (Row a)
+    | Suspend SourceSpan
+    | Done
+    | Error Error
+
+stepEvalM :: Environment -> EvalM a -> IO (Step a)
+stepEvalM env0 (EvalM f) = catch
+    (do
+        sstep <- Stream.step (f env0 emptyContext)
+        case sstep of
+            Stream.Yield   r _ -> return $ Yield r
+            Stream.Suspend i _ -> return $ Suspend i
+            Stream.Done        -> return Done)
+    (\(EvalException err) -> return (Error err))
 
 suspend :: SourceSpan -> EvalM a -> EvalM a
 suspend source (EvalM f) =

@@ -13,6 +13,9 @@ module Fregot.Interpreter
 
     , evalExpr
     , evalVar
+
+    , Eval.Step (..)
+    , step
     ) where
 
 import           Control.Lens              (ifor, (^.))
@@ -183,3 +186,14 @@ evalVar
     :: Handle -> SourceSpan -> PackageName -> Var
     -> InterpreterM (Eval.Document Eval.Value)
 evalVar h source pkgname = eval h pkgname . Eval.evalVar source
+
+step
+    :: Handle -> PackageName -> Sugar.Expr SourceSpan
+    -> InterpreterM (Eval.Step Eval.Value)
+step h pkgname expr = do
+    comp  <- liftIO $ IORef.readIORef (h ^. compiled)
+    pkg   <- readCompiledPackage h pkgname
+    pterm <- Prepare.prepareExpr expr
+    cterm <- Compile.compileTerm pkg pterm
+    let env = Eval.Environment comp pkg emptyObject mempty
+    liftIO (Eval.stepEvalM env (Eval.evalTerm cterm))

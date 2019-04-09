@@ -18,6 +18,9 @@ module Fregot.Eval
     , EvalM
     , runEvalM
 
+    , Step (..)
+    , stepEvalM
+
     , evalVar
     , evalTerm
     ) where
