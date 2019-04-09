@@ -190,6 +190,7 @@ processStep h = do
                 Just (Interpreter.Yield x nstate)   -> do
                     PP.hPutSemDoc IO.stdout $ "(debug) =" <+> PP.pretty x
                     IORef.writeIORef (h ^. mode) (SteppingMode nstate)
+                    processStep h
                 Just (Interpreter.Suspend loc nstate) -> do
                     sauce <- IORef.readIORef (h ^. sources)
                     PP.hPutSemDoc IO.stdout $
