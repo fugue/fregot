@@ -183,12 +183,12 @@ processStep h = do
             mbStep <- runInterpreter h $ \i -> Interpreter.step i state
             case mbStep of
                 Nothing                      ->
-                    PP.hPutSemDoc IO.stdout $ "(debug) internal error"
+                    PP.hPutSemDoc IO.stdout $ prefix "internal error"
                 Just Interpreter.Done        -> do
-                    PP.hPutSemDoc IO.stdout $ "(debug) finished"
+                    PP.hPutSemDoc IO.stdout $ prefix "finished"
                     IORef.writeIORef (h ^. mode) StartSteppingMode
                 Just (Interpreter.Yield x nstate)   -> do
-                    PP.hPutSemDoc IO.stdout $ "(debug) =" <+> PP.pretty x
+                    PP.hPutSemDoc IO.stdout $ prefix "=" <+> PP.pretty x
                     IORef.writeIORef (h ^. mode) (SteppingMode nstate)
                     processStep h
                 Just (Interpreter.Suspend loc nstate) -> do
@@ -199,9 +199,11 @@ processStep h = do
                             Just d  -> d
                     IORef.writeIORef (h ^. mode) (SteppingMode nstate)
                 Just (Interpreter.Error e)   -> do
-                    PP.hPutSemDoc IO.stdout $ "(debug) error"
+                    PP.hPutSemDoc IO.stdout $ prefix "error"
                     sauce <- IORef.readIORef (h ^. sources)
                     Error.hPutErrors IO.stderr sauce Error.TextFmt [e]
+  where
+    prefix = (PP.hint "(debug)" <+>)
 
 run :: Handle -> IO ()
 run h = do
