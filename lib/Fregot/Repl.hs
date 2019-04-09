@@ -26,6 +26,7 @@ import           Data.Maybe                        (fromMaybe, isNothing)
 import qualified Data.Text                         as T
 import           Data.Version                      (showVersion)
 import qualified Fregot.Error                      as Error
+import qualified Fregot.Eval                       as Eval
 import qualified Fregot.Eval.Builtins              as Builtins
 import qualified Fregot.Interpreter                as Interpreter
 import qualified Fregot.Parser.Internal            as Parser
@@ -47,7 +48,8 @@ import           System.FilePath                   ((</>))
 import qualified System.IO.Extended                as IO
 
 data Mode
-    = SteppingMode
+    = StartSteppingMode
+    | SteppingMode (Eval.StepState Eval.Value)
     | RegularMode
 
 data Handle = Handle
@@ -137,9 +139,9 @@ parseRuleOrExpr h input = do
         a = r ^. ruleHead . ruleAnn
 
 processInput :: Handle -> T.Text -> IO ()
-processInput _h input | T.all isSpace input =
-    -- TODO(jaspervdj): Step if in stepping mode.
-    return ()
+processInput h input | T.all isSpace input =
+    -- NOTE(jaspervdj): Step if in stepping mode.
+    processStep h
 processInput h input = do
     (sourcep, mbRuleOrTerm) <- parseRuleOrExpr h input
     pkgname <- IORef.readIORef (h ^. openPackage)
@@ -151,24 +153,14 @@ processInput h input = do
                 Interpreter.insertRule i pkgname sourcep rule
                 Interpreter.compilePackages i
 
-        Just (Right expr) | SteppingMode <- emode -> do
-            step <- runInterpreter h $ \i -> Interpreter.step i pkgname expr
-            case step of
-                Nothing                      -> PP.hPutSemDoc IO.stdout $ "(debug) internal error"
-                Just Interpreter.Done        -> PP.hPutSemDoc IO.stdout $ "(debug) finished"
-                Just (Interpreter.Yield x)   -> PP.hPutSemDoc IO.stdout $ "(debug) =" <+> PP.pretty x
-                Just (Interpreter.Suspend loc) -> do
-                    sauce <- IORef.readIORef (h ^. sources)
-                    PP.hPutSemDoc IO.stdout $
-                        case SourceSpan.citeSourceSpan PP.hint sauce loc of
-                            Nothing -> "at" <+> PP.pretty loc
-                            Just d  -> d
-                Just (Interpreter.Error e)   -> do
-                    PP.hPutSemDoc IO.stdout $ "(debug) error"
-                    sauce <- IORef.readIORef (h ^. sources)
-                    Error.hPutErrors IO.stderr sauce Error.TextFmt [e]
+        Just (Right expr) | StartSteppingMode <- emode -> do
+            mbStepState <- runInterpreter h $ \i ->
+                Interpreter.mkStepState i pkgname expr
+            forM_ mbStepState $ \stepState -> do
+                IORef.writeIORef (h ^. mode) (SteppingMode stepState)
+            processStep h
 
-        Just (Right expr) | RegularMode <- emode -> do
+        Just (Right expr) -> do
             PP.hPutSemDoc IO.stdout $ PP.pretty expr
             mbRows <- runInterpreter h $ \i ->
                 Interpreter.evalExpr i pkgname expr
@@ -176,6 +168,36 @@ processInput h input = do
                 PP.hPutSemDoc IO.stdout $ "=" <+> PP.pretty row
 
         Nothing -> return ()
+
+-- | Only makes sense in stepping mode.  Otherwise, does nothing.
+processStep :: Handle -> IO ()
+processStep h = do
+    emode <- IORef.readIORef (h ^. mode)
+    case emode of
+        RegularMode        -> return ()
+        StartSteppingMode  -> return ()
+        SteppingMode state -> do
+            mbStep <- runInterpreter h $ \i -> Interpreter.step i state
+            case mbStep of
+                Nothing                      ->
+                    PP.hPutSemDoc IO.stdout $ "(debug) internal error"
+                Just Interpreter.Done        -> do
+                    PP.hPutSemDoc IO.stdout $ "(debug) finished"
+                    IORef.writeIORef (h ^. mode) StartSteppingMode
+                Just (Interpreter.Yield x nstate)   -> do
+                    PP.hPutSemDoc IO.stdout $ "(debug) =" <+> PP.pretty x
+                    IORef.writeIORef (h ^. mode) (SteppingMode nstate)
+                Just (Interpreter.Suspend loc nstate) -> do
+                    sauce <- IORef.readIORef (h ^. sources)
+                    PP.hPutSemDoc IO.stdout $
+                        case SourceSpan.citeSourceSpan PP.hint sauce loc of
+                            Nothing -> "at" <+> PP.pretty loc
+                            Just d  -> d
+                    IORef.writeIORef (h ^. mode) (SteppingMode nstate)
+                Just (Interpreter.Error e)   -> do
+                    PP.hPutSemDoc IO.stdout $ "(debug) error"
+                    sauce <- IORef.readIORef (h ^. sources)
+                    Error.hPutErrors IO.stderr sauce Error.TextFmt [e]
 
 run :: Handle -> IO ()
 run h = do
@@ -234,8 +256,9 @@ run h = do
         return $
             review packageNameFromString pkg <>
             (case emode of
-                RegularMode  -> ""
-                SteppingMode -> "(debug)") <>
+                RegularMode       -> ""
+                SteppingMode _    -> "(debug)"
+                StartSteppingMode -> "(debug)") <>
             "% "
 
 metaShortcuts :: HMS.HashMap T.Text MetaCommand
@@ -256,8 +279,9 @@ metaCommands :: [MetaCommand]
 metaCommands =
     [ MetaCommand ":debug" "Toggle debug mode" $ \h _ -> do
         liftIO $ IORef.atomicModifyIORef_ (h ^. mode) $ \case
-            RegularMode  -> SteppingMode
-            SteppingMode -> RegularMode
+            RegularMode       -> StartSteppingMode
+            StartSteppingMode -> RegularMode
+            SteppingMode _    -> RegularMode
         return True
     , MetaCommand ":help" "show this info" $ \_ _ -> do
         liftIO $ PP.hPutSemDoc IO.stderr $

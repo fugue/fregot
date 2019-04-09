@@ -14,6 +14,8 @@ module Fregot.Interpreter
     , evalExpr
     , evalVar
 
+    , Eval.StepState (..)
+    , mkStepState
     , Eval.Step (..)
     , step
     ) where
@@ -187,13 +189,18 @@ evalVar
     -> InterpreterM (Eval.Document Eval.Value)
 evalVar h source pkgname = eval h pkgname . Eval.evalVar source
 
-step
+mkStepState
     :: Handle -> PackageName -> Sugar.Expr SourceSpan
-    -> InterpreterM (Eval.Step Eval.Value)
-step h pkgname expr = do
+    -> InterpreterM (Eval.StepState Eval.Value)
+mkStepState h pkgname expr = do
     comp  <- liftIO $ IORef.readIORef (h ^. compiled)
     pkg   <- readCompiledPackage h pkgname
     pterm <- Prepare.prepareExpr expr
     cterm <- Compile.compileTerm pkg pterm
     let env = Eval.Environment comp pkg emptyObject mempty
-    liftIO (Eval.stepEvalM env (Eval.evalTerm cterm))
+    return $ Eval.mkStepState env (Eval.evalTerm cterm)
+
+step
+    :: Handle -> Eval.StepState Eval.Value
+    -> InterpreterM (Eval.Step Eval.Value)
+step _ = liftIO . Eval.stepEvalM

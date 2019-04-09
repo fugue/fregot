@@ -18,6 +18,8 @@ module Fregot.Eval
     , EvalM
     , runEvalM
 
+    , StepState (..)
+    , mkStepState
     , Step (..)
     , stepEvalM
 

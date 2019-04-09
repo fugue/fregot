@@ -20,6 +20,8 @@ module Fregot.Eval.Monad
     , EvalM
     , runEvalM
 
+    , StepState (..)
+    , mkStepState
     , Step (..)
     , stepEvalM
 
@@ -160,20 +162,32 @@ runEvalM rules0 (EvalM f) = catch
     (Right <$> Stream.toList (f rules0 emptyContext))
     (\(EvalException err) -> return (Left err))
 
+data StepState a = StepState
+    { _siStream :: Stream SourceSpan IO (Row a)
+    }
+
+mkStepState :: Environment -> EvalM a -> StepState a
+mkStepState env0 (EvalM f) = StepState
+    { _siStream = f env0 emptyContext
+    }
+
 data Step a
-    = Yield (Row a)
-    | Suspend SourceSpan
+    = Yield (Row a) (StepState a)
+    | Suspend SourceSpan (StepState a)
     | Done
+    -- NOTE(jaspervdj): We can recover the latest 'StepState' here?
     | Error Error
 
-stepEvalM :: Environment -> EvalM a -> IO (Step a)
-stepEvalM env0 (EvalM f) = catch
+$(makeLenses ''StepState)
+
+stepEvalM :: StepState a -> IO (Step a)
+stepEvalM si = catch
     (do
-        sstep <- Stream.step (f env0 emptyContext)
+        sstep <- Stream.step (si ^. siStream)
         case sstep of
-            Stream.Yield   r _ -> return $ Yield r
-            Stream.Suspend i _ -> return $ Suspend i
-            Stream.Done        -> return Done)
+            Stream.Yield   r ns -> return $ Yield r (StepState ns)
+            Stream.Suspend i ns -> return $ Suspend i (StepState ns)
+            Stream.Done         -> return Done)
     (\(EvalException err) -> return (Error err))
 
 suspend :: SourceSpan -> EvalM a -> EvalM a
