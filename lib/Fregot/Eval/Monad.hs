@@ -163,6 +163,11 @@ suspend source (EvalM f) =
 {-# INLINE suspend #-}
 
 branch :: [EvalM a] -> EvalM a
+branch [opt]   =
+    -- It is very common in typical code to only have a single branch.  This
+    -- case speeds things up a bit by possibly preserving the 'Single'
+    -- constructor.
+    opt
 branch options = EvalM $ \rs ctx ->
     let go []               = mempty
         go (EvalM o : opts) = o rs ctx <> go opts in

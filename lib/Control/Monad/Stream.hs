@@ -37,7 +37,7 @@ bindStream (Stream mxstep) f = Stream $ do
     xstep <- mxstep
     case xstep of
         Done         -> return Done
-        Suspend i xs -> return $ Suspend i (xs `bindStream` f)
+        Suspend i xs -> return $! Suspend i (xs `bindStream` f)
         Yield x xs   -> unStream $ appendStream (f x) (xs `bindStream` f)
         Single x     -> unStream (f x)
 {-# INLINE bindStream #-}
