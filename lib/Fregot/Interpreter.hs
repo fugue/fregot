@@ -20,12 +20,13 @@ module Fregot.Interpreter
     , step
     ) where
 
-import           Control.Lens              (ifor, (^.))
+import           Control.Lens              (ifor, to, (^.))
 import           Control.Lens.TH           (makeLenses)
 import           Control.Monad             (foldM)
 import           Control.Monad.Parachute   (ParachuteT, fatal)
 import           Control.Monad.Trans       (liftIO)
 import qualified Data.HashMap.Strict       as HMS
+import qualified Data.HashSet.Extended     as HS
 import           Data.IORef.Extended       (IORef)
 import qualified Data.IORef.Extended       as IORef
 import           Data.Maybe                (fromMaybe)
@@ -181,8 +182,10 @@ evalExpr
 evalExpr h ctx pkgname expr = do
     pkg   <- readCompiledPackage h pkgname
     pterm <- Prepare.prepareExpr expr
-    cterm <- Compile.compileTerm pkg pterm
+    cterm <- Compile.compileTerm pkg safeLocals pterm
     eval h ctx pkgname (Eval.evalTerm cterm)
+  where
+    safeLocals = Compile.Safe $ HS.fromList $ ctx ^. Eval.locals . to HMS.keys
 
 evalVar
     :: Handle -> SourceSpan -> PackageName -> Var
@@ -197,7 +200,7 @@ mkStepState h pkgname expr = do
     comp  <- liftIO $ IORef.readIORef (h ^. compiled)
     pkg   <- readCompiledPackage h pkgname
     pterm <- Prepare.prepareExpr expr
-    cterm <- Compile.compileTerm pkg pterm
+    cterm <- Compile.compileTerm pkg mempty pterm
     let env = Eval.Environment comp pkg emptyObject mempty
     return $ Eval.mkStepState env (Eval.evalTerm cterm)
 

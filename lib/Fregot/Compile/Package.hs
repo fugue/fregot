@@ -5,7 +5,8 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell     #-}
 module Fregot.Compile.Package
-    ( CompiledPackage
+    ( Safe (..)
+    , CompiledPackage
     , lookup
     , rules
     , compilePackage
@@ -112,15 +113,15 @@ compilePackage prep =
 
 compileTerm
     :: Monad m
-    => PreparedPackage -> Term SourceSpan
+    => PreparedPackage -> Safe Var -> Term SourceSpan
     -> ParachuteT Error m (Term SourceSpan)
-compileTerm pkg term0 = do
+compileTerm pkg safeLocals term0 = do
     ordered <- runOrder $ orderTermForSafety arities safe0 term0
     let safe = safe0 <> ovTerm arities safe0 ordered
     tellErrors $ checkTerm arities safe ordered
     return ordered
   where
-    safe0   = safeGlobals pkg
+    safe0   = safeGlobals pkg <> safeLocals
     arities = aritiesFromPackage pkg
 
 -- | Various checks on terms.
