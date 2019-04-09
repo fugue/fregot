@@ -20,6 +20,7 @@ module Fregot.Eval.Monad
     , EvalM
     , runEvalM
 
+    , suspend
     , branch
     , unbranch
     , cut
@@ -45,9 +46,11 @@ module Fregot.Eval.Monad
 import           Control.Exception         (Exception, catch, throwIO)
 import           Control.Lens              (view, (&), (.~), (^.))
 import           Control.Lens.TH           (makeLenses)
-import           Control.Monad.Extended    (forM)
 import           Control.Monad.Reader      (MonadReader (..), ask)
 import           Control.Monad.State       (MonadState (..), modify)
+import           Control.Monad.Stream      (Stream)
+import qualified Control.Monad.Stream      as Stream
+import           Control.Monad.Trans       (liftIO)
 import qualified Data.HashMap.Strict       as HMS
 import           Data.List                 (find)
 import           Data.Unification          (Unification)
@@ -112,76 +115,89 @@ instance Show EvalException where
 
 instance Exception EvalException
 
-newtype EvalM a = EvalM {unBranchM :: Environment -> Context -> IO [Row a]}
-    deriving (Functor)
+newtype EvalM a = EvalM
+    { unEvalM :: Environment -> Context -> Stream SourceSpan IO (Row a)
+    } deriving (Functor)
 
 instance Applicative EvalM where
-    pure x = EvalM $ \_ ctx -> return [Row ctx x]
+    pure x = EvalM $ \_ ctx -> return (Row ctx x)
     {-# INLINE pure #-}
 
     EvalM mf <*> EvalM mx = EvalM $ \rs ctx0 -> do
-        rows1 <- mf rs ctx0
-        fmap concat $ forM rows1 $ \row1 -> do
-            rows2 <- mx rs (row1 ^. rowContext)
-            forM rows2 $ \row2 -> return $!
-                row2 & rowValue .~ (row1 ^. rowValue) (row2 ^. rowValue)
+        row1 <- mf rs ctx0
+        row2 <- mx rs (row1 ^. rowContext)
+        return $! row2 & rowValue .~ (row1 ^. rowValue) (row2 ^. rowValue)
     {-# INLINE (<*>) #-}
 
 instance Monad EvalM where
     EvalM mx >>= f = EvalM $ \rs ctx0 -> do
-        xrows <- mx rs ctx0
-        fmap concat $ forM xrows $ \(Row ctx1 x) ->
-            unBranchM (f x) rs ctx1
+        Row ctx1 x <- mx rs ctx0
+        unEvalM (f x) rs ctx1
     {-# INLINE (>>=) #-}
 
 instance MonadReader Environment EvalM where
-    ask = EvalM $ \rs ctx -> return [Row ctx rs]
+    ask = EvalM $ \rs ctx -> return (Row ctx rs)
     {-# INLINE ask #-}
 
     local l (EvalM f) = EvalM $ \rs ctx -> f (l rs) ctx
     {-# INLINE local #-}
 
 instance MonadState Context EvalM where
-    get = EvalM $ \_ ctx  -> return [Row ctx ctx]
+    get = EvalM $ \_ ctx  -> return (Row ctx ctx)
     {-# INLINE get #-}
 
-    put ctx = EvalM $ \_ _    -> return [Row ctx ()]
+    put ctx = EvalM $ \_ _ -> return (Row ctx ())
     {-# INLINE put #-}
 
-    state f = EvalM $ \_ ctx0 -> let (x, ctx1) = f ctx0 in return [Row ctx1 x]
+    state f = EvalM $ \_ ctx0 -> let (x, ctx1) = f ctx0 in return (Row ctx1 x)
     {-# INLINE state #-}
 
 runEvalM :: Environment -> EvalM a -> IO (Either Error (Document a))
 runEvalM rules0 (EvalM f) = catch
-    (Right <$> f rules0 emptyContext)
+    (Right <$> Stream.toList (f rules0 emptyContext))
     (\(EvalException err) -> return (Left err))
 
+suspend :: SourceSpan -> EvalM a -> EvalM a
+suspend source (EvalM f) =
+    EvalM $ \rs ctx -> Stream.suspend source (f rs ctx)
+{-# INLINE suspend #-}
+
 branch :: [EvalM a] -> EvalM a
+branch [opt]   =
+    -- It is very common in typical code to only have a single branch.  This
+    -- case speeds things up a bit by possibly preserving the 'Single'
+    -- constructor.
+    opt
 branch options = EvalM $ \rs ctx ->
-    fmap concat $ forM options $ \(EvalM opt) -> opt rs ctx
+    let go []               = mempty
+        go (EvalM o : opts) = o rs ctx <> go opts in
+    go options
 {-# INLINE branch #-}
 
 unbranch :: EvalM a -> EvalM [a]
-unbranch (EvalM f) = EvalM $ \rs ctx -> do
-    rows <- f rs ctx
-    return [Row ctx (map (view rowValue) rows)]
+unbranch (EvalM f) = EvalM $ \rs ctx ->
+    -- NOTE(jaspervdj): We are effectively dropping a part of the context here
+    -- which I'm not sure is safe.
+    Row ctx . map (view rowValue) <$> Stream.collapse (f rs ctx)
 {-# INLINE unbranch #-}
 
 cut :: EvalM a
-cut = EvalM $ \_ _ -> return []
+cut = EvalM $ \_ _ -> mempty
 {-# INLINE cut #-}
 
 negation :: (a -> Bool) -> EvalM a -> EvalM ()
 negation trueish (EvalM f) = EvalM $ \rs ctx -> do
-    rows <- filter (\(Row _ x) -> trueish x) <$> (f rs ctx)
-    return $! if null rows then [Row ctx ()] else []
+    peek <- Stream.peek $ Stream.filter (trueish . view rowValue) (f rs ctx)
+    case peek of
+        Nothing -> pure (Row ctx ())
+        Just _  -> mempty
 
 orElse :: EvalM a -> EvalM a -> EvalM a
 orElse (EvalM x) (EvalM alt) = EvalM $ \env ctx -> do
-    rows <- x env ctx
-    case rows of
-        [] -> alt env ctx
-        xs -> return xs
+    peek <- Stream.peek (x env ctx)
+    case peek of
+        Nothing -> alt env ctx
+        Just x' -> x'
 
 orElses :: EvalM a -> [EvalM a] -> EvalM a
 orElses x []           = x
@@ -193,18 +209,18 @@ withDefault = flip orElse
 requireComplete
     :: (Eq a, PP.Pretty PP.Sem a) => SourceSpan -> EvalM a -> EvalM a
 requireComplete source (EvalM f) = EvalM $ \env ctx -> do
-    rows <- f env ctx
+    rows <- Stream.collapse (f env ctx)
     case rows of
         (r : more)
             | Just d <- find ((/= r ^. rowValue) . view rowValue) more ->
-                throwIO $ EvalException $ Error.mkError
+                liftIO $ throwIO $ EvalException $ Error.mkError
                     "eval" source "inconsistent result" $
                     "Inconsistent result for complete rule, but got:" <$$>
                     PP.ind (PP.pretty $ r ^. rowValue) <$$>
                     "And:" <$$>
                     PP.ind (PP.pretty $ d ^. rowValue)
-            | otherwise -> return [r]
-        _          -> return rows
+            | otherwise -> pure r
+        _ -> mempty
 
 -- | Turn a variable into an instantiated variable.
 --
@@ -245,7 +261,7 @@ withPackage pkg = local (package .~ pkg)
 -- | Raise an error.  We currently don't allow catching exceptions, but they are
 -- handled at the top level `runEvalM` and converted to an `Either`.
 raise :: Error -> EvalM a
-raise err = EvalM (\_ _ -> throwIO (EvalException err))
+raise err = EvalM (\_ _ -> liftIO $ throwIO (EvalException err))
 
 raise' :: SourceSpan -> PP.SemDoc -> PP.SemDoc -> EvalM a
 raise' source title body = raise (Error.mkError "eval" source title body)

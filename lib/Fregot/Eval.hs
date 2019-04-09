@@ -37,6 +37,7 @@ import           Fregot.Eval.Monad
 import qualified Fregot.Eval.Number        as Number
 import           Fregot.Eval.Value
 import           Fregot.Prepare.Ast
+import           Fregot.Prepare.Lens
 import           Fregot.PrettyPrint        ((<$$>), (<+>))
 import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources.SourceSpan (SourceSpan)
@@ -403,17 +404,17 @@ evalRuleBody lits0 final = go lits0
         local (inputDoc .~ input') $ localWiths ws mx
 
 evalStatement :: Statement SourceSpan -> EvalM Value
-evalStatement (UnifyS _ x y) = do
+evalStatement (UnifyS source x y) = suspend source $ do
     xv <- evalTerm x
     yv <- evalTerm y
     _  <- unify xv yv
     return $ BoolV True
-evalStatement (AssignS _ v x) = do
+evalStatement (AssignS source v x) = suspend source $ do
     xv <- evalTerm x
     iv <- toInstVar v
     unify (FreeV iv) xv
     return $ BoolV True
-evalStatement (TermS e) = evalTerm e
+evalStatement (TermS e) = suspend (e ^. termAnn) (evalTerm e)
 
 evalScalar :: Scalar a -> EvalM Value
 evalScalar (String t) = return $ StringV t
