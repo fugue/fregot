@@ -162,8 +162,11 @@ processInput h input = do
 
         Just (Right expr) -> do
             PP.hPutSemDoc IO.stdout $ PP.pretty expr
+            let ctx = case emode of
+                    SteppingMode state -> state ^. Eval.ssContext
+                    _                  -> Eval.emptyContext
             mbRows <- runInterpreter h $ \i ->
-                Interpreter.evalExpr i pkgname expr
+                Interpreter.evalExpr i ctx pkgname expr
             forM_ mbRows $ \rows -> forM_ rows $ \row ->
                 PP.hPutSemDoc IO.stdout $ "=" <+> PP.pretty row
 

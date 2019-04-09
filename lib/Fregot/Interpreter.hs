@@ -167,27 +167,28 @@ compilePackages h = do
         \oldComp -> oldComp <> newComp
 
 eval
-    :: Handle -> PackageName -> Eval.EvalM a
+    :: Handle -> Eval.Context -> PackageName -> Eval.EvalM a
     -> InterpreterM (Eval.Document a)
-eval h pkgname mx = do
+eval h ctx pkgname mx = do
     comp <- liftIO $ IORef.readIORef (h ^. compiled)
     pkg  <- readCompiledPackage h pkgname
     let env = Eval.Environment comp pkg emptyObject mempty
-    either fatal return =<< liftIO (Eval.runEvalM env mx)
+    either fatal return =<< liftIO (Eval.runEvalM env ctx mx)
 
 evalExpr
-    :: Handle -> PackageName -> Sugar.Expr SourceSpan
+    :: Handle -> Eval.Context -> PackageName -> Sugar.Expr SourceSpan
     -> InterpreterM (Eval.Document Eval.Value)
-evalExpr h pkgname expr = do
+evalExpr h ctx pkgname expr = do
     pkg   <- readCompiledPackage h pkgname
     pterm <- Prepare.prepareExpr expr
     cterm <- Compile.compileTerm pkg pterm
-    eval h pkgname (Eval.evalTerm cterm)
+    eval h ctx pkgname (Eval.evalTerm cterm)
 
 evalVar
     :: Handle -> SourceSpan -> PackageName -> Var
     -> InterpreterM (Eval.Document Eval.Value)
-evalVar h source pkgname = eval h pkgname . Eval.evalVar source
+evalVar h source pkgname =
+    eval h Eval.emptyContext pkgname . Eval.evalVar source
 
 mkStepState
     :: Handle -> PackageName -> Sugar.Expr SourceSpan

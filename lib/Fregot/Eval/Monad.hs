@@ -20,7 +20,7 @@ module Fregot.Eval.Monad
     , EvalM
     , runEvalM
 
-    , StepState (..)
+    , StepState (..), ssEnvironment, ssContext
     , mkStepState
     , Step (..)
     , stepEvalM
@@ -120,8 +120,10 @@ instance Show EvalException where
 
 instance Exception EvalException
 
+type Suspension = (SourceSpan, Context)
+
 newtype EvalM a = EvalM
-    { unEvalM :: Environment -> Context -> Stream SourceSpan IO (Row a)
+    { unEvalM :: Environment -> Context -> Stream Suspension IO (Row a)
     } deriving (Functor)
 
 instance Applicative EvalM where
@@ -157,18 +159,22 @@ instance MonadState Context EvalM where
     state f = EvalM $ \_ ctx0 -> let (x, ctx1) = f ctx0 in return (Row ctx1 x)
     {-# INLINE state #-}
 
-runEvalM :: Environment -> EvalM a -> IO (Either Error (Document a))
-runEvalM rules0 (EvalM f) = catch
-    (Right <$> Stream.toList (f rules0 emptyContext))
+runEvalM :: Environment -> Context -> EvalM a -> IO (Either Error (Document a))
+runEvalM env0 ctx0 (EvalM f) = catch
+    (Right <$> Stream.toList (f env0 ctx0))
     (\(EvalException err) -> return (Left err))
 
 data StepState a = StepState
-    { _siStream :: Stream SourceSpan IO (Row a)
+    { _ssStream      :: Stream Suspension IO (Row a)
+    , _ssContext     :: Context
+    , _ssEnvironment :: Environment
     }
 
 mkStepState :: Environment -> EvalM a -> StepState a
 mkStepState env0 (EvalM f) = StepState
-    { _siStream = f env0 emptyContext
+    { _ssStream      = f env0 emptyContext
+    , _ssContext     = emptyContext
+    , _ssEnvironment = env0
     }
 
 data Step a
@@ -181,18 +187,21 @@ data Step a
 $(makeLenses ''StepState)
 
 stepEvalM :: StepState a -> IO (Step a)
-stepEvalM si = catch
+stepEvalM ss = catch
     (do
-        sstep <- Stream.step (si ^. siStream)
+        sstep <- Stream.step (ss ^. ssStream)
+        let env = ss ^. ssEnvironment
         case sstep of
-            Stream.Yield   r ns -> return $ Yield r (StepState ns)
-            Stream.Suspend i ns -> return $ Suspend i (StepState ns)
+            Stream.Yield r ns ->
+                return $ Yield r (StepState ns (r ^. rowContext) env)
+            Stream.Suspend (i, ctx) ns ->
+                return $ Suspend i (StepState ns ctx env)
             Stream.Done         -> return Done)
     (\(EvalException err) -> return (Error err))
 
 suspend :: SourceSpan -> EvalM a -> EvalM a
 suspend source (EvalM f) =
-    EvalM $ \rs ctx -> Stream.suspend source (f rs ctx)
+    EvalM $ \rs ctx -> Stream.suspend (source, ctx) (f rs ctx)
 {-# INLINE suspend #-}
 
 branch :: [EvalM a] -> EvalM a

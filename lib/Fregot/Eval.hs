@@ -8,6 +8,7 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}  -- for the MonadUnify instance...
 module Fregot.Eval
     ( Environment (..), packages, package, inputDoc, imports
+    , Context, emptyContext
 
     , Value
     , Document
@@ -18,7 +19,7 @@ module Fregot.Eval
     , EvalM
     , runEvalM
 
-    , StepState (..)
+    , StepState (..), ssEnvironment, ssContext
     , mkStepState
     , Step (..)
     , stepEvalM
