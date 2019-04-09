@@ -27,7 +27,8 @@ import qualified Fregot.Eval.Builtins        as Builtins
 import           Fregot.Prepare.Ast
 import           Fregot.Prepare.Lens
 import           Fregot.Prepare.Package
-import           Fregot.Prepare.Vars         (Arities, Safe (..), ovRuleBody)
+import           Fregot.Prepare.Vars         (Arities, Safe (..), ovRuleBody,
+                                              ovTerm)
 import           Fregot.PrettyPrint          ((<$$>), (<+>))
 import qualified Fregot.PrettyPrint          as PP
 import           Fregot.Sources.SourceSpan   (SourceSpan)
@@ -114,11 +115,12 @@ compileTerm
     => PreparedPackage -> Term SourceSpan
     -> ParachuteT Error m (Term SourceSpan)
 compileTerm pkg term0 = do
-    ordered <- runOrder $ orderTermForSafety arities safe term0
+    ordered <- runOrder $ orderTermForSafety arities safe0 term0
+    let safe = safe0 <> ovTerm arities safe0 ordered
     tellErrors $ checkTerm arities safe ordered
     return ordered
   where
-    safe    = safeGlobals pkg
+    safe0   = safeGlobals pkg
     arities = aritiesFromPackage pkg
 
 -- | Various checks on terms.

@@ -39,9 +39,12 @@ module Fregot.Prepare.Ast
     , literal
     ) where
 
+import           Control.Lens              ((^.))
 import           Control.Lens.TH           (makeLenses, makePrisms)
 import           Data.Hashable             (Hashable)
 import qualified Data.HashMap.Strict       as HMS
+import qualified Data.List                 as L
+import           Fregot.PrettyPrint        ((<+>), (?<+>), (<+>?))
 import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources.SourceSpan (SourceSpan)
 import           Fregot.Sugar              (Var (..))
@@ -148,6 +151,59 @@ $(makeLenses ''RuleElse)
 $(makeLenses ''Literal)
 $(makeLenses ''With)
 
+--------------------------------------------------------------------------------
+-- NOTE(jaspervdj): These instances are pretty much copied from the sugared
+-- ones.  Not much we can do about that, though.
+
+instance PP.Pretty PP.Sem (Literal a) where
+    pretty lit =
+        (if lit ^. literalNegation
+            then Just (PP.keyword "not")
+            else Nothing) ?<+>
+        PP.pretty (lit ^. literalStatement) <+>?
+        (case lit ^. literalWith of
+            []    -> Nothing
+            withs -> Just $ PP.hcat (L.intersperse " " (map PP.pretty withs)))
+
+instance PP.Pretty PP.Sem (Statement a) where
+    pretty (UnifyS  _ x y) = PP.pretty x <+> PP.punctuation "=" <+> PP.pretty y
+    pretty (AssignS _ v x) = PP.pretty v <+> PP.punctuation ":=" <+> PP.pretty x
+    pretty (TermS x)       = PP.pretty x
+
+instance PP.Pretty PP.Sem (Term a) where
+    pretty (RefT _ x k) = PP.pretty x <> PP.punctuation "." <> PP.pretty k
+    pretty (CallT _ f as)  =
+        PP.pretty f <>
+        PP.punctuation "(" <>
+        PP.commaSep (map PP.pretty as) <>
+        PP.punctuation ")"
+
+    pretty (VarT _ v)        = PP.pretty v
+    pretty (ScalarT _ s)     = PP.pretty s
+
+    pretty (ArrayT _ a)      = PP.array a
+    pretty (SetT _ s)        = PP.set s
+    pretty (ObjectT _ o)     = PP.object o
+
+    pretty (ArrayCompT _ x lits) =
+        PP.punctuation "[" <> PP.pretty x <+> PP.punctuation "|" <+>
+        prettyComprehensionBody lits <>
+        PP.punctuation "]"
+    pretty (SetCompT _ x lits) =
+        PP.punctuation "{" <> PP.pretty x <+> PP.punctuation "|" <+>
+        prettyComprehensionBody lits <>
+        PP.punctuation "}"
+    pretty (ObjectCompT _ k x lits) =
+        PP.punctuation "{" <> PP.pretty k <> PP.punctuation ":" <+>
+        PP.pretty x <+> PP.punctuation "|" <+>
+        prettyComprehensionBody lits <>
+        PP.punctuation "}"
+
+prettyComprehensionBody :: RuleBody a -> PP.SemDoc
+prettyComprehensionBody lits = mconcat $ L.intersperse
+    (PP.punctuation ";" <> PP.space)
+    (map PP.pretty lits)
+
 instance PP.Pretty PP.Sem Function where
     pretty (NamedFunction    vs) = PP.pretty (Sugar.NestedVar vs)
     pretty (OperatorFunction o)  = PP.pretty o
@@ -165,6 +221,13 @@ instance PP.Pretty PP.Sem BinOp where
         TimesO              -> "*"
         DivideO             -> "/"
         BinOrO              -> "|"
+
+instance PP.Pretty PP.Sem (With a) where
+    pretty with = PP.keyword "with" <+>
+        (mconcat $ L.intersperse
+            (PP.punctuation ".")
+            (map PP.pretty (with ^. withPath))) <+>
+        PP.keyword "as" <+> PP.pretty (with ^. withAs)
 
 --------------------------------------------------------------------------------
 -- Constructor-like things

@@ -7,6 +7,7 @@ module Fregot.Prepare.Vars
     , Arities
     , ovRuleBody
     , ovLiteral
+    , ovTerm
     ) where
 
 import           Control.Lens          ((^.))
