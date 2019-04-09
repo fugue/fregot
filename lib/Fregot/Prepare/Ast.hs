@@ -6,7 +6,7 @@
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE TemplateHaskell            #-}
 module Fregot.Prepare.Ast
-    ( RuleKind (..)
+    ( RuleKind (..), _CompleteRule, _GenSetRule, _GenObjectRule, _FunctionRule
     , Rule (..), ruleName, ruleAnn, ruleDefault, ruleKind, ruleDefs
     , RuleDefinition (..), ruleDefName, ruleDefImports, ruleDefAnn, ruleArgs
     , ruleIndex, ruleValue, ruleBodies, ruleElses
@@ -39,7 +39,7 @@ module Fregot.Prepare.Ast
     , literal
     ) where
 
-import           Control.Lens.TH           (makeLenses)
+import           Control.Lens.TH           (makeLenses, makePrisms)
 import           Data.Hashable             (Hashable)
 import qualified Data.HashMap.Strict       as HMS
 import qualified Fregot.PrettyPrint        as PP
@@ -52,7 +52,7 @@ data RuleKind
     = CompleteRule
     | GenSetRule
     | GenObjectRule
-    | FunctionRule
+    | FunctionRule Int  -- Arity.
     deriving (Eq, Show)
 
 data Rule a = Rule
@@ -141,6 +141,7 @@ data With a = With
     , _withAs   :: !(Term a)
     } deriving (Eq, Show)
 
+$(makePrisms ''RuleKind)
 $(makeLenses ''Rule)
 $(makeLenses ''RuleDefinition)
 $(makeLenses ''RuleElse)

@@ -1,0 +1,17 @@
+fregot ([34mcompile error[0m):
+  "unknown-var-03.rego" (line 8, column 3):
+  unknown variable:
+
+    8|   double(x, y)
+         [31m^^^^^^^^^^^^[0m
+
+  Undefined variable: x
+
+fregot ([34mcompile error[0m):
+  "unknown-var-03.rego" (line 9, column 3):
+  unknown variable:
+
+    9|   y == 2
+         [31m^^^^^^[0m
+
+  Undefined variable: y

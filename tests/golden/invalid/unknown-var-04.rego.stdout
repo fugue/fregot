@@ -1,0 +1,10 @@
+passed: 0, failed: 0, errored: 1
+fregot.tests.invalid.unkown_var_04.test_double:
+fregot ([34meval error[0m):
+  "unknown-var-04.rego" (line 4, column 3):
+  unknown function:
+
+    4|   double(x, y)
+         [31m^^^^^^^^^^^^[0m
+
+  Unknown function call: double
