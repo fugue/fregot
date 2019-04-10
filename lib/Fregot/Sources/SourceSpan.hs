@@ -27,6 +27,7 @@ module Fregot.Sources.SourceSpan
 
 import           Control.Lens          ((&), (.~), (^.))
 import           Control.Lens.TH       (makeLenses)
+import           Data.Binary           (Binary)
 import           Data.Maybe            (fromMaybe, isNothing)
 import qualified Data.Text             as T
 import           Data.Typeable         (Typeable)
@@ -43,6 +44,8 @@ data SourceSpan = SourceSpan
     , _start         :: {-# UNPACK #-} !Position
     , _end           :: {-# UNPACK #-} !Position
     } deriving (Eq, Generic, Ord, Show, Typeable)
+
+instance Binary SourceSpan
 
 $(makeLenses ''SourceSpan)
 

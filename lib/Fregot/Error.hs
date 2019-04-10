@@ -25,6 +25,7 @@ module Fregot.Error
     , fromParsecError'
 
     , mkError
+    , mkErrorNoMeta
     , mkMultiError
 
     , catchIO
@@ -164,6 +165,15 @@ fromParsecError' sev sp e =
 
 mkError :: Subsystem -> SourceSpan -> PP.SemDoc -> PP.SemDoc -> Error
 mkError sub ss title' body' = mkMultiError sub title' [(ss, body')]
+
+mkErrorNoMeta :: Subsystem -> PP.SemDoc -> Error
+mkErrorNoMeta sub body' = Error
+    { _severity    = ErrorSeverity
+    , _subsystem   = sub
+    , _details     = [body']
+    , _hints       = []
+    , _sourceSpans = []
+    }
 
 mkMultiError :: Subsystem -> PP.SemDoc -> [(SourceSpan, PP.SemDoc)] -> Error
 mkMultiError sub title' bodies = Error

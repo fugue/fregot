@@ -7,6 +7,7 @@ module Fregot.Main
 import           Control.Lens        ((^.))
 import           Control.Lens.TH     (makeLenses)
 import           Data.Version        (showVersion)
+import qualified Fregot.Main.Bundle  as Main.Bundle
 import qualified Fregot.Main.Repl    as Main.Repl
 import qualified Fregot.Main.Test    as Main.Test
 import           Fregot.Version      (version)
@@ -16,6 +17,7 @@ import           System.Exit         (exitWith)
 data Command
     = Test Main.Test.Options
     | Repl Main.Repl.Options
+    | Bundle Main.Bundle.Options
     deriving (Show)
 
 data Options = Options
@@ -27,8 +29,9 @@ $(makeLenses ''Options)
 
 parseCommand :: OA.Parser Command
 parseCommand = OA.subparser $ mconcat
-    [ cmd "repl" Repl Main.Repl.parseOptions "Run fregot repl"
-    , cmd "test" Test Main.Test.parseOptions "Run tests in .rego files"
+    [ cmd "repl"   Repl   Main.Repl.parseOptions   "Run fregot repl"
+    , cmd "test"   Test   Main.Test.parseOptions   "Run tests in .rego files"
+    , cmd "bundle" Bundle Main.Bundle.parseOptions "Bundle .rego files"
     ]
   where
     cmd name con p descr =
@@ -50,5 +53,6 @@ main :: IO ()
 main = do
     options <- OA.customExecParser parseOptionsPrefs parseOptionsInfo
     exitWith =<< case options ^. command of
-        Repl o -> Main.Repl.main o
-        Test o -> Main.Test.main o
+        Repl   o -> Main.Repl.main   o
+        Test   o -> Main.Test.main   o
+        Bundle o -> Main.Bundle.main o
