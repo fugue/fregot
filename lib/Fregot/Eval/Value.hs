@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE DerivingVia                #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -22,6 +23,7 @@ import           Data.Hashable        (Hashable (..))
 import qualified Data.HashMap.Strict  as HMS
 import qualified Data.HashSet         as HS
 import qualified Data.Text            as T
+import qualified Data.Unique          as Unique
 import qualified Data.Vector.Extended as V
 import           Fregot.Eval.Number   (Number)
 import           Fregot.PrettyPrint   ((<+>))
@@ -33,19 +35,16 @@ import           GHC.Generics         (Generic)
 -- | An instantiated variable.  These have a unique (within the evaluation
 -- context) number identifying them.  The var is just there for debugging
 -- purposes.
-data InstVar = InstVar {-# UNPACK #-} !Int {-# UNPACK #-} !Var
+data InstVar = InstVar {-# UNPACK #-} !Unique.Unique {-# UNPACK #-} !Var
+    deriving Eq via Unique.Uniquely InstVar
+    deriving Ord via Unique.Uniquely InstVar
+    deriving Hashable via Unique.Uniquely InstVar
+
+instance Unique.HasUnique InstVar where
+    getUnique (InstVar u _) = u
 
 instance Show InstVar where
     show (InstVar n v) = T.unpack (Sugar.unVar v) ++ "_" ++ show n
-
-instance Eq InstVar where
-    InstVar x _ == InstVar y _ = x == y
-
-instance Ord InstVar where
-    compare (InstVar x _) (InstVar y _) = compare x y
-
-instance Hashable InstVar where
-    hashWithSalt salt (InstVar n _) = hashWithSalt salt n
 
 instance PP.Pretty a InstVar where
     pretty = PP.pretty . show

@@ -60,6 +60,7 @@ import qualified Data.HashMap.Strict       as HMS
 import           Data.List                 (find)
 import           Data.Unification          (Unification)
 import qualified Data.Unification          as Unification
+import qualified Data.Unique               as Unique
 import           Fregot.Compile.Package    (CompiledPackage)
 import qualified Fregot.Compile.Package    as Package
 import           Fregot.Error              (Error)
@@ -73,7 +74,7 @@ import           Fregot.Sources.SourceSpan (SourceSpan)
 data Context = Context
     { _unification :: !(Unification InstVar Value)
     , _locals      :: !(HMS.HashMap Var InstVar)
-    , _nextInstVar :: !Int
+    , _nextInstVar :: !Unique.Unique
     }
 
 $(makeLenses ''Context)

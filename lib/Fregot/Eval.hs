@@ -198,13 +198,13 @@ evalRefArg :: SourceSpan -> Value -> Term SourceSpan -> EvalM Value
 evalRefArg source indexee refArg = do
     idx <- evalTerm refArg
     case idx of
-        StringV k | PackageV pkgname <- indexee -> do
+        StringV k | PackageV pkgname <- indexee, v <- mkVar k -> do
             mbPkg <- lookupPackage pkgname
             case mbPkg of
                 -- If the package exists *AND* actually has a rule with that
                 -- name, we'll evaluate that name.
-                Just pkg | Just _ <- Package.lookup (Var k) pkg ->
-                    withPackage pkg $ evalVar source (Var k)
+                Just pkg | Just _ <- Package.lookup v pkg ->
+                    withPackage pkg $ evalVar source v
                 -- Otherwise, we'll construct a further package name.  This
                 -- package name does not actually need to exist (yet), since we
                 -- might append more pieces to it.

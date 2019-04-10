@@ -59,6 +59,7 @@ Library
     Control.Monad.Stream
     Data.SafeVar
     Data.Unification
+    Data.Unique
     Language.Dot
 
     Control.Monad.Extended

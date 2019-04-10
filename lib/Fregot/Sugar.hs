@@ -1,3 +1,4 @@
+{-# LANGUAGE DerivingVia                #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
@@ -11,7 +12,7 @@ module Fregot.Sugar
     , Import (..), importAnn, importPackage, importAs
     , Module (..), modulePackage, moduleImports, modulePolicy
 
-    , Var (..)
+    , Var, unVar, mkVar
     , varToString, varToText
 
     , Rule (..), ruleHead, ruleBodies
@@ -43,8 +44,11 @@ import qualified Data.List          as L
 import           Data.Scientific    (Scientific)
 import           Data.String        (IsString (..))
 import qualified Data.Text.Extended as T
+import           Data.Unique        (HasUnique (..), Unique, Uniquely (..))
+import qualified Data.Unique        as Unique
 import           Fregot.PrettyPrint ((<$$>), (<+>), (<+>?), (?<+>))
 import qualified Fregot.PrettyPrint as PP
+import           System.IO.Unsafe   (unsafePerformIO)
 
 newtype PackageName = PackageName {unPackageName :: [T.Text]}
     deriving (Eq, Hashable, Monoid, Ord, Semigroup, Show)
@@ -75,11 +79,29 @@ data Module a = Module
     , _modulePolicy  :: ![Rule a]
     } deriving (Show)
 
-newtype Var = Var {unVar :: T.Text}
-    deriving (Hashable, Eq, Ord, Show)
+data Var = Var {-# UNPACK #-} !Unique {-# UNPACK #-} !T.Text
+    deriving Eq via (Uniquely Var)
+    deriving Hashable via (Uniquely Var)
+
+instance Show Var where
+    show = show . unVar
+
+instance HasUnique Var where
+    getUnique (Var u _) = u
+    {-# INLINE getUnique #-}
 
 instance IsString Var where
-    fromString = Var . fromString
+    fromString = mkVar . fromString
+
+unVar :: Var -> T.Text
+unVar (Var _ t) = t
+
+mkVar :: T.Text -> Var
+mkVar t = Var (Unique.getStableUnique varUniqueGen t) t
+
+varUniqueGen :: Unique.StableUniqueGen T.Text
+varUniqueGen = unsafePerformIO Unique.newStableUniqueGen
+{-# NOINLINE varUniqueGen #-}
 
 varToString :: Var -> String
 varToString = T.unpack . varToText
