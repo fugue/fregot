@@ -60,9 +60,6 @@ Library
     Data.SafeVar
     Data.Unification
     Data.Unique
-    Data.Unique.Map
-    Data.Unique.Set
-    Data.Unique.Internal
     Language.Dot
 
     Control.Monad.Extended

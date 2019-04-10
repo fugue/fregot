@@ -17,7 +17,7 @@ module Fregot.Prepare.Ast
 
     , Sugar.Import (..), Sugar.importAnn, Sugar.importPackage, Sugar.importAs
 
-    , Sugar.Var (..)
+    , Sugar.Var, Sugar.unVar, Sugar.mkVar
     , Sugar.varToString, Sugar.varToText
 
     , Imports
@@ -44,10 +44,10 @@ import           Control.Lens.TH           (makeLenses, makePrisms)
 import           Data.Hashable             (Hashable)
 import qualified Data.HashMap.Strict       as HMS
 import qualified Data.List                 as L
-import           Fregot.PrettyPrint        ((<+>), (?<+>), (<+>?))
+import           Fregot.PrettyPrint        ((<+>), (<+>?), (?<+>))
 import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources.SourceSpan (SourceSpan)
-import           Fregot.Sugar              (Var (..))
+import           Fregot.Sugar              (Var)
 import qualified Fregot.Sugar              as Sugar
 import           GHC.Generics              (Generic)
 

@@ -174,7 +174,7 @@ prepareImports =
                 (imp ^. Sugar.importAs) <|>
                 (case unPackageName (imp ^. Sugar.importPackage) of
                     []   -> Nothing
-                    bits -> return $ Var $ last  bits)
+                    bits -> return $ mkVar $ last bits)
 
         mbStripped <- case unPackageName (imp ^. Sugar.importPackage) of
             "data" : xs -> return $ Just $ PackageName $ xs
@@ -268,8 +268,8 @@ prepareRef
     -> ParachuteT Error m (Term SourceSpan)
 prepareRef source varSource var0 refs = foldM
     (\acc refArg -> case refArg of
-        Sugar.RefDotArg ann (Var v) -> return $
-            RefT source acc (ScalarT ann (Sugar.String v))
+        Sugar.RefDotArg ann v -> return $
+            RefT source acc (ScalarT ann (Sugar.String (unVar v)))
         Sugar.RefBrackArg k -> do
             k' <- prepareExpr k
             return $ RefT source acc k')
