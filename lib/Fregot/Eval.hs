@@ -8,6 +8,8 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}  -- for the MonadUnify instance...
 module Fregot.Eval
     ( Environment (..), packages, package, inputDoc, imports
+    , Context, locals
+    , emptyContext
 
     , Value
     , Document
@@ -17,6 +19,11 @@ module Fregot.Eval
 
     , EvalM
     , runEvalM
+
+    , StepState (..), ssEnvironment, ssContext
+    , mkStepState
+    , Step (..)
+    , stepEvalM
 
     , evalVar
     , evalTerm
@@ -77,8 +84,8 @@ evalTerm (RefT source lhs arg) = do
         -- Using a rule with an index.  This only triggers if the rule requires
         -- an argument, i.e. it is not a complete rule.
         Just crule
-                | CompleteRule /= crule ^. ruleKind
-                , FunctionRule /= crule ^. ruleKind -> do
+                | Nothing <- crule ^? ruleKind . _CompleteRule
+                , Nothing <- crule ^? ruleKind . _FunctionRule -> do
             arg' <- evalTerm arg
             evalCompiledRule source crule (Just arg')
         _ -> do
@@ -97,10 +104,10 @@ evalTerm (CallT source f args)
                 vargs <- mapM evalTerm args
                 evalUserFunction source cr vargs
             Nothing -> raise' source "unknown function" $
-                "Unknown function call: " <+> PP.pretty f
+                "Unknown function call:" <+> PP.pretty f
 
     | otherwise = raise' source "unknown function" $
-        "Unknown function call: " <+> PP.pretty f
+        "Unknown function call:" <+> PP.pretty f
 
 evalTerm (VarT source v) = evalVar source v
 evalTerm (ScalarT _ s) = evalScalar s
@@ -147,7 +154,7 @@ evalVar source v       = do
                 mbCompiledRule <- lookupRule [v]
                 case mbCompiledRule of
                     Nothing    -> FreeV <$> toInstVar v
-                    Just crule | crule ^. ruleKind == FunctionRule ->
+                    Just crule | FunctionRule _ <- crule ^. ruleKind ->
                         -- We allow calling a null-ary function `report()` both
                         -- as just `report` as well as `report()`
                         evalUserFunction source crule []
@@ -337,7 +344,7 @@ evalRuleDefinition callerSource rule mbIndex =
 evalUserFunction
     :: SourceSpan -> Rule SourceSpan -> [Value] -> EvalM Value
 evalUserFunction calleeSource crule callerArgs
-    | crule ^. ruleKind /= FunctionRule = raise' calleeSource "type error" $
+    | Nothing <- crule ^? ruleKind . _FunctionRule = raise' calleeSource "type error" $
         PP.pretty (crule ^. ruleName) <+>
         "was called as function but it is not a function"
     | otherwise = requireComplete (crule ^. ruleAnn) $ branch

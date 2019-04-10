@@ -22,6 +22,7 @@ import qualified Fregot.Error              as Error
 import           Fregot.Prepare.Ast
 import           Fregot.Prepare.Lens
 import           Fregot.PrettyPrint        ((<+>))
+import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources.SourceSpan (SourceSpan)
 import qualified Fregot.Sugar              as Sugar
 import           Prelude                   hiding (head)
@@ -78,7 +79,7 @@ prepareRule imports rule
             { _ruleName    = head ^. Sugar.ruleName
             , _ruleAnn     = head ^. Sugar.ruleAnn
             , _ruleDefault = Nothing
-            , _ruleKind    = FunctionRule
+            , _ruleKind    = FunctionRule (length args)
             , _ruleDefs    =
                 [ RuleDefinition
                     { _ruleDefName    = head ^. Sugar.ruleName
@@ -154,10 +155,10 @@ mergeRules x y = do
 
   where
     describeKind = \case
-        CompleteRule  -> "is a complete rule"
-        GenSetRule    -> "generates a set"
-        GenObjectRule -> "generates an object"
-        FunctionRule  -> "is a function"
+        CompleteRule   -> "is a complete rule"
+        GenSetRule     -> "generates a set"
+        GenObjectRule  -> "generates an object"
+        FunctionRule a -> "is a function of arity" <+> PP.pretty a
 
 --------------------------------------------------------------------------------
 

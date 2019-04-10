@@ -8,27 +8,31 @@ module Control.Monad.Stream
     , suspend
 
     , toList
+
+    , Step (..)
+    , step
     ) where
 
 import           Control.Monad       (join)
 import           Control.Monad.Trans (MonadIO (..))
 import           Prelude             hiding (filter)
 
-newtype Stream i m a = Stream {unStream :: m (Step i m a)}
+newtype Stream i m a = Stream {unStream :: m (SStep i m a)}
     deriving (Functor)
 
-data Step i m a
-    = Yield   !a (Stream i m a)
-    | Suspend !i (Stream i m a)
-    | Done
-    -- The 'Single' constructor is not really necessary since we can also
-    -- represent this using 'Yield x (Stream (return Done))'.  However, since we
-    -- deal we deal with singletons so often, this makes our code much faster.
-    | Single  !a
+data SStep i m a
+    = SYield   !a (Stream i m a)
+    | SSuspend !i (Stream i m a)
+    | SDone
+    -- The 'SSingle' constructor is not really necessary since we can also
+    -- represent this using 'SYield x (Stream (return SDone))'.  However, since
+    -- we deal we deal with singletons so often, this makes our code much
+    -- faster.
+    | SSingle  !a
     deriving (Functor)
 
 pureStream :: Monad m => a -> Stream i m a
-pureStream x = Stream $! pure $! Single x
+pureStream x = Stream $! pure $! SSingle x
 {-# INLINE pureStream #-}
 {-# SPECIALIZE pureStream :: a -> Stream i IO a #-}
 
@@ -36,16 +40,16 @@ bindStream :: Monad m => Stream i m a -> (a -> Stream i m b) -> Stream i m b
 bindStream (Stream mxstep) f = Stream $ do
     xstep <- mxstep
     case xstep of
-        Done         -> return Done
-        Suspend i xs -> return $! Suspend i (xs `bindStream` f)
-        Yield x xs   -> unStream $ appendStream (f x) (xs `bindStream` f)
-        Single x     -> unStream (f x)
+        SDone         -> return SDone
+        SSuspend i xs -> return $! SSuspend i (xs `bindStream` f)
+        SYield x xs   -> unStream $ appendStream (f x) (xs `bindStream` f)
+        SSingle x     -> unStream (f x)
 {-# INLINE bindStream #-}
 {-# SPECIALIZE bindStream
     :: Stream i IO a -> (a -> Stream i IO b) -> Stream i IO b #-}
 
 emptyStream :: Monad m => Stream i m a
-emptyStream = Stream (pure Done)
+emptyStream = Stream (pure SDone)
 {-# INLINE emptyStream #-}
 {-# SPECIALIZE emptyStream :: Stream i IO a #-}
 
@@ -53,10 +57,10 @@ appendStream :: Monad m => Stream i m a -> Stream i m a -> Stream i m a
 appendStream (Stream mlstep) right = Stream $ do
     lstep <- mlstep
     case lstep of
-        Done              -> unStream right
-        Suspend i lstream -> return $! Suspend i (appendStream lstream right)
-        Yield x lstream   -> return $! Yield x (appendStream lstream right)
-        Single x          -> return $! Yield x right
+        SDone              -> unStream right
+        SSuspend i lstream -> return $! SSuspend i (appendStream lstream right)
+        SYield x lstream   -> return $! SYield x (appendStream lstream right)
+        SSingle x          -> return $! SYield x right
 {-# INLINE appendStream #-}
 {-# SPECIALIZE appendStream
     :: Stream i IO a -> Stream i IO a -> Stream i IO a #-}
@@ -89,34 +93,34 @@ instance Monad m => Monad (Stream i m) where
 instance MonadIO m => MonadIO (Stream i m) where
     liftIO io = Stream $ do
         x <- liftIO io
-        return $! Single x
+        return $! SSingle x
     {-# INLINE liftIO #-}
     {-# SPECIALIZE liftIO :: IO a -> Stream i IO a #-}
 
 filter :: Monad m => (a -> Bool) -> Stream i m a -> Stream i m a
 filter f (Stream mstep) = Stream $ do
-    step <- mstep
-    case step of
-        Done            -> return Done
-        Suspend i xs    -> return $! Suspend i (filter f xs)
-        Yield x xs
-            | f x       -> return $! Yield x (filter f xs)
+    xstep <- mstep
+    case xstep of
+        SDone            -> return SDone
+        SSuspend i xs    -> return $! SSuspend i (filter f xs)
+        SYield x xs
+            | f x       -> return $! SYield x (filter f xs)
             | otherwise -> unStream (filter f xs)
-        Single x
-            | f x       -> return $! Single x
-            | otherwise -> return Done
+        SSingle x
+            | f x       -> return $! SSingle x
+            | otherwise -> return SDone
 {-# SPECIALIZE filter :: (a -> Bool) -> Stream i IO a -> Stream i IO a #-}
 
 collapse :: Monad m => Stream i m a -> Stream i m [a]
 collapse = go []
   where
     go acc (Stream mstep) = Stream $ do
-        step <- mstep
-        case step of
-            Done        -> return $! Single $ reverse acc
-            Single  x   -> return $! Single $ reverse (x : acc)
-            Suspend i s -> return $! Suspend i $ go acc s
-            Yield   x s -> unStream $ go (x : acc) s
+        xstep <- mstep
+        case xstep of
+            SDone        -> return $! SSingle $ reverse acc
+            SSingle  x   -> return $! SSingle $ reverse (x : acc)
+            SSuspend i s -> return $! SSuspend i $ go acc s
+            SYield   x s -> unStream $ go (x : acc) s
 {-# INLINE collapse #-}
 {-# SPECIALIZE collapse :: Stream i IO a -> Stream i IO [a] #-}
 
@@ -124,26 +128,42 @@ collapse = go []
 -- don't have to unnecessarily duplicate effects.
 peek :: Monad m => Stream i m a -> Stream i m (Maybe (Stream i m a))
 peek (Stream mstep) = Stream $ do
-    step <- mstep
-    case step of
-        Done          -> return $! Single Nothing
-        Suspend i s   -> return $! Suspend i $ peek s
-        s@(Yield _ _) -> return $! Single (Just $ Stream $ return s)
-        s@(Single _)  -> return $! Single (Just $ Stream $ return s)
+    xstep <- mstep
+    case xstep of
+        SDone          -> return $! SSingle Nothing
+        SSuspend i s   -> return $! SSuspend i $ peek s
+        s@(SYield _ _) -> return $! SSingle (Just $ Stream $ return s)
+        s@(SSingle _)  -> return $! SSingle (Just $ Stream $ return s)
 {-# SPECIALIZE peek
     :: Stream i IO a -> Stream i IO (Maybe (Stream i IO a)) #-}
 
 suspend :: Monad m => i -> Stream i m a -> Stream i m a
-suspend i x = Stream $ return $ Suspend i x
+suspend i x = Stream $ return $ SSuspend i x
 {-# INLINE suspend #-}
 {-# SPECIALIZE suspend :: i -> Stream i IO a -> Stream i IO a #-}
 
 toList :: Monad m => Stream i m a -> m [a]
 toList (Stream mstep) = do
-    step <- mstep
-    case step of
-        Done             -> return []
-        Suspend _ stream -> toList stream
-        Yield x stream   -> (x :) <$> toList stream
-        Single x         -> return [x]
+    xstep <- mstep
+    case xstep of
+        SDone             -> return []
+        SSuspend _ stream -> toList stream
+        SYield x stream   -> (x :) <$> toList stream
+        SSingle x         -> return [x]
 {-# SPECIALIZE toList :: Stream i IO a -> IO [a] #-}
+
+data Step i m a
+    = Yield   a (Stream i m a)
+    | Suspend i (Stream i m a)
+    | Done
+    deriving (Functor)
+
+step :: Monad m => Stream i m a -> m (Step i m a)
+step (Stream mstep) = do
+    xstep <- mstep
+    case xstep of
+        SDone         -> return Done
+        SYield   x xs -> return $! Yield x xs
+        SSuspend i xs -> return $! Suspend i xs
+        SSingle  x    -> return $! Yield x mempty
+{-# SPECIALIZE step :: Stream i IO a -> IO (Step i IO a) #-}

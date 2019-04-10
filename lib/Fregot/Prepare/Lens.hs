@@ -10,10 +10,11 @@ module Fregot.Prepare.Lens
     , termCosmosNoClosures
     , termCosmosClosures
     , termRuleBodies
+    , termCosmosCalls
     ) where
 
-import           Control.Lens        (Fold, Lens', Traversal', lens, traverseOf,
-                                      (^.))
+import           Control.Lens        (Fold, Lens', Traversal', lens, to,
+                                      traverseOf, (^.))
 import           Control.Lens.Plated (Plated (..), cosmos, cosmosOnOf)
 import           Control.Lens.TH     (makePrisms)
 import           Fregot.Prepare.Ast
@@ -112,3 +113,7 @@ termRuleBodies f e = case e of
     SetCompT    a h   b -> SetCompT a h <$> f b
     ObjectCompT a k v b -> ObjectCompT a k v <$> f b
     _                   -> pure e
+
+-- | Find referenced functions in a term.
+termCosmosCalls :: Fold (Term a) (a, Function)
+termCosmosCalls = cosmos . _CallT . to (\(ann, f, _) -> (ann, f))
