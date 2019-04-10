@@ -15,13 +15,14 @@ module Fregot.Sources
     , newHandle
     ) where
 
-import           Data.Hashable       (Hashable)
-import qualified Data.HashMap.Strict as HMS
-import           Data.Semigroup      (Semigroup)
-import qualified Data.Text           as T
-import qualified Data.IORef as IORef
+import           Data.Binary                  (Binary)
+import           Data.Hashable                (Hashable)
+import qualified Data.HashMap.Strict.Extended as HMS
+import qualified Data.IORef                   as IORef
+import           Data.Semigroup               (Semigroup)
+import qualified Data.Text                    as T
 import           GHC.Generics
-import           Prelude             hiding (lookup)
+import           Prelude                      hiding (lookup)
 
 data SourcePointer
     = ReplInput Int T.Text
@@ -29,6 +30,7 @@ data SourcePointer
     | TestInput
     deriving (Eq, Generic, Ord, Show)
 
+instance Binary SourcePointer
 instance Hashable SourcePointer
 
 describeSourcePointer :: SourcePointer -> String
@@ -38,7 +40,7 @@ describeSourcePointer TestInput         = "tests"
 
 newtype Sources = Sources
     { unSourceStore :: HMS.HashMap SourcePointer T.Text
-    } deriving (Generic, Monoid, Semigroup)
+    } deriving (Binary, Generic, Monoid, Semigroup)
 
 empty :: Sources
 empty = Sources HMS.empty

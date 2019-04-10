@@ -1,5 +1,6 @@
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE TemplateHaskell   #-}
 module Fregot.Interpreter
     ( InterpreterM
     , Handle
@@ -8,6 +9,11 @@ module Fregot.Interpreter
     , readAllRules
     , loadModule
     , insertRule
+
+    , loadBundle
+    , saveBundle
+
+    , loadModuleOrBundle
 
     , compilePackages
 
@@ -20,11 +26,14 @@ module Fregot.Interpreter
     , step
     ) where
 
-import           Control.Lens              (ifor, to, (^.))
+import qualified Codec.Compression.GZip    as GZip
+import           Control.Lens              (forOf_, ifor, to, (^.))
 import           Control.Lens.TH           (makeLenses)
 import           Control.Monad             (foldM)
 import           Control.Monad.Parachute   (ParachuteT, fatal)
 import           Control.Monad.Trans       (liftIO)
+import qualified Data.Binary               as Binary
+import qualified Data.ByteString.Lazy      as BL
 import qualified Data.HashMap.Strict       as HMS
 import qualified Data.HashSet.Extended     as HS
 import           Data.IORef.Extended       (IORef)
@@ -34,22 +43,24 @@ import qualified Data.Text.IO              as T
 import           Fregot.Compile.Package    (CompiledPackage)
 import qualified Fregot.Compile.Package    as Compile
 import           Fregot.Error              (Error, catchIO)
+import qualified Fregot.Error              as Error
 import qualified Fregot.Eval               as Eval
 import           Fregot.Eval.Value         (emptyObject)
+import           Fregot.Interpreter.Bundle
 import qualified Fregot.Parser             as Parser
 import qualified Fregot.Prepare            as Prepare
 import           Fregot.Prepare.Package    (PreparedPackage)
 import qualified Fregot.Prepare.Package    as Prepare
+import           Fregot.PrettyPrint        ((<$$>), (<+>))
+import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources            (SourcePointer)
 import qualified Fregot.Sources            as Sources
 import           Fregot.Sources.SourceSpan (SourceSpan)
 import           Fregot.Sugar              (PackageName, Var)
 import qualified Fregot.Sugar              as Sugar
+import           System.FilePath           (takeExtension)
 
 type InterpreterM a = ParachuteT Error IO a
-
--- | The modules that make up a package.
-type ModuleBatch = [(SourcePointer, Sugar.Module SourceSpan)]
 
 data Handle = Handle
     { _sources  :: !Sources.Handle
@@ -95,6 +106,33 @@ loadModule h path = do
     insertModule h sourcep modul
   where
     sourcep = Sources.FileInput path
+
+loadBundle :: Handle -> FilePath -> InterpreterM ()
+loadBundle h path = do
+    errOrBundle <- Binary.decodeOrFail . GZip.decompress <$>
+        liftIO (BL.readFile path)
+    case errOrBundle of
+        Left (_, _, err) -> fatal $ Error.mkErrorNoMeta "interpreter" $
+            "Loading bundle" <+> PP.pretty path <+> "failed:" <$$>
+            PP.ind (PP.pretty err)
+        Right (_, _, bundle) -> do
+            liftIO $ IORef.atomicModifyIORef_ (h ^. sources)
+                (mappend (bundle ^. bundleSources))
+            forOf_ (bundleModules . traverse . traverse) bundle $
+                \(sourcep, modul) -> insertModule h sourcep modul
+
+loadModuleOrBundle :: Handle -> FilePath -> InterpreterM ()
+loadModuleOrBundle h path = case takeExtension path of
+    ".rego"  -> loadModule h path
+    ".regob" -> loadBundle h path
+    ext      -> fatal $ Error.mkErrorNoMeta "interpreter" $
+        "Unknown rego file extension:" <+> PP.pretty ext
+
+saveBundle :: Handle -> FilePath -> InterpreterM ()
+saveBundle h path = liftIO $ do
+    _bundleSources <- IORef.readIORef (h ^. sources)
+    _bundleModules <- IORef.readIORef (h ^. modules)
+    BL.writeFile path $ GZip.compress $ Binary.encode $ Bundle {..}
 
 -- | Get a single package by package name.  If the package does not exist, an
 -- empty one is created.

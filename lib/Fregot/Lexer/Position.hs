@@ -10,6 +10,7 @@ module Fregot.Lexer.Position
 
 import           Control.Lens.TH        (makeLenses)
 import qualified Data.Aeson.TH.Extended as Aeson
+import           Data.Binary            (Binary)
 import           Data.Data              (Data)
 import           Data.Typeable          (Typeable)
 import           GHC.Generics           (Generic)
@@ -19,6 +20,8 @@ data Position = Position
     { _line   :: {-# UNPACK #-} !Int
     , _column :: {-# UNPACK #-} !Int
     } deriving (Eq, Data, Generic, Ord, Show, Typeable)
+
+instance Binary Position
 
 initPosition :: Position
 initPosition = Position 1 1
