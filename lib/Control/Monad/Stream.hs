@@ -18,7 +18,6 @@ import           Control.Monad.Trans (MonadIO (..))
 import           Prelude             hiding (filter)
 
 newtype Stream i m a = Stream {unStream :: m (SStep i m a)}
-    deriving (Functor)
 
 data SStep i m a
     = SYield   !a (Stream i m a)
@@ -29,12 +28,22 @@ data SStep i m a
     -- we deal we deal with singletons so often, this makes our code much
     -- faster.
     | SSingle  !a
-    deriving (Functor)
 
 pureStream :: Monad m => a -> Stream i m a
 pureStream x = Stream $! pure $! SSingle x
 {-# INLINE pureStream #-}
 {-# SPECIALIZE pureStream :: a -> Stream i IO a #-}
+
+mapStream :: Monad m => (a -> b) -> Stream i m a -> Stream i m b
+mapStream f (Stream mxstep) = Stream $ do
+    xstep <- mxstep
+    case xstep of
+        SDone         -> return SDone
+        SSuspend i xs -> return $! SSuspend i (mapStream f xs)
+        SYield   x xs -> return $! SYield (f x) (mapStream f xs)
+        SSingle  x    -> return $! SSingle (f x)
+{-# INLINE mapStream #-}
+{-# SPECIALIZE mapStream :: (a -> b) -> Stream i IO a -> Stream i IO b #-}
 
 bindStream :: Monad m => Stream i m a -> (a -> Stream i m b) -> Stream i m b
 bindStream (Stream mxstep) f = Stream $ do
@@ -74,6 +83,11 @@ instance Monad m => Monoid (Stream i m a) where
     mempty = emptyStream
     {-# INLINE mempty #-}
     {-# SPECIALIZE mempty :: Stream i IO a #-}
+
+instance Monad m => Functor (Stream i m) where
+    fmap = mapStream
+    {-# INLINE fmap #-}
+    {-# SPECIALIZE fmap :: (a -> b) -> Stream i IO a -> Stream i IO b #-}
 
 instance Monad m => Applicative (Stream i m) where
     pure = pureStream
@@ -156,7 +170,6 @@ data Step i m a
     = Yield   a (Stream i m a)
     | Suspend i (Stream i m a)
     | Done
-    deriving (Functor)
 
 step :: Monad m => Stream i m a -> m (Step i m a)
 step (Stream mstep) = do
