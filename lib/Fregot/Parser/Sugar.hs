@@ -41,7 +41,7 @@ parseModuleImport = withSourceSpan $ do
     return $ \_importAnn -> Import {..}
 
 var :: FregotParser Var
-var = Var <$> Tok.var
+var = mkVar <$> Tok.var
 
 rule :: FregotParser (Rule SourceSpan)
 rule = Rule

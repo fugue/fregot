@@ -5,19 +5,22 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell     #-}
 module Fregot.Compile.Package
-    ( CompiledPackage, packageName, packageRules
+    ( Safe (..)
+    , CompiledPackage, packageName, packageRules
     , lookup
     , rules
     , compilePackage
     , compileTerm
     ) where
 
+import           Control.Applicative         ((<|>))
 import           Control.Lens                (forOf_, iforM_, traverseOf, (^.),
                                               (^..))
 import           Control.Monad.Parachute     (ParachuteT, tellError, tellErrors)
 import qualified Data.HashMap.Strict         as HMS
 import qualified Data.HashSet.Extended       as HS
 import           Data.List.NonEmpty.Extended (NonEmpty (..))
+import           Data.Maybe                  (isNothing)
 import           Fregot.Compile.Order
 import           Fregot.Error                (Error)
 import qualified Fregot.Error                as Error
@@ -25,7 +28,8 @@ import qualified Fregot.Eval.Builtins        as Builtins
 import           Fregot.Prepare.Ast
 import           Fregot.Prepare.Lens
 import           Fregot.Prepare.Package
-import           Fregot.Prepare.Vars         (Arities, Safe (..), ovRuleBody)
+import           Fregot.Prepare.Vars         (Arities, Safe (..), ovRuleBody,
+                                              ovTerm)
 import           Fregot.PrettyPrint          ((<$$>), (<+>))
 import qualified Fregot.PrettyPrint          as PP
 import           Fregot.Sources.SourceSpan   (SourceSpan)
@@ -33,11 +37,17 @@ import           Prelude                     hiding (head, lookup)
 
 type CompiledPackage = Package ()
 
-arities :: Arities
-arities = \func -> case HMS.lookup func Builtins.builtins of
-    -- TODO(jaspervdj): User-defined function arities.
-    Nothing      -> 0
-    Just builtin -> Builtins.arity builtin
+aritiesFromPackage :: PreparedPackage -> Arities
+aritiesFromPackage prep = \func ->
+    (do
+        builtin <- HMS.lookup func Builtins.builtins
+        return $ Builtins.arity builtin) <|>
+    (do
+        -- TODO(jaspervdj): Look up functions in other packages as well.
+        NamedFunction [fname] <- Just func
+        userdef <- lookup fname prep
+        FunctionRule arity <- Just (userdef ^. ruleKind)
+        return arity)
 
 -- | Construct the safe-to-use global variables.
 safeGlobals :: PreparedPackage -> Safe Var
@@ -48,6 +58,8 @@ compilePackage
 compilePackage prep =
     traverseOf (packageRules . traverse) compileRule prep
   where
+    arities = aritiesFromPackage prep
+
     compileRule
         :: Monad m => Rule SourceSpan -> ParachuteT Error m (Rule SourceSpan)
     compileRule = traverseOf (ruleDefs . traverse) compileRuleDefinition
@@ -60,25 +72,29 @@ compilePackage prep =
         -- Order the bodies and terms.
         ordered <-
             traverseOf (ruleBodies . traverse) orderRuleBody def >>=
-            traverseOf (ruleValue . traverse ) orderTerm >>=
+            traverseOf (ruleValue . traverse) orderTerm >>=
             traverseOf (ruleElses . traverse . ruleElseBody) orderRuleBody >>=
             traverseOf (ruleElses . traverse . ruleElseValue . traverse) orderTerm
 
-        -- Var safety check for every rule body (index and value).
+        -- General check for every rule body (index and value).
         forOf_ (ruleBodies . traverse) ordered $ \body -> do
             let safe1 = safe <> ovRuleBody arities safe body
             forOf_ (ruleIndex . traverse) def $ \v ->
-                tellErrors $ checkTermVars safe1 v
+                tellErrors $ checkTerm arities safe1 v
             forOf_ (ruleValue . traverse) def $ \v ->
-                tellErrors $ checkTermVars safe1 v
+                tellErrors $ checkTerm arities safe1 v
 
-        -- Var safety check the elses (index and else value).
+        -- General check the elses (index and else value).
         forOf_ (ruleElses . traverse) ordered $ \els -> do
             let safe1 = safe <> ovRuleBody arities safe (els ^. ruleElseBody)
             forOf_ (ruleIndex . traverse) def $ \v ->
-                tellErrors $ checkTermVars safe1 v
+                tellErrors $ checkTerm arities safe1 v
             forOf_ (ruleElseValue . traverse) els $ \v ->
-                tellErrors $ checkTermVars safe1 v
+                tellErrors $ checkTerm arities safe1 v
+
+        -- Call check inside rule bodies.
+        forOf_ (ruleBodies . traverse . ruleBodyTerms) ordered $
+            \term -> tellErrors $ checkTermCalls arities term
 
         return ordered
       where
@@ -97,14 +113,22 @@ compilePackage prep =
 
 compileTerm
     :: Monad m
-    => PreparedPackage -> Term SourceSpan
+    => PreparedPackage -> Safe Var -> Term SourceSpan
     -> ParachuteT Error m (Term SourceSpan)
-compileTerm pkg term0 = do
-    ordered <- runOrder $ orderTermForSafety arities safe term0
-    tellErrors $ checkTermVars safe ordered
+compileTerm pkg safeLocals term0 = do
+    ordered <- runOrder $ orderTermForSafety arities safe0 term0
+    let safe = safe0 <> ovTerm arities safe0 ordered
+    tellErrors $ checkTerm arities safe ordered
     return ordered
   where
-    safe = safeGlobals pkg
+    safe0   = safeGlobals pkg <> safeLocals
+    arities = aritiesFromPackage pkg
+
+-- | Various checks on terms.
+checkTerm :: Arities -> Safe Var -> Term SourceSpan -> [Error]
+checkTerm arities safe term =
+    checkTermVars safe term <>
+    checkTermCalls arities term
 
 -- | Check that all variables in the term occurr in the safe set.
 checkTermVars
@@ -117,6 +141,18 @@ checkTermVars (Safe safe) term =
         "assigned a value."
     | (source, var) <- term ^.. termCosmosNoClosures . termVars
     , not $ var `HS.member` safe
+    ]
+
+-- | Check that all calls in the term are known functions.
+checkTermCalls
+    :: Arities
+    -> Term SourceSpan
+    -> [Error]
+checkTermCalls arities term =
+    [ Error.mkError "var check" source "unknown function" $
+        "Function" <+> PP.pretty fun <+> "is not defined."
+    | (source, fun) <- term ^.. termCosmosCalls
+    , isNothing (arities fun)
     ]
 
 -- | Designed to match the return type of `orderTermForSafety`.

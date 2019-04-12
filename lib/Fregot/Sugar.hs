@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE DerivingVia                #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
@@ -11,7 +13,7 @@ module Fregot.Sugar
     , Import (..), importAnn, importPackage, importAs
     , Module (..), modulePackage, moduleImports, modulePolicy
 
-    , Var (..)
+    , Var, unVar, mkVar
     , varToString, varToText
 
     , Rule (..), ruleHead, ruleBodies
@@ -38,16 +40,22 @@ import           Control.Lens       (Lens', lens, review, (^.))
 import           Control.Lens.Prism (Prism', prism')
 import           Control.Lens.TH    (makeLenses)
 import           Control.Monad      (guard)
+import           Data.Binary        (Binary)
+import qualified Data.Binary        as Binary
 import           Data.Hashable      (Hashable (..))
 import qualified Data.List          as L
 import           Data.Scientific    (Scientific)
 import           Data.String        (IsString (..))
 import qualified Data.Text.Extended as T
+import           Data.Unique        (HasUnique (..), Unique, Uniquely (..))
+import qualified Data.Unique        as Unique
 import           Fregot.PrettyPrint ((<$$>), (<+>), (<+>?), (?<+>))
 import qualified Fregot.PrettyPrint as PP
+import           GHC.Generics       (Generic)
+import           System.IO.Unsafe   (unsafePerformIO)
 
 newtype PackageName = PackageName {unPackageName :: [T.Text]}
-    deriving (Eq, Hashable, Monoid, Ord, Semigroup, Show)
+    deriving (Binary, Eq, Hashable, Monoid, Ord, Semigroup, Show)
 
 instance IsString PackageName where
     fromString = PackageName . T.split (== '.') . T.pack
@@ -67,19 +75,46 @@ data Import a = Import
     { _importAnn     :: !a
     , _importPackage :: !PackageName
     , _importAs      :: !(Maybe Var)
-    } deriving (Show)
+    } deriving (Generic, Show)
+
+instance Binary a => Binary (Import a)
 
 data Module a = Module
     { _modulePackage :: !PackageName
     , _moduleImports :: ![Import a]
     , _modulePolicy  :: ![Rule a]
-    } deriving (Show)
+    } deriving (Generic, Show)
 
-newtype Var = Var {unVar :: T.Text}
-    deriving (Hashable, Eq, Ord, Show)
+instance Binary a => Binary (Module a)
+
+data Var = Var {-# UNPACK #-} !Unique {-# UNPACK #-} !T.Text
+    deriving Eq via (Uniquely Var)
+    deriving Hashable via (Uniquely Var)
+    deriving Ord via (Uniquely Var)
+
+instance Show Var where
+    show = show . unVar
+
+instance HasUnique Var where
+    getUnique (Var u _) = u
+    {-# INLINE getUnique #-}
 
 instance IsString Var where
-    fromString = Var . fromString
+    fromString = mkVar . fromString
+
+instance Binary Var where
+    get = mkVar <$> Binary.get
+    put = Binary.put . unVar
+
+unVar :: Var -> T.Text
+unVar (Var _ t) = t
+
+mkVar :: T.Text -> Var
+mkVar t = Var (Unique.getStableUnique varUniqueGen t) t
+
+varUniqueGen :: Unique.StableUniqueGen T.Text
+varUniqueGen = unsafePerformIO Unique.newStableUniqueGen
+{-# NOINLINE varUniqueGen #-}
 
 varToString :: Var -> String
 varToString = T.unpack . varToText
@@ -91,7 +126,9 @@ data Rule a = Rule
     { _ruleHead   :: !(RuleHead a)
     , _ruleBodies :: ![RuleBody a]
     , _ruleElses  :: ![RuleElse a]
-    } deriving (Show)
+    } deriving (Generic, Show)
+
+instance Binary a => Binary (Rule a)
 
 data RuleHead a = RuleHead
     { _ruleAnn     :: !a
@@ -100,7 +137,9 @@ data RuleHead a = RuleHead
     , _ruleArgs    :: !(Maybe [Term a])
     , _ruleIndex   :: !(Maybe (Term a))
     , _ruleValue   :: !(Maybe (Term a))
-    } deriving (Show)
+    } deriving (Generic, Show)
+
+instance Binary a => Binary (RuleHead a)
 
 type RuleBody a = [Literal a]
 
@@ -108,14 +147,18 @@ data RuleElse a = RuleElse
     { _ruleElseAnn   :: !a
     , _ruleElseValue :: !(Maybe (Term a))
     , _ruleElseBody  :: !(RuleBody a)
-    } deriving (Show)
+    } deriving (Generic, Show)
+
+instance Binary a => Binary (RuleElse a)
 
 data Literal a = Literal
     { _literalAnn      :: !a
     , _literalNegation :: !Bool
     , _literalExpr     :: !(Expr a)
     , _literalWith     :: ![With a]
-    } deriving (Show)
+    } deriving (Generic, Show)
+
+instance Binary a => Binary (Literal a)
 
 data Expr a
     = TermE   a (Term a)
@@ -123,7 +166,9 @@ data Expr a
     -- missing from the grammar, so I'm not sure at this point.
     | BinOpE  a (Expr a) BinOp (Expr a)
     | ParensE a (Expr a)
-    deriving (Show)
+    deriving (Generic, Show)
+
+instance Binary a => Binary (Expr a)
 
 data Term a
     = RefT      a a Var [RefArg a]
@@ -141,19 +186,25 @@ data Term a
     | ArrayCompT  a (Term a) (RuleBody a)
     | SetCompT    a (Term a) (RuleBody a)
     | ObjectCompT a (ObjectKey a) (Term a) (RuleBody a)
-    deriving (Show)
+    deriving (Generic, Show)
+
+instance Binary a => Binary (Term a)
 
 data RefArg a
     = RefBrackArg !(Expr a)
     | RefDotArg !a !Var
-    deriving (Show)
+    deriving (Generic, Show)
+
+instance Binary a => Binary (RefArg a)
 
 data Scalar a
     = String T.Text
     | Number Scientific
     | Bool   Bool
     | Null
-    deriving (Eq, Show)
+    deriving (Eq, Generic, Show)
+
+instance Binary a => Binary (Scalar a)
 
 type Object a = [(ObjectKey a, Expr a)]
 
@@ -161,7 +212,9 @@ data ObjectKey a
     = ScalarK a (Scalar a)
     | VarK    a Var
     | RefK    a Var [RefArg a]
-    deriving (Show)
+    deriving (Generic, Show)
+
+instance Binary a => Binary (ObjectKey a)
 
 data BinOp
     = UnifyO
@@ -177,13 +230,17 @@ data BinOp
     | TimesO
     | DivideO
     | BinOrO
-    deriving (Show)
+    deriving (Generic, Show)
+
+instance Binary BinOp
 
 data With a = With
     { _withAnn  :: !a
     , _withWith :: ![Var]
     , _withAs   :: !(Term a)
-    } deriving (Show)
+    } deriving (Generic, Show)
+
+instance Binary a => Binary (With a)
 
 $(makeLenses ''Import)
 $(makeLenses ''Module)

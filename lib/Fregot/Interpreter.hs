@@ -1,5 +1,6 @@
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE TemplateHaskell   #-}
 module Fregot.Interpreter
     ( InterpreterM
     , Handle
@@ -9,18 +10,32 @@ module Fregot.Interpreter
     , loadModule
     , insertRule
 
+    , loadBundle
+    , saveBundle
+
+    , loadModuleOrBundle
+
     , compilePackages
 
     , evalExpr
     , evalVar
+
+    , Eval.StepState (..)
+    , mkStepState
+    , Eval.Step (..)
+    , step
     ) where
 
-import           Control.Lens              (ifor, (^.))
+import qualified Codec.Compression.GZip    as GZip
+import           Control.Lens              (forOf_, ifor, to, (^.))
 import           Control.Lens.TH           (makeLenses)
 import           Control.Monad             (foldM)
 import           Control.Monad.Parachute   (ParachuteT, fatal)
 import           Control.Monad.Trans       (liftIO)
+import qualified Data.Binary               as Binary
+import qualified Data.ByteString.Lazy      as BL
 import qualified Data.HashMap.Strict       as HMS
+import qualified Data.HashSet.Extended     as HS
 import           Data.IORef.Extended       (IORef)
 import qualified Data.IORef.Extended       as IORef
 import           Data.Maybe                (fromMaybe)
@@ -28,24 +43,26 @@ import qualified Data.Text.IO              as T
 import           Fregot.Compile.Package    (CompiledPackage)
 import qualified Fregot.Compile.Package    as Compile
 import           Fregot.Error              (Error, catchIO)
+import qualified Fregot.Error              as Error
 import qualified Fregot.Eval               as Eval
 import qualified Fregot.Eval.Cache         as Cache
 import           Fregot.Eval.Monad         (EvalCache)
 import           Fregot.Eval.Value         (emptyObject)
+import           Fregot.Interpreter.Bundle
 import qualified Fregot.Parser             as Parser
 import qualified Fregot.Prepare            as Prepare
 import           Fregot.Prepare.Package    (PreparedPackage)
 import qualified Fregot.Prepare.Package    as Prepare
+import           Fregot.PrettyPrint        ((<$$>), (<+>))
+import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources            (SourcePointer)
 import qualified Fregot.Sources            as Sources
 import           Fregot.Sources.SourceSpan (SourceSpan)
 import           Fregot.Sugar              (PackageName, Var)
 import qualified Fregot.Sugar              as Sugar
+import           System.FilePath           (takeExtension)
 
 type InterpreterM a = ParachuteT Error IO a
-
--- | The modules that make up a package.
-type ModuleBatch = [(SourcePointer, Sugar.Module SourceSpan)]
 
 data Handle = Handle
     { _sources      :: !Sources.Handle
@@ -95,6 +112,33 @@ loadModule h path = do
     insertModule h sourcep modul
   where
     sourcep = Sources.FileInput path
+
+loadBundle :: Handle -> FilePath -> InterpreterM ()
+loadBundle h path = do
+    errOrBundle <- Binary.decodeOrFail . GZip.decompress <$>
+        liftIO (BL.readFile path)
+    case errOrBundle of
+        Left (_, _, err) -> fatal $ Error.mkErrorNoMeta "interpreter" $
+            "Loading bundle" <+> PP.pretty path <+> "failed:" <$$>
+            PP.ind (PP.pretty err)
+        Right (_, _, bundle) -> do
+            liftIO $ IORef.atomicModifyIORef_ (h ^. sources)
+                (mappend (bundle ^. bundleSources))
+            forOf_ (bundleModules . traverse . traverse) bundle $
+                \(sourcep, modul) -> insertModule h sourcep modul
+
+loadModuleOrBundle :: Handle -> FilePath -> InterpreterM ()
+loadModuleOrBundle h path = case takeExtension path of
+    ".rego"  -> loadModule h path
+    ".regob" -> loadBundle h path
+    ext      -> fatal $ Error.mkErrorNoMeta "interpreter" $
+        "Unknown rego file extension:" <+> PP.pretty ext
+
+saveBundle :: Handle -> FilePath -> InterpreterM ()
+saveBundle h path = liftIO $ do
+    _bundleSources <- IORef.readIORef (h ^. sources)
+    _bundleModules <- IORef.readIORef (h ^. modules)
+    BL.writeFile path $ GZip.compress $ Binary.encode $ Bundle {..}
 
 -- | Get a single package by package name.  If the package does not exist, an
 -- empty one is created.
@@ -168,9 +212,9 @@ compilePackages h = do
         \oldComp -> oldComp <> newComp
 
 eval
-    :: Handle -> PackageName -> Eval.EvalM a
+    :: Handle -> Eval.Context -> PackageName -> Eval.EvalM a
     -> InterpreterM (Eval.Document a)
-eval h pkgname mx = do
+eval h ctx pkgname mx = do
     comp <- liftIO $ IORef.readIORef (h ^. compiled)
     pkg  <- readCompiledPackage h pkgname
     let env = Eval.Environment
@@ -182,18 +226,44 @@ eval h pkgname mx = do
             , Eval._cacheVersion = h ^. cacheVersion
             }
 
-    either fatal return =<< liftIO (Eval.runEvalM env mx)
+    either fatal return =<< liftIO (Eval.runEvalM env ctx mx)
 
 evalExpr
-    :: Handle -> PackageName -> Sugar.Expr SourceSpan
+    :: Handle -> Eval.Context -> PackageName -> Sugar.Expr SourceSpan
     -> InterpreterM (Eval.Document Eval.Value)
-evalExpr h pkgname expr = do
+evalExpr h ctx pkgname expr = do
     pkg   <- readCompiledPackage h pkgname
     pterm <- Prepare.prepareExpr expr
-    cterm <- Compile.compileTerm pkg pterm
-    eval h pkgname (Eval.evalTerm cterm)
+    cterm <- Compile.compileTerm pkg safeLocals pterm
+    eval h ctx pkgname (Eval.evalTerm cterm)
+  where
+    safeLocals = Compile.Safe $ HS.fromList $ ctx ^. Eval.locals . to HMS.keys
 
 evalVar
     :: Handle -> SourceSpan -> PackageName -> Var
     -> InterpreterM (Eval.Document Eval.Value)
-evalVar h source pkgname = eval h pkgname . Eval.evalVar source
+evalVar h source pkgname =
+    eval h Eval.emptyContext pkgname . Eval.evalVar source
+
+mkStepState
+    :: Handle -> PackageName -> Sugar.Expr SourceSpan
+    -> InterpreterM (Eval.StepState Eval.Value)
+mkStepState h pkgname expr = do
+    comp  <- liftIO $ IORef.readIORef (h ^. compiled)
+    pkg   <- readCompiledPackage h pkgname
+    pterm <- Prepare.prepareExpr expr
+    cterm <- Compile.compileTerm pkg mempty pterm
+    let env = Eval.Environment
+            { Eval._packages     = comp
+            , Eval._package      = pkg
+            , Eval._inputDoc     = emptyObject
+            , Eval._imports      = mempty
+            , Eval._cache        = h ^. cache
+            , Eval._cacheVersion = h ^. cacheVersion
+            }
+    return $ Eval.mkStepState env (Eval.evalTerm cterm)
+
+step
+    :: Handle -> Eval.StepState Eval.Value
+    -> InterpreterM (Eval.Step Eval.Value)
+step _ = liftIO . Eval.stepEvalM

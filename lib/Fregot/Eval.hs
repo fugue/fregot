@@ -8,6 +8,8 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}  -- for the MonadUnify instance...
 module Fregot.Eval
     ( Environment (..), packages, package, inputDoc, imports
+    , Context, locals
+    , emptyContext
 
     , Value
     , Document
@@ -17,6 +19,11 @@ module Fregot.Eval
 
     , EvalM
     , runEvalM
+
+    , StepState (..), ssEnvironment, ssContext
+    , mkStepState
+    , Step (..)
+    , stepEvalM
 
     , evalVar
     , evalTerm
@@ -39,6 +46,7 @@ import           Fregot.Eval.Monad
 import qualified Fregot.Eval.Number        as Number
 import           Fregot.Eval.Value
 import           Fregot.Prepare.Ast
+import           Fregot.Prepare.Lens
 import           Fregot.PrettyPrint        ((<$$>), (<+>))
 import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources.SourceSpan (SourceSpan)
@@ -78,8 +86,8 @@ evalTerm (RefT source lhs arg) = do
         -- Using a rule with an index.  This only triggers if the rule requires
         -- an argument, i.e. it is not a complete rule.
         Just crule
-                | CompleteRule /= crule ^. ruleKind
-                , FunctionRule /= crule ^. ruleKind -> do
+                | Nothing <- crule ^? ruleKind . _CompleteRule
+                , Nothing <- crule ^? ruleKind . _FunctionRule -> do
             arg' <- evalTerm arg
             evalCompiledRule source crule (Just arg')
         _ -> do
@@ -98,10 +106,10 @@ evalTerm (CallT source f args)
                 vargs <- mapM evalTerm args
                 evalUserFunction source cr vargs
             Nothing -> raise' source "unknown function" $
-                "Unknown function call: " <+> PP.pretty f
+                "Unknown function call:" <+> PP.pretty f
 
     | otherwise = raise' source "unknown function" $
-        "Unknown function call: " <+> PP.pretty f
+        "Unknown function call:" <+> PP.pretty f
 
 evalTerm (VarT source v) = evalVar source v
 evalTerm (ScalarT _ s) = evalScalar s
@@ -148,7 +156,7 @@ evalVar source v       = do
                 mbCompiledRule <- lookupRule [v]
                 case mbCompiledRule of
                     Nothing    -> FreeV <$> toInstVar v
-                    Just crule | crule ^. ruleKind == FunctionRule ->
+                    Just crule | FunctionRule _ <- crule ^. ruleKind ->
                         -- We allow calling a null-ary function `report()` both
                         -- as just `report` as well as `report()`
                         evalUserFunction source crule []
@@ -192,13 +200,13 @@ evalRefArg :: SourceSpan -> Value -> Term SourceSpan -> EvalM Value
 evalRefArg source indexee refArg = do
     idx <- evalTerm refArg
     case idx of
-        StringV k | PackageV pkgname <- indexee -> do
+        StringV k | PackageV pkgname <- indexee, v <- mkVar k -> do
             mbPkg <- lookupPackage pkgname
             case mbPkg of
                 -- If the package exists *AND* actually has a rule with that
                 -- name, we'll evaluate that name.
-                Just pkg | Just _ <- Package.lookup (Var k) pkg ->
-                    withPackage pkg $ evalVar source (Var k)
+                Just pkg | Just _ <- Package.lookup v pkg ->
+                    withPackage pkg $ evalVar source v
                 -- Otherwise, we'll construct a further package name.  This
                 -- package name does not actually need to exist (yet), since we
                 -- might append more pieces to it.
@@ -354,7 +362,7 @@ evalRuleDefinition callerSource rule mbIndex =
 evalUserFunction
     :: SourceSpan -> Rule SourceSpan -> [Value] -> EvalM Value
 evalUserFunction calleeSource crule callerArgs
-    | crule ^. ruleKind /= FunctionRule = raise' calleeSource "type error" $
+    | Nothing <- crule ^? ruleKind . _FunctionRule = raise' calleeSource "type error" $
         PP.pretty (crule ^. ruleName) <+>
         "was called as function but it is not a function"
     | otherwise = requireComplete (crule ^. ruleAnn) $ branch
@@ -429,17 +437,17 @@ evalRuleBody lits0 final = go lits0
         updateInput input withs
 
 evalStatement :: Statement SourceSpan -> EvalM Value
-evalStatement (UnifyS _ x y) = do
+evalStatement (UnifyS source x y) = suspend source $ do
     xv <- evalTerm x
     yv <- evalTerm y
     _  <- unify xv yv
     return $ BoolV True
-evalStatement (AssignS _ v x) = do
+evalStatement (AssignS source v x) = suspend source $ do
     xv <- evalTerm x
     iv <- toInstVar v
     unify (FreeV iv) xv
     return $ BoolV True
-evalStatement (TermS e) = evalTerm e
+evalStatement (TermS e) = suspend (e ^. termAnn) (evalTerm e)
 
 evalScalar :: Scalar a -> EvalM Value
 evalScalar (String t) = return $ StringV t

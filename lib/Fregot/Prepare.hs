@@ -22,6 +22,7 @@ import qualified Fregot.Error              as Error
 import           Fregot.Prepare.Ast
 import           Fregot.Prepare.Lens
 import           Fregot.PrettyPrint        ((<+>))
+import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources.SourceSpan (SourceSpan)
 import qualified Fregot.Sugar              as Sugar
 import           Prelude                   hiding (head)
@@ -78,7 +79,7 @@ prepareRule imports rule
             { _ruleName    = head ^. Sugar.ruleName
             , _ruleAnn     = head ^. Sugar.ruleAnn
             , _ruleDefault = Nothing
-            , _ruleKind    = FunctionRule
+            , _ruleKind    = FunctionRule (length args)
             , _ruleDefs    =
                 [ RuleDefinition
                     { _ruleDefName    = head ^. Sugar.ruleName
@@ -154,10 +155,10 @@ mergeRules x y = do
 
   where
     describeKind = \case
-        CompleteRule  -> "is a complete rule"
-        GenSetRule    -> "generates a set"
-        GenObjectRule -> "generates an object"
-        FunctionRule  -> "is a function"
+        CompleteRule   -> "is a complete rule"
+        GenSetRule     -> "generates a set"
+        GenObjectRule  -> "generates an object"
+        FunctionRule a -> "is a function of arity" <+> PP.pretty a
 
 --------------------------------------------------------------------------------
 
@@ -173,7 +174,7 @@ prepareImports =
                 (imp ^. Sugar.importAs) <|>
                 (case unPackageName (imp ^. Sugar.importPackage) of
                     []   -> Nothing
-                    bits -> return $ Var $ last  bits)
+                    bits -> return $ mkVar $ last bits)
 
         mbStripped <- case unPackageName (imp ^. Sugar.importPackage) of
             "data" : xs -> return $ Just $ PackageName $ xs
@@ -267,8 +268,8 @@ prepareRef
     -> ParachuteT Error m (Term SourceSpan)
 prepareRef source varSource var0 refs = foldM
     (\acc refArg -> case refArg of
-        Sugar.RefDotArg ann (Var v) -> return $
-            RefT source acc (ScalarT ann (Sugar.String v))
+        Sugar.RefDotArg ann v -> return $
+            RefT source acc (ScalarT ann (Sugar.String (unVar v)))
         Sugar.RefBrackArg k -> do
             k' <- prepareExpr k
             return $ RefT source acc k')

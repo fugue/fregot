@@ -56,7 +56,7 @@ tests_orderForClosures = Tasty.testGroup "orderForClosures"
         [program !! 2, program !! 0, program !! 1]
     ]
   where
-    testOrderForClosures = fst . orderForClosures (const 2) mempty
+    testOrderForClosures = fst . orderForClosures (const $ Just 2) mempty
 
 tests_orderForSafety :: Tasty.TestTree
 tests_orderForSafety = Tasty.testGroup "orderForSafety"
@@ -85,4 +85,4 @@ tests_orderForSafety = Tasty.testGroup "orderForSafety"
         ]
     ]
   where
-    testOrderForSafety = fst . orderForSafety (const 2) mempty
+    testOrderForSafety = fst . orderForSafety (const $ Just 2) mempty
