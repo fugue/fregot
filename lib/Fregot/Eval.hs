@@ -298,6 +298,7 @@ evalCompiledRule callerSource crule mbIndex = case crule ^. ruleKind of
         | def <- crule ^. ruleDefs
         ]
 
+    -- This is currently only used for complete rules.
     cached :: EvalM Value -> EvalM Value
     cached computeValue = do
         pkgname <- view (package . Package.packageName)
@@ -305,12 +306,12 @@ evalCompiledRule callerSource crule mbIndex = case crule ^. ruleKind of
 
         version  <- view cacheVersion
         c        <- view cache
-        mbResult <- liftIO $ Cache.lookup c (key, version)
+        mbResult <- liftIO $ Cache.lookup c key version
         case mbResult of
             Just val -> return val
             Nothing  -> do
                 x <- computeValue
-                liftIO $ Cache.insert c (key, version) x
+                liftIO $ Cache.insert c key version x
                 return x
 
 evalRuleDefinition
