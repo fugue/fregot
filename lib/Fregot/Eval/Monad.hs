@@ -103,7 +103,7 @@ instance PP.Pretty PP.Sem a => PP.Pretty PP.Sem (Row a) where
 
 type Document a = [Row a]
 
-type EvalCache = Cache (PackageName, Var) (Maybe Value, Value)
+type EvalCache = Cache (PackageName, Var) Value
 
 --------------------------------------------------------------------------------
 

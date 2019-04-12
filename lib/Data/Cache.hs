@@ -12,7 +12,7 @@ import           Control.Lens.TH (makeLenses)
 import           Data.Hashable   (Hashable)
 import qualified Data.HashPSQ    as HashPSQ
 import           Data.Int        (Int64)
-import           Data.Maybe      (isNothing)
+import           Data.Maybe      (isJust)
 import           Prelude         hiding (lookup)
 
 type Priority = Int64
@@ -39,14 +39,12 @@ trim c
         & size %~ pred
         & queue %~ HashPSQ.deleteMin
 
-insert :: (Hashable k, Ord k) => k -> (Maybe v -> v) -> Cache k v -> Cache k v
-insert key f c = trim $!
-    let (grew, q) = HashPSQ.alter
-            (\mbOld ->
-                (isNothing mbOld, Just (c ^. tick, f (snd <$> mbOld))))
-            key (c ^. queue)
+insert :: (Hashable k, Ord k) => k -> v -> Cache k v -> Cache k v
+insert key val c = trim $!
+    let (mbOld, q) = HashPSQ.unsafeInsertIncreasePriorityView
+                        key (c ^. tick) val (c ^. queue)
     in c
-        & size %~ (if grew then succ else id)
+        & size %~ (if isJust mbOld then id else succ)
         & tick %~ succ
         & queue .~ q
 

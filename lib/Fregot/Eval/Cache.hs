@@ -22,7 +22,7 @@ module Fregot.Eval.Cache
     , Cache
     , new
     , bump
-    , push
+    , insert
     , lookup
     ) where
 
@@ -37,12 +37,8 @@ import           Prelude             hiding (lookup)
 -- | We just need to be able to bump this.
 type Version = Int
 
--- NOTE(jaspervdj): We should probably just bite the bullet and have a mutable
--- vector here that we can grow.
-data Fifo v = Reversed ![v] | Ordered ![v]
-
 data Cache k v = Cache
-    { _cache   :: !(IORef (C.Cache (k, Version) (Fifo v)))
+    { _cache   :: !(IORef (C.Cache (k, Version) v))
     , _version :: !(IORef Version)
     }
 
@@ -56,21 +52,11 @@ bump :: Cache k v -> IO Version
 bump c = IORef.atomicModifyIORef' (c ^. version) $ \v -> (succ v, v)
 
 -- | Add a new row.
-push :: (Hashable k, Ord k) => Cache k v -> (k, Version) -> v -> IO ()
-push c k row = IORef.atomicModifyIORef_ (c ^. cache) $ C.insert k $
-    \mbOld -> case mbOld of
-        Nothing              -> Reversed [row]
-        Just (Reversed rows) -> Reversed (row : rows)
-        -- Already fully computed, should not happen.
-        Just (Ordered rows)  -> Ordered rows
+insert :: (Hashable k, Ord k) => Cache k v -> (k, Version) -> v -> IO ()
+insert c k val = IORef.atomicModifyIORef_ (c ^. cache) $ C.insert k val
 
-lookup :: (Hashable k, Ord k) => Cache k v -> (k, Version) -> IO (Maybe [v])
+lookup :: (Hashable k, Ord k) => Cache k v -> (k, Version) -> IO (Maybe v)
 lookup c k = IORef.atomicModifyIORef' (c ^. cache) $ \c0 ->
     case C.lookup k c0 of
-        Just (Ordered rows, c1)  -> (c1, Just rows)
-        Just (Reversed rows, c1) -> (C.insert k revOnce c1, Just rows)
-        _                        -> (c0, Nothing)
-  where
-    revOnce Nothing             = Reversed []
-    revOnce (Just (Ordered o))  = Ordered o
-    revOnce (Just (Reversed r)) = Ordered (reverse r)
+        Just (v, c1)  -> (c1, Just v)
+        _             -> (c0, Nothing)

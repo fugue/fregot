@@ -268,7 +268,7 @@ evalCompiledRule
     -> EvalM Value
 evalCompiledRule callerSource crule mbIndex = case crule ^. ruleKind of
     -- Complete definitions
-    CompleteRule -> requireComplete (crule ^. ruleAnn) $
+    CompleteRule -> cached $ requireComplete (crule ^. ruleAnn) $
         case crule ^. ruleDefault of
             -- If there is a default, then we fill it in if the rule yields no
             -- rows.
@@ -293,7 +293,13 @@ evalCompiledRule callerSource crule mbIndex = case crule ^. ruleKind of
   where
     -- Standard branching evaluation of rule definitions, with caching.
     branches :: EvalM (Maybe Value, Value)
-    branches = do
+    branches = branch
+        [ evalRuleDefinition callerSource def mbIndex
+        | def <- crule ^. ruleDefs
+        ]
+
+    cached :: EvalM Value -> EvalM Value
+    cached computeValue = do
         pkgname <- view (package . Package.packageName)
         let key = (pkgname, crule ^. ruleName)
 
@@ -301,17 +307,11 @@ evalCompiledRule callerSource crule mbIndex = case crule ^. ruleKind of
         c        <- view cache
         mbResult <- liftIO $ Cache.lookup c (key, version)
         case mbResult of
-            Just rows -> do
-                -- NOTE(jaspervdj): The problem is that it really depends on
-                -- whether we are evaluating the rule with out without index.
-                branch [return v | v <- rows]
-            Nothing   -> branch
-                [ do
-                    x <- evalRuleDefinition callerSource def mbIndex
-                    liftIO $ Cache.push c (key, version) x
-                    return x
-                | def <- crule ^. ruleDefs
-                ]
+            Just val -> return val
+            Nothing  -> do
+                x <- computeValue
+                liftIO $ Cache.insert c (key, version) x
+                return x
 
 evalRuleDefinition
     :: SourceSpan -> RuleDefinition SourceSpan -> Maybe Value
