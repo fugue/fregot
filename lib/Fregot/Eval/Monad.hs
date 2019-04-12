@@ -13,7 +13,10 @@ module Fregot.Eval.Monad
     , Row (..), rowContext, rowValue
     , Document
 
+    , EvalCache
+
     , Environment (..), packages, package, inputDoc, imports
+    , cache, cacheVersion
 
     , EvalException (..)
 
@@ -53,9 +56,9 @@ import           Control.Lens              (view, (&), (.~), (^.))
 import           Control.Lens.TH           (makeLenses)
 import           Control.Monad.Reader      (MonadReader (..), ask)
 import           Control.Monad.State       (MonadState (..), modify)
+import           Control.Monad.Trans       (MonadIO (..))
 import           Control.Monad.Stream      (Stream)
 import qualified Control.Monad.Stream      as Stream
-import           Control.Monad.Trans       (liftIO)
 import qualified Data.HashMap.Strict       as HMS
 import           Data.List                 (find)
 import           Data.Unification          (Unification)
@@ -65,6 +68,8 @@ import           Fregot.Compile.Package    (CompiledPackage)
 import qualified Fregot.Compile.Package    as Package
 import           Fregot.Error              (Error)
 import qualified Fregot.Error              as Error
+import           Fregot.Eval.Cache         (Cache)
+import qualified Fregot.Eval.Cache         as Cache
 import           Fregot.Eval.Value
 import           Fregot.Prepare.Ast
 import           Fregot.PrettyPrint        ((<$$>))
@@ -98,17 +103,18 @@ instance PP.Pretty PP.Sem a => PP.Pretty PP.Sem (Row a) where
 
 type Document a = [Row a]
 
+type EvalCache = Cache (PackageName, Var) Value
+
 --------------------------------------------------------------------------------
 
 data Environment = Environment
-    { _packages :: !(HMS.HashMap PackageName CompiledPackage)
-
-    -- NOTE(jaspervdj): We'll need to update package as well if call a rule from
-    -- another package.
-    , _package  :: !CompiledPackage
-    , _inputDoc :: !Value
-    , _imports  :: !(Imports SourceSpan)
-    } deriving (Show)
+    { _packages     :: !(HMS.HashMap PackageName CompiledPackage)
+    , _package      :: !CompiledPackage
+    , _inputDoc     :: !Value
+    , _imports      :: !(Imports SourceSpan)
+    , _cache        :: !EvalCache
+    , _cacheVersion :: !Cache.Version
+    }
 
 $(makeLenses ''Environment)
 
@@ -159,6 +165,10 @@ instance MonadState Context EvalM where
 
     state f = EvalM $ \_ ctx0 -> let (x, ctx1) = f ctx0 in return (Row ctx1 x)
     {-# INLINE state #-}
+
+instance MonadIO EvalM where
+    liftIO mio = EvalM $ \_ ctx -> fmap (Row ctx) (liftIO mio)
+    {-# INLINE liftIO #-}
 
 runEvalM :: Environment -> Context -> EvalM a -> IO (Either Error (Document a))
 runEvalM env0 ctx0 (EvalM f) = catch

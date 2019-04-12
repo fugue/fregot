@@ -6,7 +6,7 @@
 {-# LANGUAGE TemplateHaskell     #-}
 module Fregot.Compile.Package
     ( Safe (..)
-    , CompiledPackage
+    , CompiledPackage, packageName, packageRules
     , lookup
     , rules
     , compilePackage

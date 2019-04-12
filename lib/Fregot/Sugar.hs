@@ -90,6 +90,7 @@ instance Binary a => Binary (Module a)
 data Var = Var {-# UNPACK #-} !Unique {-# UNPACK #-} !T.Text
     deriving Eq via (Uniquely Var)
     deriving Hashable via (Uniquely Var)
+    deriving Ord via (Uniquely Var)
 
 instance Show Var where
     show = show . unVar

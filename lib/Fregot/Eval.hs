@@ -33,6 +33,7 @@ import           Control.Lens              (review, use, view, (%=), (.=), (.~),
                                             (^.), (^?))
 import           Control.Monad.Extended    (foldM, forM, zipWithM_)
 import           Control.Monad.Reader      (local)
+import           Control.Monad.Trans       (liftIO)
 import qualified Data.HashMap.Strict       as HMS
 import qualified Data.HashSet              as HS
 import           Data.Maybe                (fromMaybe, isNothing)
@@ -40,6 +41,7 @@ import qualified Data.Unification          as Unification
 import qualified Data.Vector.Extended      as V
 import qualified Fregot.Compile.Package    as Package
 import           Fregot.Eval.Builtins
+import qualified Fregot.Eval.Cache         as Cache
 import           Fregot.Eval.Monad
 import qualified Fregot.Eval.Number        as Number
 import           Fregot.Eval.Value
@@ -266,7 +268,7 @@ evalCompiledRule
     -> EvalM Value
 evalCompiledRule callerSource crule mbIndex = case crule ^. ruleKind of
     -- Complete definitions
-    CompleteRule -> requireComplete (crule ^. ruleAnn) $
+    CompleteRule -> cached $ requireComplete (crule ^. ruleAnn) $
         case crule ^. ruleDefault of
             -- If there is a default, then we fill it in if the rule yields no
             -- rows.
@@ -289,11 +291,28 @@ evalCompiledRule callerSource crule mbIndex = case crule ^. ruleKind of
     _ ->
         snd <$> branches
   where
-    -- Standard branching evaluation of rule definitions.
+    -- Standard branching evaluation of rule definitions, with caching.
+    branches :: EvalM (Maybe Value, Value)
     branches = branch
         [ evalRuleDefinition callerSource def mbIndex
         | def <- crule ^. ruleDefs
         ]
+
+    -- This is currently only used for complete rules.
+    cached :: EvalM Value -> EvalM Value
+    cached computeValue = do
+        pkgname <- view (package . Package.packageName)
+        let key = (pkgname, crule ^. ruleName)
+
+        version  <- view cacheVersion
+        c        <- view cache
+        mbResult <- liftIO $ Cache.lookup c key version
+        case mbResult of
+            Just val -> return val
+            Nothing  -> do
+                x <- computeValue
+                liftIO $ Cache.insert c key version x
+                return x
 
 evalRuleDefinition
     :: SourceSpan -> RuleDefinition SourceSpan -> Maybe Value
@@ -397,18 +416,26 @@ evalRuleBody lits0 final = go lits0
     trueish (BoolV False) = False
     trueish _             = True
 
-    localWiths []       mx = mx
-    localWiths (w : ws) mx = do
-        val    <- evalTerm (w ^. withAs)
-        input  <- view inputDoc
-        input' <- case updateObject (w ^. withPath) val input of
-            Nothing -> raise' (w ^. withAnn) "with error" $
-                "Could not update input document." <$$>
-                "Path:" <$$>
-                PP.ind (PP.pretty (NestedVar $ w ^. withPath))
-            Just i  -> return i
+    localWiths []    mx = mx
+    localWiths withs mx = do
+        -- Since we changed the input, we need to bump up the cache.  This will
+        -- also be the case when we modify `data`.
+        let updateInput input0 [] = do
+                c <- view cache
+                v <- liftIO (Cache.bump c)
+                local (cacheVersion .~ v) $ local (inputDoc .~ input0) $ mx
+            updateInput input0 (w : ws) = do
+                val    <- evalTerm (w ^. withAs)
+                input1 <- case updateObject (w ^. withPath) val input0 of
+                    Nothing -> raise' (w ^. withAnn) "with error" $
+                        "Could not update input document." <$$>
+                        "Path:" <$$>
+                        PP.ind (PP.pretty (NestedVar $ w ^. withPath))
+                    Just i  -> return i
+                updateInput input1 ws
 
-        local (inputDoc .~ input') $ localWiths ws mx
+        input <- view inputDoc
+        updateInput input withs
 
 evalStatement :: Statement SourceSpan -> EvalM Value
 evalStatement (UnifyS source x y) = suspend source $ do

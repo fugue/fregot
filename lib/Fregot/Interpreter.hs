@@ -45,6 +45,8 @@ import qualified Fregot.Compile.Package    as Compile
 import           Fregot.Error              (Error, catchIO)
 import qualified Fregot.Error              as Error
 import qualified Fregot.Eval               as Eval
+import qualified Fregot.Eval.Cache         as Cache
+import           Fregot.Eval.Monad         (EvalCache)
 import           Fregot.Eval.Value         (emptyObject)
 import           Fregot.Interpreter.Bundle
 import qualified Fregot.Parser             as Parser
@@ -63,12 +65,14 @@ import           System.FilePath           (takeExtension)
 type InterpreterM a = ParachuteT Error IO a
 
 data Handle = Handle
-    { _sources  :: !Sources.Handle
+    { _sources      :: !Sources.Handle
     -- | List of modules, and files we loaded them from.  Grouped by package
     -- name.
-    , _modules  :: !(IORef (HMS.HashMap PackageName ModuleBatch))
+    , _modules      :: !(IORef (HMS.HashMap PackageName ModuleBatch))
     -- | Map of compiled packages.  Dynamically generated from the modules.
-    , _compiled :: !(IORef (HMS.HashMap PackageName CompiledPackage))
+    , _compiled     :: !(IORef (HMS.HashMap PackageName CompiledPackage))
+    , _cache        :: !EvalCache
+    , _cacheVersion :: !Cache.Version
     }
 
 $(makeLenses ''Handle)
@@ -77,8 +81,10 @@ newHandle
     :: Sources.Handle
     -> IO Handle
 newHandle _sources = do
-    _modules  <- liftIO $ IORef.newIORef HMS.empty
-    _compiled <- liftIO $ IORef.newIORef HMS.empty
+    _modules      <- liftIO $ IORef.newIORef HMS.empty
+    _compiled     <- liftIO $ IORef.newIORef HMS.empty
+    _cache        <- liftIO $ Cache.new
+    _cacheVersion <- liftIO $ Cache.bump _cache
     return Handle {..}
 
 insertModule
@@ -211,7 +217,15 @@ eval
 eval h ctx pkgname mx = do
     comp <- liftIO $ IORef.readIORef (h ^. compiled)
     pkg  <- readCompiledPackage h pkgname
-    let env = Eval.Environment comp pkg emptyObject mempty
+    let env = Eval.Environment
+            { Eval._packages     = comp
+            , Eval._package      = pkg
+            , Eval._inputDoc     = emptyObject
+            , Eval._imports      = mempty
+            , Eval._cache        = h ^. cache
+            , Eval._cacheVersion = h ^. cacheVersion
+            }
+
     either fatal return =<< liftIO (Eval.runEvalM env ctx mx)
 
 evalExpr
@@ -239,7 +253,14 @@ mkStepState h pkgname expr = do
     pkg   <- readCompiledPackage h pkgname
     pterm <- Prepare.prepareExpr expr
     cterm <- Compile.compileTerm pkg mempty pterm
-    let env = Eval.Environment comp pkg emptyObject mempty
+    let env = Eval.Environment
+            { Eval._packages     = comp
+            , Eval._package      = pkg
+            , Eval._inputDoc     = emptyObject
+            , Eval._imports      = mempty
+            , Eval._cache        = h ^. cache
+            , Eval._cacheVersion = h ^. cacheVersion
+            }
     return $ Eval.mkStepState env (Eval.evalTerm cterm)
 
 step
