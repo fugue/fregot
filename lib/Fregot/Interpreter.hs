@@ -60,7 +60,7 @@ import qualified Fregot.Sources            as Sources
 import           Fregot.Sources.SourceSpan (SourceSpan)
 import           Fregot.Sugar              (PackageName, Var)
 import qualified Fregot.Sugar              as Sugar
-import           System.FilePath           (takeExtension)
+import           System.FilePath.Extended  (listExtensions)
 
 type InterpreterM a = ParachuteT Error IO a
 
@@ -128,11 +128,12 @@ loadBundle h path = do
                 \(sourcep, modul) -> insertModule h sourcep modul
 
 loadModuleOrBundle :: Handle -> FilePath -> InterpreterM ()
-loadModuleOrBundle h path = case takeExtension path of
-    ".rego"  -> loadModule h path
-    ".regob" -> loadBundle h path
-    ext      -> fatal $ Error.mkErrorNoMeta "interpreter" $
-        "Unknown rego file extension:" <+> PP.pretty ext
+loadModuleOrBundle h path = case listExtensions path of
+    "rego" : _            -> loadModule h path
+    "bundle" : "rego" : _ -> loadBundle h path
+    _                     -> fatal $ Error.mkErrorNoMeta "interpreter" $
+        "Unknown rego file extension:" <+> PP.pretty path <+>
+        ", expected .rego or .bundle.rego"
 
 saveBundle :: Handle -> FilePath -> InterpreterM ()
 saveBundle h path = liftIO $ do

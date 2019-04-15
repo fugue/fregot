@@ -79,6 +79,7 @@ Library
     System.Console.Haskeline.Extended
     System.Directory.Find
     System.IO.Extended
+    System.FilePath.Extended
     Text.Parsec.Extended
 
     Paths_fregot
