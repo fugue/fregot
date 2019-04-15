@@ -9,6 +9,7 @@
 module Fregot.Sugar
     ( PackageName (..)
     , packageNameFromString, packageNameFromText
+    , dataPackageNameFromString
 
     , Import (..), importAnn, importPackage, importAs
     , Module (..), modulePackage, moduleImports, modulePolicy
@@ -70,6 +71,13 @@ packageNameFromText = prism'
         let parts = T.split (== '.') txt
         guard $ not $ any T.null parts
         return $ PackageName parts)
+
+-- | Like 'packageNameFromString', but with "data." prepended.
+dataPackageNameFromString :: Prism' String PackageName
+dataPackageNameFromString = prependData . packageNameFromString
+  where
+    prependData :: Prism' String String
+    prependData = prism' ("data." ++) (L.stripPrefix "data.")
 
 data Import a = Import
     { _importAnn     :: !a
