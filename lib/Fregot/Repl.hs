@@ -219,6 +219,7 @@ run h = do
                 [ Hl.completeFilename
                 , completeBuiltins h
                 , completeRules h
+                , completePackages h
                 ]
             }
 
@@ -355,6 +356,12 @@ completeRules h = Hl.completeDictionary completeWhitespace $ do
     pkg     <- IORef.readIORef (h ^. openPackage)
     results <- runInterpreter h $ \i -> Interpreter.readPackageRules i pkg
     return $ map varToString $ fromMaybe [] results
+
+completePackages :: Handle -> Hl.CompletionFunc IO
+completePackages h = Hl.completeDictionary completeWhitespace $ do
+    pkgs <- fromMaybe [] <$> runInterpreter h Interpreter.readPackages
+    let asData pkg = "data." <> review packageNameFromString pkg <> "."
+    return (map asData pkgs)
 
 completeWhitespace :: String
 completeWhitespace = "(){}=;:+-/* \t\n"

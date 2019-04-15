@@ -5,6 +5,7 @@ module Fregot.Interpreter
     ( InterpreterM
     , Handle
     , newHandle
+    , readPackages
     , readPackageRules
     , readAllRules
     , loadModule
@@ -170,6 +171,12 @@ readCompiledPackage h pkgname = do
             liftIO $ IORef.atomicModifyIORef_ (h ^. compiled) $
                 HMS.insert pkgname cp
             return cp
+
+-- | Get a list of loaded packages.
+readPackages :: Handle -> InterpreterM [PackageName]
+readPackages h = do
+    pkgs <- liftIO $ IORef.readIORef (h ^. compiled)
+    return (HMS.keys pkgs)
 
 -- | Read all rules in a specific package.
 readPackageRules :: Handle -> PackageName -> InterpreterM [Var]
