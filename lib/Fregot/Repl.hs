@@ -11,11 +11,13 @@ module Fregot.Repl
     , metaCommands
     ) where
 
-import           Control.Lens                      (preview, review, (^.))
+import           Control.Lens                      (preview, review, (^.), (^?))
 import           Control.Lens.TH                   (makeLenses)
-import           Control.Monad.Extended            (foldMapM, forM_, void, when)
+import           Control.Monad.Extended            (foldMapM, forM_, guard,
+                                                    void, when)
 import           Control.Monad.Parachute
 import           Control.Monad.Trans               (liftIO)
+import           Data.Bifunctor                    (bimap)
 import           Data.Char                         (isSpace)
 import           Data.Functor                      (($>))
 import qualified Data.HashMap.Strict.Extended      as HMS
@@ -220,6 +222,7 @@ run h = do
                 , completeBuiltins h
                 , completeRules h
                 , completePackages h
+                , completePackageRules h
                 ]
             }
 
@@ -361,6 +364,22 @@ completePackages :: Handle -> Hl.CompletionFunc IO
 completePackages h = Hl.completeDictionary completeWhitespace $ do
     pkgs <- fromMaybe [] <$> runInterpreter h Interpreter.readPackages
     return (map ((<> ".") . review dataPackageNameFromString) pkgs)
+
+completePackageRules :: Handle -> Hl.CompletionFunc IO
+completePackageRules h = Hl.completeWord Nothing completeWhitespace $ \str0 -> do
+    let (prefix, pkgname) =
+            bimap reverse (reverse . drop 1) $
+            break (== '.') (reverse str0)
+    case pkgname ^? dataPackageNameFromString of
+        Nothing      -> return []
+        Just pkg -> do
+            rules <- runInterpreter h $ \i -> Interpreter.readPackageRules i pkg
+            return $ do
+                rule <- fromMaybe [] rules
+                let r = varToString rule
+                    text = review dataPackageNameFromString pkg <> "." <> r
+                guard $ prefix `L.isPrefixOf` r
+                return (Hl.Completion text text False)
 
 completeWhitespace :: String
 completeWhitespace = "(){}=;:+-/* \t\n"
