@@ -360,8 +360,7 @@ completeRules h = Hl.completeDictionary completeWhitespace $ do
 completePackages :: Handle -> Hl.CompletionFunc IO
 completePackages h = Hl.completeDictionary completeWhitespace $ do
     pkgs <- fromMaybe [] <$> runInterpreter h Interpreter.readPackages
-    let asData pkg = "data." <> review packageNameFromString pkg <> "."
-    return (map asData pkgs)
+    return (map ((<> ".") . review dataPackageNameFromString) pkgs)
 
 completeWhitespace :: String
 completeWhitespace = "(){}=;:+-/* \t\n"
