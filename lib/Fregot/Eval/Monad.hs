@@ -194,7 +194,7 @@ mkStepState env0 (EvalM f) = StepState
 
 data Step a
     = Yield (Row a) (StepState a)
-    | Suspend SourceSpan (StepState a)
+    | Suspend (SourceSpan, Stack.StackTrace) (StepState a)
     | Done
     -- NOTE(jaspervdj): We can recover the latest 'StepState' here?
     | Error Error
@@ -211,7 +211,7 @@ stepEvalM ss = catch
                 return $ Yield r (StepState ns (r ^. rowContext) env)
             Stream.Suspend (i, ctx, stck) ns ->
                 let env' = env & stack .~ stck in
-                return $ Suspend i (StepState ns ctx env')
+                return $ Suspend (i, stck) (StepState ns ctx env')
             Stream.Done         -> return Done)
     (\(EvalException err) -> return (Error err))
 

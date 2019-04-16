@@ -28,6 +28,7 @@ import           Data.Maybe                        (fromMaybe, isNothing)
 import qualified Data.Text                         as T
 import           Data.Version                      (showVersion)
 import qualified Fregot.Error                      as Error
+import qualified Fregot.Error.Stack                as Stack
 import qualified Fregot.Eval                       as Eval
 import qualified Fregot.Eval.Builtins              as Builtins
 import qualified Fregot.Interpreter                as Interpreter
@@ -49,9 +50,11 @@ import qualified System.Directory                  as Directory
 import           System.FilePath                   ((</>))
 import qualified System.IO.Extended                as IO
 
+type Suspension = (SourceSpan, Stack.StackTrace)
+
 data Mode
     = StartSteppingMode
-    | SteppingMode (Eval.StepState Eval.Value)
+    | SteppingMode (Maybe Suspension) (Eval.StepState Eval.Value)
     | RegularMode
 
 data Handle = Handle
@@ -159,14 +162,14 @@ processInput h input = do
             mbStepState <- runInterpreter h $ \i ->
                 Interpreter.mkStepState i pkgname expr
             forM_ mbStepState $ \stepState -> do
-                IORef.writeIORef (h ^. mode) (SteppingMode stepState)
+                IORef.writeIORef (h ^. mode) (SteppingMode Nothing stepState)
             processStep h
 
         Just (Right expr) -> do
             PP.hPutSemDoc IO.stdout $ PP.pretty expr
             let ctx = case emode of
-                    SteppingMode state -> state ^. Eval.ssContext
-                    _                  -> Eval.emptyContext
+                    SteppingMode _ state -> state ^. Eval.ssContext
+                    _                    -> Eval.emptyContext
             mbRows <- runInterpreter h $ \i ->
                 Interpreter.evalExpr i ctx pkgname expr
             forM_ mbRows $ \rows -> forM_ rows $ \row ->
@@ -179,9 +182,9 @@ processStep :: Handle -> IO ()
 processStep h = do
     emode <- IORef.readIORef (h ^. mode)
     case emode of
-        RegularMode        -> return ()
-        StartSteppingMode  -> return ()
-        SteppingMode state -> do
+        RegularMode          -> return ()
+        StartSteppingMode    -> return ()
+        SteppingMode _ state -> do
             mbStep <- runInterpreter h $ \i -> Interpreter.step i state
             case mbStep of
                 Nothing                      ->
@@ -191,21 +194,30 @@ processStep h = do
                     IORef.writeIORef (h ^. mode) StartSteppingMode
                 Just (Interpreter.Yield x nstate)   -> do
                     PP.hPutSemDoc IO.stdout $ prefix "=" <+> PP.pretty x
-                    IORef.writeIORef (h ^. mode) (SteppingMode nstate)
+                    IORef.writeIORef (h ^. mode) (SteppingMode Nothing nstate)
                     processStep h
-                Just (Interpreter.Suspend loc nstate) -> do
+                Just (Interpreter.Suspend suspension nstate) -> do
                     sauce <- IORef.readIORef (h ^. sources)
-                    PP.hPutSemDoc IO.stdout $
-                        case SourceSpan.citeSourceSpan PP.hint sauce loc of
-                            Nothing -> "at" <+> PP.pretty loc
-                            Just d  -> d
-                    IORef.writeIORef (h ^. mode) (SteppingMode nstate)
+                    PP.hPutSemDoc IO.stdout $ prettySnippet sauce (fst suspension)
+                    IORef.writeIORef (h ^. mode) (SteppingMode (Just suspension) nstate)
                 Just (Interpreter.Error e)   -> do
                     PP.hPutSemDoc IO.stdout $ prefix "error"
                     sauce <- IORef.readIORef (h ^. sources)
                     Error.hPutErrors IO.stderr sauce Error.TextFmt [e]
   where
     prefix = (PP.hint "(debug)" <+>)
+
+prettySnippet :: Sources.Sources -> SourceSpan -> PP.SemDoc
+prettySnippet sauce loc = case SourceSpan.citeSourceSpan PP.hint sauce loc of
+    Nothing -> "at" <+> PP.pretty loc
+    Just d  -> d
+
+prettySuspension :: Sources.Sources -> Suspension -> PP.SemDoc
+prettySuspension sauce (loc, stack) = PP.vcat2 $
+    [prettySnippet sauce loc] ++
+    (if Stack.null stack
+        then []
+        else ["Stack trace:" <$$> PP.ind (PP.pretty stack)])
 
 run :: Handle -> IO ()
 run h = do
@@ -267,7 +279,7 @@ run h = do
             review packageNameFromString pkg <>
             (case emode of
                 RegularMode       -> ""
-                SteppingMode _    -> "(debug)"
+                SteppingMode _ _  -> "(debug)"
                 StartSteppingMode -> "(debug)") <>
             "% "
 
@@ -291,7 +303,7 @@ metaCommands =
         liftIO $ IORef.atomicModifyIORef_ (h ^. mode) $ \case
             RegularMode       -> StartSteppingMode
             StartSteppingMode -> RegularMode
-            SteppingMode _    -> RegularMode
+            SteppingMode _ _  -> RegularMode
         return True
 
     , MetaCommand ":help" "show this info" $ \_ _ -> do
@@ -335,15 +347,6 @@ metaCommands =
                 Just ll -> load h ll
                 Nothing -> IO.hPutStrLn IO.stderr "No files loaded" $> True
 
-    , MetaCommand ":stack" "show the current stack trace" $ \h _ -> liftIO $ do
-        emode <- IORef.readIORef (h ^. mode)
-        PP.hPutSemDoc IO.stdout $ case emode of
-            RegularMode       -> "only available when debugging"
-            StartSteppingMode -> "debugging hasn't started yet"
-            SteppingMode e    -> PP.pretty $
-                e ^. Eval.ssEnvironment . Eval.stack
-        return True
-
     , MetaCommand ":test" "run tests in the current package" $
         \h _ -> liftIO $ do
             pkg     <- IORef.readIORef (h ^. openPackage)
@@ -353,6 +356,15 @@ metaCommands =
             sauce <- IORef.readIORef (h ^. sources)
             forM_ results (Test.printTestResults IO.stdout sauce)
             return True
+
+    , MetaCommand ":where" "print your location" $ \h _ -> liftIO $ do
+        emode <- IORef.readIORef (h ^. mode)
+        case emode of
+            SteppingMode (Just suspension) _ -> do
+                sauce <- IORef.readIORef (h ^. sources)
+                PP.hPutSemDoc IO.stdout $ prettySuspension sauce suspension
+            _ -> PP.hPutSemDoc IO.stderr "only available when in debugging"
+        return True
     ]
   where
     load h path = do
