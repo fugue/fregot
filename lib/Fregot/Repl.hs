@@ -293,6 +293,7 @@ metaCommands =
             StartSteppingMode -> RegularMode
             SteppingMode _    -> RegularMode
         return True
+
     , MetaCommand ":help" "show this info" $ \_ _ -> do
         liftIO $ PP.hPutSemDoc IO.stderr $
             "Enter an expression to evaluate it." <$$>
@@ -306,6 +307,7 @@ metaCommands =
             mempty <$$>
             "Shortcuts are supported for commands, e.g. `:l` for `:load`."
         return True
+
     , MetaCommand ":load" "load a rego file, e.g. `:load foo.rego`" $
         \h args -> case args of
             _ | [path] <- T.unpack <$> args -> liftIO $ load h path
@@ -313,6 +315,7 @@ metaCommands =
                 liftIO $ IO.hPutStrLn IO.stderr $
                     ":load takes one path argument"
                 return True
+
     , MetaCommand ":open" "open a different package, e.g. `:open foo`" $
         \h args -> case args of
             _ | [Just pkg] <- preview packageNameFromText <$> args ->
@@ -322,13 +325,25 @@ metaCommands =
                 liftIO $ IO.hPutStrLn IO.stderr $
                     ":open takes a package name as argument"
                 return True
+
     , MetaCommand ":quit" "exit the repl" $ \_ _ -> return False
+
     , MetaCommand ":reload" "reload the file from the last `:load`" $
         \h _ -> liftIO $ do
             mbLastLoad <- IORef.readIORef (h ^. lastLoad)
             case mbLastLoad of
                 Just ll -> load h ll
                 Nothing -> IO.hPutStrLn IO.stderr "No files loaded" $> True
+
+    , MetaCommand ":stack" "show the current stack trace" $ \h _ -> liftIO $ do
+        emode <- IORef.readIORef (h ^. mode)
+        PP.hPutSemDoc IO.stdout $ case emode of
+            RegularMode       -> "only available when debugging"
+            StartSteppingMode -> "debugging hasn't started yet"
+            SteppingMode e    -> PP.pretty $
+                e ^. Eval.ssEnvironment . Eval.stack
+        return True
+
     , MetaCommand ":test" "run tests in the current package" $
         \h _ -> liftIO $ do
             pkg     <- IORef.readIORef (h ^. openPackage)

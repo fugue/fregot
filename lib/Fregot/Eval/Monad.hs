@@ -16,7 +16,7 @@ module Fregot.Eval.Monad
     , EvalCache
 
     , Environment (..), packages, package, inputDoc, imports
-    , cache, cacheVersion
+    , cache, cacheVersion, stack
 
     , EvalException (..)
 
