@@ -19,6 +19,7 @@ Library
     Fregot.Compile.Order
     Fregot.Compile.Package
     Fregot.Error
+    Fregot.Error.Stack
     Fregot.Eval
     Fregot.Eval.Builtins
     Fregot.Eval.Cache
