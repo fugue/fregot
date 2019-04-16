@@ -8,3 +8,6 @@ fregot ([34meval error[0m):
        [31m^^^^^^^^^^^^^^[0m
 
   Unkown variable: k_0
+
+  Stack trace:
+    rule [33mtest_kv[0m at tests:1:1

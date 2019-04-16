@@ -47,18 +47,20 @@ module Fregot.Eval.Monad
     , lookupPackage
     , withPackage
 
+    , pushStackFrame
+
     , raise
     , raise'
     ) where
 
 import           Control.Exception         (Exception, catch, throwIO)
-import           Control.Lens              (view, (&), (.~), (^.))
+import           Control.Lens              (view, (%~), (&), (.~), (^.))
 import           Control.Lens.TH           (makeLenses)
 import           Control.Monad.Reader      (MonadReader (..), ask)
 import           Control.Monad.State       (MonadState (..), modify)
-import           Control.Monad.Trans       (MonadIO (..))
 import           Control.Monad.Stream      (Stream)
 import qualified Control.Monad.Stream      as Stream
+import           Control.Monad.Trans       (MonadIO (..))
 import qualified Data.HashMap.Strict       as HMS
 import           Data.List                 (find)
 import           Data.Unification          (Unification)
@@ -68,6 +70,7 @@ import           Fregot.Compile.Package    (CompiledPackage)
 import qualified Fregot.Compile.Package    as Package
 import           Fregot.Error              (Error)
 import qualified Fregot.Error              as Error
+import qualified Fregot.Error.Stack        as Stack
 import           Fregot.Eval.Cache         (Cache)
 import qualified Fregot.Eval.Cache         as Cache
 import           Fregot.Eval.Value
@@ -114,6 +117,7 @@ data Environment = Environment
     , _imports      :: !(Imports SourceSpan)
     , _cache        :: !EvalCache
     , _cacheVersion :: !Cache.Version
+    , _stack        :: !Stack.StackTrace
     }
 
 $(makeLenses ''Environment)
@@ -311,10 +315,14 @@ lookupPackage pkgname = do
 withPackage :: CompiledPackage -> EvalM a -> EvalM a
 withPackage pkg = local (package .~ pkg)
 
+pushStackFrame :: Stack.StackFrame -> EvalM a -> EvalM a
+pushStackFrame frame = local (stack %~ Stack.push frame)
+
 -- | Raise an error.  We currently don't allow catching exceptions, but they are
 -- handled at the top level `runEvalM` and converted to an `Either`.
 raise :: Error -> EvalM a
-raise err = EvalM (\_ _ -> liftIO $ throwIO (EvalException err))
+raise err = EvalM $ \env _ ->
+    liftIO $ throwIO $ EvalException $ err & Error.stack .~ (env ^. stack)
 
 raise' :: SourceSpan -> PP.SemDoc -> PP.SemDoc -> EvalM a
 raise' source title body = raise (Error.mkError "eval" source title body)

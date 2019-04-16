@@ -13,7 +13,7 @@ module Fregot.Error
 
     , Severity (..)
     , Subsystem
-    , Error (..), severity, subsystem, sourceSpans, details, hints
+    , Error (..), severity, subsystem, sourceSpans, details, hints, stack
 
     , Errors
     , severe
@@ -42,6 +42,7 @@ import           Data.List.NonEmpty        (NonEmpty)
 import           Data.Monoid               ((<>))
 import           Data.Ord                  (comparing)
 import qualified Data.Text                 as T
+import qualified Fregot.Error.Stack        as Stack
 import           Fregot.PrettyPrint        ((<$$>), (<+>), (?<+>))
 import qualified Fregot.PrettyPrint        as PP
 import qualified Fregot.Sources            as Sources
@@ -77,6 +78,7 @@ data Error = Error
   , _sourceSpans :: ![SourceSpanMessage]
   , _details     :: ![PP.SemDoc]
   , _hints       :: ![PP.SemDoc]
+  , _stack       :: !Stack.StackTrace
   } deriving (Show, Generic)
 
 $(makeLenses ''SourceSpanMessage)
@@ -125,7 +127,10 @@ prettyError sources err =
     PP.ind (PP.vcat2 $
         [prettySourceSpanMessage sources x | x <- err ^. sourceSpans] ++
         (err ^. details) ++
-        [PP.hint "Hint:" <$$> PP.ind x | x <- err ^. hints])
+        [PP.hint "Hint:" <$$> PP.ind x | x <- err ^. hints] ++
+        (if Stack.null (err ^. stack)
+            then []
+            else ["Stack trace:" <$$> PP.ind (PP.pretty (err ^. stack))]))
 
 prettySourceSpanMessage
     :: Sources.Sources -> SourceSpanMessage -> PP.SemDoc
@@ -140,6 +145,7 @@ fromParsecError sev sp ss e = Error
     , _subsystem   = "parse"
     , _details     = []
     , _hints       = []
+    , _stack       = Stack.empty
     , _sourceSpans = return $ SourceSpanMessage
         { _sourceSpan = ss
         , _title      = "parse failed"
@@ -173,6 +179,7 @@ mkErrorNoMeta sub body' = Error
     , _details     = [body']
     , _hints       = []
     , _sourceSpans = []
+    , _stack       = Stack.empty
     }
 
 mkMultiError :: Subsystem -> PP.SemDoc -> [(SourceSpan, PP.SemDoc)] -> Error
@@ -181,6 +188,7 @@ mkMultiError sub title' bodies = Error
     , _subsystem   = sub
     , _details     = []
     , _hints       = []
+    , _stack       = Stack.empty
     , _sourceSpans = do
         (ss, body') <- bodies
         return SourceSpanMessage
@@ -207,6 +215,7 @@ fromIOException e = Error
     , _sourceSpans = []
     , _hints       = []
     , _details     = [doc]
+    , _stack       = Stack.empty
     }
   where
     doc | errorType == IO.doesNotExistErrorType =

@@ -40,6 +40,7 @@ import           Data.Maybe                (fromMaybe, isNothing)
 import qualified Data.Unification          as Unification
 import qualified Data.Vector.Extended      as V
 import qualified Fregot.Compile.Package    as Package
+import qualified Fregot.Error.Stack        as Stack
 import           Fregot.Eval.Builtins
 import qualified Fregot.Eval.Cache         as Cache
 import           Fregot.Eval.Monad
@@ -266,7 +267,7 @@ evalCompiledRule
     -> Rule SourceSpan
     -> Maybe Value
     -> EvalM Value
-evalCompiledRule callerSource crule mbIndex = case crule ^. ruleKind of
+evalCompiledRule callerSource crule mbIndex = push $ case crule ^. ruleKind of
     -- Complete definitions
     CompleteRule -> cached $ requireComplete (crule ^. ruleAnn) $
         case crule ^. ruleDefault of
@@ -291,6 +292,10 @@ evalCompiledRule callerSource crule mbIndex = case crule ^. ruleKind of
     _ ->
         snd <$> branches
   where
+    -- Update the stack
+    push = pushStackFrame
+        (Stack.RuleStackFrame (crule ^. ruleName) callerSource)
+
     -- Standard branching evaluation of rule definitions, with caching.
     branches :: EvalM (Maybe Value, Value)
     branches = branch
@@ -362,14 +367,17 @@ evalRuleDefinition callerSource rule mbIndex =
 
 evalUserFunction
     :: SourceSpan -> Rule SourceSpan -> [Value] -> EvalM Value
-evalUserFunction calleeSource crule callerArgs
-    | Nothing <- crule ^? ruleKind . _FunctionRule = raise' calleeSource "type error" $
-        PP.pretty (crule ^. ruleName) <+>
-        "was called as function but it is not a function"
-    | otherwise = requireComplete (crule ^. ruleAnn) $ branch
-        [ evalFunctionDefinition def
-        | def <- crule ^. ruleDefs
-        ]
+evalUserFunction callerSource crule callerArgs =
+    pushStackFrame
+        (Stack.FunctionStackFrame (crule ^. ruleName) callerSource) $
+    case crule ^? ruleKind . _FunctionRule of
+        Nothing -> raise' callerSource "type error" $
+            PP.pretty (crule ^. ruleName) <+>
+            "was called as function but it is not a function"
+        Just _ -> requireComplete (crule ^. ruleAnn) $ branch
+            [ evalFunctionDefinition def
+            | def <- crule ^. ruleDefs
+            ]
   where
     ret mbTerm = case mbTerm of
         Nothing   -> return (BoolV True)
