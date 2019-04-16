@@ -13,3 +13,7 @@ fregot ([34meval error[0m):
     [31m1[0m
   For key:
     [31m"hi"[0m
+
+  Stack trace:
+    rule [33minconsistent[0m at obj-01.rego:7:3
+    rule [33mtest_inconsistency[0m at tests:1:1

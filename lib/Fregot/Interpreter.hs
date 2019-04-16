@@ -45,6 +45,7 @@ import           Fregot.Compile.Package    (CompiledPackage)
 import qualified Fregot.Compile.Package    as Compile
 import           Fregot.Error              (Error, catchIO)
 import qualified Fregot.Error              as Error
+import qualified Fregot.Error.Stack        as Stack
 import qualified Fregot.Eval               as Eval
 import qualified Fregot.Eval.Cache         as Cache
 import           Fregot.Eval.Monad         (EvalCache)
@@ -232,6 +233,7 @@ eval h ctx pkgname mx = do
             , Eval._imports      = mempty
             , Eval._cache        = h ^. cache
             , Eval._cacheVersion = h ^. cacheVersion
+            , Eval._stack        = Stack.empty
             }
 
     either fatal return =<< liftIO (Eval.runEvalM env ctx mx)
@@ -268,6 +270,7 @@ mkStepState h pkgname expr = do
             , Eval._imports      = mempty
             , Eval._cache        = h ^. cache
             , Eval._cacheVersion = h ^. cacheVersion
+            , Eval._stack        = Stack.empty
             }
     return $ Eval.mkStepState env (Eval.evalTerm cterm)
 

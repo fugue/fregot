@@ -8,3 +8,6 @@ fregot ([34meval error[0m):
          [31m^^^^^^^^^^^^[0m
 
   Unknown function call: double
+
+  Stack trace:
+    rule [33mtest_double[0m at tests:1:1
