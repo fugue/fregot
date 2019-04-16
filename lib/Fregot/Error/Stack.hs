@@ -6,6 +6,7 @@ module Fregot.Error.Stack
     , StackFrame (..)
     , empty
     , null
+    , push
     ) where
 
 import qualified Data.List                 as L
@@ -23,15 +24,21 @@ instance PP.Pretty PP.Sem StackTrace where
 
 data StackFrame
     = RuleStackFrame Var SourceSpan
+    | FunctionStackFrame Var SourceSpan
     deriving (Show)
 
 instance PP.Pretty PP.Sem StackFrame where
     pretty = \case
         RuleStackFrame rule source ->
-            "rule " <+> PP.code (PP.pretty rule) <+> "at" <+> PP.pretty source
+            "rule" <+> PP.code (PP.pretty rule) <+> "at" <+> PP.pretty source
+        FunctionStackFrame fun source ->
+            "function" <+> PP.code (PP.pretty fun) <+> "at" <+> PP.pretty source
 
 empty :: StackTrace
 empty = StackTrace mempty
 
 null :: StackTrace -> Bool
 null (StackTrace s) = L.null s
+
+push :: StackFrame -> StackTrace -> StackTrace
+push frame (StackTrace frames) = StackTrace (frame : frames)

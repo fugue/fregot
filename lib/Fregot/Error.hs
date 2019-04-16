@@ -13,7 +13,7 @@ module Fregot.Error
 
     , Severity (..)
     , Subsystem
-    , Error (..), severity, subsystem, sourceSpans, details, hints
+    , Error (..), severity, subsystem, sourceSpans, details, hints, stack
 
     , Errors
     , severe

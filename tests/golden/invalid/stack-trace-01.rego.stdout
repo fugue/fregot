@@ -1,0 +1,16 @@
+passed: 0, failed: 0, errored: 1
+fregot.tests.invalid.stack_trace_01.test_stack_trace:
+fregot ([34meval error[0m):
+  "stack-trace-01.rego" (line 5, column 3):
+  builtin type error:
+
+    5|   x + "crash"
+         [31m^^^^^^^^^^^[0m
+
+  Expected number but got string
+
+  Stack trace:
+    rule [33mrule1[0m at stack-trace-01.rego:9:3
+    rule [33mrule2[0m at stack-trace-01.rego:13:3
+    rule [33mrule3[0m at stack-trace-01.rego:17:3
+    rule [33mtest_stack_trace[0m at tests:1:1
