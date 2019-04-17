@@ -58,7 +58,7 @@ type Breakpoint = (PackageName, Var)
 data Mode
     = RegularMode
     | Suspended   Suspension (Eval.StepState Eval.Value)
-    | Errored     Error.Error  -- TODO(jaspervdj): Context for eval
+    | Errored     Eval.Environment Eval.Context Error.Error
 
 data StepTo
     = StepToBreak (Maybe Stack.StackTrace)
@@ -178,6 +178,7 @@ processInput h input = do
             PP.hPutSemDoc IO.stdout $ PP.pretty expr
             let ctx = case emode of
                     Suspended _ state -> state ^. Eval.ssContext
+                    Errored _ ctx' _  -> ctx'
                     _                 -> Eval.emptyContext
             mbRows <- runInterpreter h $ \i ->
                 Interpreter.evalExpr i ctx pkgname expr
@@ -207,11 +208,11 @@ processStep h stepTo state = do
                     sauce <- IORef.readIORef (h ^. sources)
                     PP.hPutSemDoc IO.stdout $ prettySnippet sauce (fst suspension)
                     IORef.writeIORef (h ^. mode) (Suspended suspension nstate)
-        Just (Interpreter.Error e)   -> do
+        Just (Interpreter.Error env ctx e)   -> do
             PP.hPutSemDoc IO.stdout $ prefix "error"
             sauce <- IORef.readIORef (h ^. sources)
             Error.hPutErrors IO.stderr sauce Error.TextFmt [e]
-            IORef.writeIORef (h ^. mode) (Errored e)
+            IORef.writeIORef (h ^. mode) (Errored env ctx e)
   where
     prefix = (PP.hint "(debug)" <+>)
 
@@ -305,7 +306,7 @@ run h = do
             (case emode of
                 RegularMode   -> ""
                 Suspended _ _ -> "(debug)"
-                Errored _     -> "(error)") <>
+                Errored _ _ _ -> "(error)") <>
             "% "
 
 metaShortcuts :: HMS.HashMap T.Text MetaCommand
@@ -416,7 +417,7 @@ metaCommands =
             Suspended suspension _ -> do
                 sauce <- IORef.readIORef (h ^. sources)
                 PP.hPutSemDoc IO.stdout $ prettySuspension sauce suspension
-            Errored err -> do
+            Errored _ _ err -> do
                 sauce <- IORef.readIORef (h ^. sources)
                 Error.hPutErrors IO.stderr sauce Error.TextFmt [err]
             _ -> PP.hPutSemDoc IO.stderr "only available when in debugging"
@@ -435,7 +436,7 @@ metaCommands =
         emode <- IORef.readIORef (h ^. mode)
         case emode of
             RegularMode                -> IO.hPutStrLn IO.stderr "Not paused"
-            Errored _                  -> IO.hPutStrLn IO.stderr "Not paused"
+            Errored _ _ _              -> IO.hPutStrLn IO.stderr "Not paused"
             Suspended suspension nstep ->
                 processStep h (f suspension) nstep
         return True

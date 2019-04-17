@@ -1,0 +1,24 @@
+F u g u e   R E G O   T o o l k i t
+fregot v0.1.0 repl - use :help for usage info
+fregot ([34meval error[0m):
+  "debug-error.rego" (line 5, column 3):
+  builtin type error:
+
+    5|   x + "crash"
+         [31m^^^^^^^^^^^[0m
+
+  Expected number but got string
+
+  Stack trace:
+    rule [33mtest_crash[0m at data.debug_error.test_crash:1:1
+fregot ([34meval error[0m):
+  "debug-error.rego" (line 5, column 3):
+  builtin type error:
+
+    5|   x + "crash"
+         [31m^^^^^^^^^^^[0m
+
+  Expected number but got string
+
+  Stack trace:
+    rule [33mtest_crash[0m at data.debug_error.test_crash:1:1
