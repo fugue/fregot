@@ -4,12 +4,15 @@ Enter an expression to evaluate it.
 Enter a rule to add it to the current package.
 
 Other commands:
-  :debug  Toggle debug mode
+  :break  Set a breakpoint
   :help  show this info
   :load  load a rego file, e.g. `:load foo.rego`
   :open  open a different package, e.g. `:open foo`
   :quit  exit the repl
   :reload  reload the file from the last `:load`
+  :run  continue running the debugged program
+  :stepover  continue running the debugged program
+  :stepinto  continue running the debugged program
   :test  run tests in the current package
   :where  print your location
 
