@@ -57,8 +57,7 @@ type Suspension = (SourceSpan, Stack.StackTrace)
 type Breakpoint = (PackageName, Var)
 
 data Mode
-    = StartSteppingMode (HS.HashSet Breakpoint)
-    | SteppingMode (Maybe Suspension) (Eval.StepState Eval.Value)
+    = SteppingMode (Maybe Suspension) (Eval.StepState Eval.Value)
     | RegularMode
 
 data Handle = Handle
@@ -72,6 +71,7 @@ data Handle = Handle
 
     -- | Current mode; either debugging or regular evaluation.
     , _mode        :: !(IORef Mode)
+    , _breakpoints :: !(IORef (HS.HashSet Breakpoint))
     }
 
 data MetaCommand = MetaCommand
@@ -93,6 +93,7 @@ withHandle _sources _interpreter f = do
     _lastLoad    <- IORef.newIORef Nothing
     _openPackage <- IORef.newIORef "repl"
     _mode        <- IORef.newIORef RegularMode
+    _breakpoints <- IORef.newIORef HS.empty
     f Handle {..}
 
 -- | Auxiliary function to invoke the interpreter.
@@ -155,6 +156,7 @@ processInput h input = do
     (sourcep, mbRuleOrTerm) <- parseRuleOrExpr h input
     pkgname <- IORef.readIORef (h ^. openPackage)
     emode   <- IORef.readIORef (h ^. mode)
+    bkpts   <- IORef.readIORef (h ^. breakpoints)
     case mbRuleOrTerm of
         Just (Left rule) -> do
             PP.hPutSemDoc IO.stdout $ PP.pretty rule
@@ -162,7 +164,7 @@ processInput h input = do
                 Interpreter.insertRule i pkgname sourcep rule
                 Interpreter.compilePackages i
 
-        Just (Right expr) | StartSteppingMode _ <- emode -> do
+        Just (Right expr) | not (HS.null bkpts), RegularMode <- emode -> do
             mbStepState <- runInterpreter h $ \i ->
                 Interpreter.mkStepState i pkgname expr
             forM_ mbStepState $ \stepState -> do
@@ -185,7 +187,6 @@ processInput h input = do
 processStep :: Handle -> IO ()
 processStep h = IORef.readIORef (h ^. mode) >>= \case
     RegularMode          -> return ()
-    StartSteppingMode _  -> return ()
     SteppingMode _ state -> do
         mbStep <- runInterpreter h $ \i -> Interpreter.step i state
         case mbStep of
@@ -193,7 +194,7 @@ processStep h = IORef.readIORef (h ^. mode) >>= \case
                 PP.hPutSemDoc IO.stdout $ prefix "internal error"
             Just Interpreter.Done        -> do
                 PP.hPutSemDoc IO.stdout $ prefix "finished"
-                IORef.writeIORef (h ^. mode) (StartSteppingMode HS.empty)
+                IORef.writeIORef (h ^. mode) RegularMode
             Just (Interpreter.Yield x nstate)   -> do
                 PP.hPutSemDoc IO.stdout $ prefix "=" <+> PP.pretty x
                 IORef.writeIORef (h ^. mode) (SteppingMode Nothing nstate)
@@ -281,8 +282,7 @@ run h = do
             review packageNameFromString pkg <>
             (case emode of
                 RegularMode         -> ""
-                SteppingMode _ _    -> "(debug)"
-                StartSteppingMode _ -> "(debug)") <>
+                SteppingMode _ _    -> "(debug)") <>
             "% "
 
 metaShortcuts :: HMS.HashMap T.Text MetaCommand
@@ -305,19 +305,11 @@ metaCommands =
         [point] | Just qualify <- point ^? qualifiedVarFromText -> do
             openPkg <- liftIO $ IORef.readIORef (h ^. openPackage)
             let bpt = first (fromMaybe openPkg) qualify
-            liftIO $ IORef.atomicModifyIORef_ (h ^. mode) $ \case
-                RegularMode          -> StartSteppingMode $ HS.singleton bpt
-                StartSteppingMode bs -> StartSteppingMode $ HS.insert bpt bs
-                SteppingMode _ _     -> RegularMode
+            liftIO $ IORef.atomicModifyIORef_ (h ^. breakpoints) $ HS.insert bpt
             return True
 
         [] -> do
-            emode <- liftIO $ IORef.readIORef (h ^. mode)
-            let bpts = case emode of
-                    RegularMode          -> HS.empty
-                    StartSteppingMode bs -> bs
-                    SteppingMode _ _     -> HS.empty
-
+            bpts  <- liftIO $ IORef.readIORef (h ^. breakpoints)
             liftIO $ if HS.null bpts
                 then IO.hPutStrLn IO.stderr "no breakpoints set"
                 else forM_ bpts $
@@ -330,13 +322,6 @@ metaCommands =
             liftIO $ IO.hPutStrLn IO.stderr $
                 ":break takes a qualified rule name as an argument"
             return True
-
-    , MetaCommand ":debug" "Toggle debug mode" $ \h _ -> do
-        liftIO $ IORef.atomicModifyIORef_ (h ^. mode) $ \case
-            RegularMode         -> StartSteppingMode HS.empty
-            StartSteppingMode _ -> RegularMode
-            SteppingMode _ _    -> RegularMode
-        return True
 
     , MetaCommand ":help" "show this info" $ \_ _ -> do
         liftIO $ PP.hPutSemDoc IO.stderr $
