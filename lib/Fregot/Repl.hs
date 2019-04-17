@@ -207,9 +207,15 @@ processStep h = IORef.readIORef (h ^. mode) >>= \case
                 IORef.writeIORef (h ^. mode) (StepMode stepTo nstate)
                 processStep h
             Just (Interpreter.Suspend suspension nstate) -> do
-                sauce <- IORef.readIORef (h ^. sources)
-                PP.hPutSemDoc IO.stdout $ prettySnippet sauce (fst suspension)
-                IORef.writeIORef (h ^. mode) (Suspended suspension nstate)
+                maybeCont <- continueStepping stepTo suspension
+                case maybeCont of
+                    Just cont -> do
+                        IORef.writeIORef (h ^. mode) (StepMode cont nstate)
+                        processStep h
+                    Nothing -> do
+                        sauce <- IORef.readIORef (h ^. sources)
+                        PP.hPutSemDoc IO.stdout $ prettySnippet sauce (fst suspension)
+                        IORef.writeIORef (h ^. mode) (Suspended suspension nstate)
             Just (Interpreter.Error e)   -> do
                 PP.hPutSemDoc IO.stdout $ prefix "error"
                 sauce <- IORef.readIORef (h ^. sources)
@@ -221,18 +227,18 @@ processStep h = IORef.readIORef (h ^. mode) >>= \case
     continueStepping (StepToBreak mbOldStack) (_, stack)
         | Just stack == mbOldStack = return $ Just (StepToBreak mbOldStack)
         | otherwise                = do
-            breakpoints <- IORef.readIORef (h ^. breakpoints)
+            bkpnts <- IORef.readIORef (h ^. breakpoints)
             let shouldBreak = case Stack.peek stack of
                     Nothing                           -> False
-                    Just (Stack.RuleStackFrame pkg v _) -> (pkg, v) `HS.member` breakpoints
-                    Just (Stack.FunctionStackFrame pkg v _) -> (pkg, v) `HS.member` breakpoints
+                    Just (Stack.RuleStackFrame pkg v _) -> (pkg, v) `HS.member` bkpnts
+                    Just (Stack.FunctionStackFrame pkg v _) -> (pkg, v) `HS.member` bkpnts
             return $ if shouldBreak then Nothing else Just $ StepToBreak mbOldStack
 
     continueStepping StepInto _ = return (Just StepInto)
 
-    continueStepping (StepOver oldStack) (_, stack)
-        | stepOver oldStack stack = return Nothing
-        | otherwise               = return $ Just $ StepOver oldStack
+    continueStepping (StepOver _oldStack) (_, _stack) =
+        -- NOTE(jaspervdj): TODO
+        return Nothing
 
 prettySnippet :: Sources.Sources -> SourceSpan -> PP.SemDoc
 prettySnippet sauce loc = case SourceSpan.citeSourceSpan PP.hint sauce loc of
@@ -388,6 +394,19 @@ metaCommands =
             case mbLastLoad of
                 Just ll -> load h ll
                 Nothing -> IO.hPutStrLn IO.stderr "No files loaded" $> True
+
+    , MetaCommand ":run" "continue running the debugged program" $
+        \h _ -> liftIO $ do
+            emode <- IORef.readIORef (h ^. mode)
+            case emode of
+                RegularMode   -> IO.hPutStrLn IO.stderr "Not paused"
+                StepMode _ _  -> IO.hPutStrLn IO.stderr "Not paused"
+                Suspended (_, stack) nstep -> do
+                    IORef.writeIORef (h ^. mode) $
+                        StepMode (StepToBreak (Just stack)) nstep
+                    processStep h
+
+            return True
 
     , MetaCommand ":test" "run tests in the current package" $
         \h _ -> liftIO $ do
