@@ -226,15 +226,11 @@ processStep h stepTo state = do
                     Just (Stack.FunctionStackFrame pkg v _) -> (pkg, v) `HS.member` bkpnts
             return $ if shouldBreak then Nothing else Just $ StepToBreak mbOldStack
 
-    continueStepping StepInto _ = return (Just StepInto)
+    continueStepping StepInto _ = return Nothing
 
-    continueStepping (StepOver oldStack) (_, stack) = do
-        putStrLn $ "Old: " ++ show oldStack
-        putStrLn $ "New: " ++ show stack
-        -- NOTE(jaspervdj): what?
-        case Stack.isStepOver stack oldStack of
-            False -> return $ Just (StepOver oldStack)
-            True  -> return Nothing
+    continueStepping (StepOver oldStack) (_, stack)
+        | Stack.isStepOver stack oldStack = return Nothing
+        | otherwise                       = return $ Just (StepOver oldStack)
 
 prettySnippet :: Sources.Sources -> SourceSpan -> PP.SemDoc
 prettySnippet sauce loc = case SourceSpan.citeSourceSpan PP.hint sauce loc of
