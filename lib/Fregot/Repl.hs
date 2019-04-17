@@ -18,7 +18,6 @@ import           Control.Monad.Extended            (foldMapM, forM_, guard,
 import           Control.Monad.Parachute
 import           Control.Monad.Trans               (liftIO)
 import           Data.Bifunctor                    (bimap, first)
-import           Data.Char                         (isSpace)
 import           Data.Functor                      (($>))
 import qualified Data.HashMap.Strict.Extended      as HMS
 import qualified Data.HashSet                      as HS
@@ -59,7 +58,7 @@ type Breakpoint = (PackageName, Var)
 data Mode
     = RegularMode
     | Suspended   Suspension (Eval.StepState Eval.Value)
-    | StepMode    StepTo (Eval.StepState Eval.Value)
+    | Errored     Error.Error  -- TODO(jaspervdj): Context for eval
 
 data StepTo
     = StepToBreak (Maybe Stack.StackTrace)
@@ -155,9 +154,6 @@ parseRuleOrExpr h input = do
         a = r ^. ruleHead . ruleAnn
 
 processInput :: Handle -> T.Text -> IO ()
-processInput h input | T.all isSpace input =
-    -- NOTE(jaspervdj): Step if in stepping mode.
-    processStep h
 processInput h input = do
     (sourcep, mbRuleOrTerm) <- parseRuleOrExpr h input
     pkgname <- IORef.readIORef (h ^. openPackage)
@@ -173,9 +169,10 @@ processInput h input = do
         Just (Right expr) | not (HS.null bkpts), RegularMode <- emode -> do
             mbStepState <- runInterpreter h $ \i ->
                 Interpreter.mkStepState i pkgname expr
-            forM_ mbStepState $ \stepState -> do
-                IORef.writeIORef (h ^. mode) (StepMode (StepToBreak Nothing) stepState)
-            processStep h
+
+            case mbStepState of
+                Nothing     -> return()
+                Just sstate -> processStep h (StepToBreak Nothing) sstate
 
         Just (Right expr) -> do
             PP.hPutSemDoc IO.stdout $ PP.pretty expr
@@ -190,36 +187,31 @@ processInput h input = do
         Nothing -> return ()
 
 -- | Only makes sense in stepping mode.  Otherwise, does nothing.
-processStep :: Handle -> IO ()
-processStep h = IORef.readIORef (h ^. mode) >>= \case
-    RegularMode               -> return ()
-    Suspended    _ _          -> return ()
-    StepMode     stepTo state -> do
-        mbStep <- runInterpreter h $ \i -> Interpreter.step i state
-        case mbStep of
-            Nothing                      ->
-                PP.hPutSemDoc IO.stdout $ prefix "internal error"
-            Just Interpreter.Done        -> do
-                PP.hPutSemDoc IO.stdout $ prefix "finished"
-                IORef.writeIORef (h ^. mode) RegularMode
-            Just (Interpreter.Yield x nstate)   -> do
-                PP.hPutSemDoc IO.stdout $ prefix "=" <+> PP.pretty x
-                IORef.writeIORef (h ^. mode) (StepMode stepTo nstate)
-                processStep h
-            Just (Interpreter.Suspend suspension nstate) -> do
-                maybeCont <- continueStepping stepTo suspension
-                case maybeCont of
-                    Just cont -> do
-                        IORef.writeIORef (h ^. mode) (StepMode cont nstate)
-                        processStep h
-                    Nothing -> do
-                        sauce <- IORef.readIORef (h ^. sources)
-                        PP.hPutSemDoc IO.stdout $ prettySnippet sauce (fst suspension)
-                        IORef.writeIORef (h ^. mode) (Suspended suspension nstate)
-            Just (Interpreter.Error e)   -> do
-                PP.hPutSemDoc IO.stdout $ prefix "error"
-                sauce <- IORef.readIORef (h ^. sources)
-                Error.hPutErrors IO.stderr sauce Error.TextFmt [e]
+processStep :: Handle -> StepTo -> Eval.StepState Eval.Value -> IO ()
+processStep h stepTo state = do
+    mbStep <- runInterpreter h $ \i -> Interpreter.step i state
+    case mbStep of
+        Nothing                      ->
+            PP.hPutSemDoc IO.stdout $ prefix "internal error"
+        Just Interpreter.Done        -> do
+            PP.hPutSemDoc IO.stdout $ prefix "finished"
+            IORef.writeIORef (h ^. mode) RegularMode
+        Just (Interpreter.Yield x nstate)   -> do
+            PP.hPutSemDoc IO.stdout $ prefix "=" <+> PP.pretty x
+            processStep h stepTo nstate
+        Just (Interpreter.Suspend suspension nstate) -> do
+            maybeCont <- continueStepping stepTo suspension
+            case maybeCont of
+                Just cont -> processStep h cont nstate
+                Nothing -> do
+                    sauce <- IORef.readIORef (h ^. sources)
+                    PP.hPutSemDoc IO.stdout $ prettySnippet sauce (fst suspension)
+                    IORef.writeIORef (h ^. mode) (Suspended suspension nstate)
+        Just (Interpreter.Error e)   -> do
+            PP.hPutSemDoc IO.stdout $ prefix "error"
+            sauce <- IORef.readIORef (h ^. sources)
+            Error.hPutErrors IO.stderr sauce Error.TextFmt [e]
+            IORef.writeIORef (h ^. mode) (Errored e)
   where
     prefix = (PP.hint "(debug)" <+>)
 
@@ -236,9 +228,13 @@ processStep h = IORef.readIORef (h ^. mode) >>= \case
 
     continueStepping StepInto _ = return (Just StepInto)
 
-    continueStepping (StepOver _oldStack) (_, _stack) =
-        -- NOTE(jaspervdj): TODO
-        return Nothing
+    continueStepping (StepOver oldStack) (_, stack) = do
+        putStrLn $ "Old: " ++ show oldStack
+        putStrLn $ "New: " ++ show stack
+        -- NOTE(jaspervdj): what?
+        case Stack.isStepOver stack oldStack of
+            False -> return $ Just (StepOver oldStack)
+            True  -> return Nothing
 
 prettySnippet :: Sources.Sources -> SourceSpan -> PP.SemDoc
 prettySnippet sauce loc = case SourceSpan.citeSourceSpan PP.hint sauce loc of
@@ -313,7 +309,7 @@ run h = do
             (case emode of
                 RegularMode   -> ""
                 Suspended _ _ -> "(debug)"
-                StepMode _ _  -> "(debug)") <>
+                Errored _     -> "(error)") <>
             "% "
 
 metaShortcuts :: HMS.HashMap T.Text MetaCommand
@@ -387,6 +383,8 @@ metaCommands =
                 return True
 
     , MetaCommand ":quit" "exit the repl" $ \_ _ -> return False
+        -- TODO(jaspervdj): Make it exit the debug/error mode, then the
+        -- regular mode.
 
     , MetaCommand ":reload" "reload the file from the last `:load`" $
         \h _ -> liftIO $ do
@@ -396,17 +394,13 @@ metaCommands =
                 Nothing -> IO.hPutStrLn IO.stderr "No files loaded" $> True
 
     , MetaCommand ":run" "continue running the debugged program" $
-        \h _ -> liftIO $ do
-            emode <- IORef.readIORef (h ^. mode)
-            case emode of
-                RegularMode   -> IO.hPutStrLn IO.stderr "Not paused"
-                StepMode _ _  -> IO.hPutStrLn IO.stderr "Not paused"
-                Suspended (_, stack) nstep -> do
-                    IORef.writeIORef (h ^. mode) $
-                        StepMode (StepToBreak (Just stack)) nstep
-                    processStep h
+        stepWith (StepToBreak . Just . snd)
 
-            return True
+    , MetaCommand ":stepover" "continue running the debugged program" $
+        stepWith (StepOver . snd)
+
+    , MetaCommand ":stepinto" "continue running the debugged program" $
+        stepWith (const StepInto)
 
     , MetaCommand ":test" "run tests in the current package" $
         \h _ -> liftIO $ do
@@ -434,6 +428,15 @@ metaCommands =
         void $ runInterpreter h $ \i -> do
             Interpreter.loadModule i path
             Interpreter.compilePackages i
+        return True
+
+    stepWith f = \h _ -> liftIO $ do
+        emode <- IORef.readIORef (h ^. mode)
+        case emode of
+            RegularMode                -> IO.hPutStrLn IO.stderr "Not paused"
+            Errored _                  -> IO.hPutStrLn IO.stderr "Not paused"
+            Suspended suspension nstep ->
+                processStep h (f suspension) nstep
         return True
 
 completeBuiltins :: Handle -> Hl.CompletionFunc IO

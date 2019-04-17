@@ -8,6 +8,7 @@ module Fregot.Error.Stack
     , null
     , push
     , peek
+    , isStepOver
     ) where
 
 import qualified Data.List                 as L
@@ -47,3 +48,12 @@ push frame (StackTrace frames) = StackTrace (frame : frames)
 
 peek :: StackTrace -> Maybe StackFrame
 peek (StackTrace frames) = listToMaybe frames
+
+-- | Some logic to decide if a new stack trace "steps over" an old one in a
+-- debugger.
+isStepOver :: StackTrace -> StackTrace -> Bool
+isStepOver (StackTrace newFrames) (StackTrace oldFrames) =
+    case L.stripPrefix (reverse oldFrames) (reverse newFrames) of
+        Just (_ : _) -> False
+        Just []      -> True
+        Nothing      -> True
