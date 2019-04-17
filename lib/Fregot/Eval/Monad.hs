@@ -124,12 +124,12 @@ data Environment = Environment
 
 $(makeLenses ''Environment)
 
-newtype EvalException = EvalException Error
+data EvalException = EvalException Environment Context Error
 
 instance Show EvalException where
     -- This show horrible is useless, in practice we'll catch the error and
     -- pretty-print the thing inside.
-    show _ = "EvalException _"
+    show _ = "EvalException _ _ _"
 
 instance Exception EvalException
 
@@ -179,7 +179,7 @@ instance MonadIO EvalM where
 runEvalM :: Environment -> Context -> EvalM a -> IO (Either Error (Document a))
 runEvalM env0 ctx0 (EvalM f) = catch
     (Right <$> Stream.toList (f env0 ctx0))
-    (\(EvalException err) -> return (Left err))
+    (\(EvalException _env _context err) -> return (Left err))
 
 data StepState a = StepState
     { _ssStream      :: Stream Suspension IO (Row a)
@@ -198,8 +198,7 @@ data Step a
     = Yield (Row a) (StepState a)
     | Suspend (SourceSpan, Stack.StackTrace) (StepState a)
     | Done
-    -- NOTE(jaspervdj): We can recover the latest 'StepState' here?
-    | Error Error
+    | Error Environment Context Error
 
 $(makeLenses ''StepState)
 
@@ -215,7 +214,7 @@ stepEvalM ss = catch
                 let env' = env & stack .~ stck in
                 return $ Suspend (i, stck) (StepState ns ctx env')
             Stream.Done         -> return Done)
-    (\(EvalException err) -> return (Error err))
+    (\(EvalException env context err) -> return (Error env context err))
 
 suspend :: SourceSpan -> EvalM a -> EvalM a
 suspend source (EvalM f) =
@@ -273,7 +272,7 @@ requireComplete source (EvalM f) = EvalM $ \env ctx -> do
     case rows of
         (r : more)
             | Just d <- find ((/= r ^. rowValue) . view rowValue) more ->
-                liftIO $ throwIO $ EvalException $ Error.mkError
+                liftIO $ throwIO $ EvalException env (r ^. rowContext) $ Error.mkError
                     "eval" source "inconsistent result" $
                     "Inconsistent result for complete rule, but got:" <$$>
                     PP.ind (PP.pretty $ r ^. rowValue) <$$>
@@ -338,8 +337,9 @@ pushFunctionStackFrame src v = local $ \env -> env
 -- | Raise an error.  We currently don't allow catching exceptions, but they are
 -- handled at the top level `runEvalM` and converted to an `Either`.
 raise :: Error -> EvalM a
-raise err = EvalM $ \env _ ->
-    liftIO $ throwIO $ EvalException $ err & Error.stack .~ (env ^. stack)
+raise err = EvalM $ \env ctx ->
+    liftIO $ throwIO $ EvalException env ctx $
+    err & Error.stack .~ (env ^. stack)
 
 raise' :: SourceSpan -> PP.SemDoc -> PP.SemDoc -> EvalM a
 raise' source title body = raise (Error.mkError "eval" source title body)
