@@ -57,8 +57,14 @@ type Suspension = (SourceSpan, Stack.StackTrace)
 type Breakpoint = (PackageName, Var)
 
 data Mode
-    = SteppingMode (Maybe Suspension) (Eval.StepState Eval.Value)
-    | RegularMode
+    = RegularMode
+    | Suspended   Suspension (Eval.StepState Eval.Value)
+    | StepMode    StepTo (Eval.StepState Eval.Value)
+
+data StepTo
+    = StepToBreak (Maybe Stack.StackTrace)
+    | StepInto
+    | StepOver    Stack.StackTrace
 
 data Handle = Handle
     { _sources     :: !Sources.Handle
@@ -168,14 +174,14 @@ processInput h input = do
             mbStepState <- runInterpreter h $ \i ->
                 Interpreter.mkStepState i pkgname expr
             forM_ mbStepState $ \stepState -> do
-                IORef.writeIORef (h ^. mode) (SteppingMode Nothing stepState)
+                IORef.writeIORef (h ^. mode) (StepMode (StepToBreak Nothing) stepState)
             processStep h
 
         Just (Right expr) -> do
             PP.hPutSemDoc IO.stdout $ PP.pretty expr
             let ctx = case emode of
-                    SteppingMode _ state -> state ^. Eval.ssContext
-                    _                    -> Eval.emptyContext
+                    Suspended _ state -> state ^. Eval.ssContext
+                    _                 -> Eval.emptyContext
             mbRows <- runInterpreter h $ \i ->
                 Interpreter.evalExpr i ctx pkgname expr
             forM_ mbRows $ \rows -> forM_ rows $ \row ->
@@ -186,8 +192,9 @@ processInput h input = do
 -- | Only makes sense in stepping mode.  Otherwise, does nothing.
 processStep :: Handle -> IO ()
 processStep h = IORef.readIORef (h ^. mode) >>= \case
-    RegularMode          -> return ()
-    SteppingMode _ state -> do
+    RegularMode               -> return ()
+    Suspended    _ _          -> return ()
+    StepMode     stepTo state -> do
         mbStep <- runInterpreter h $ \i -> Interpreter.step i state
         case mbStep of
             Nothing                      ->
@@ -197,18 +204,35 @@ processStep h = IORef.readIORef (h ^. mode) >>= \case
                 IORef.writeIORef (h ^. mode) RegularMode
             Just (Interpreter.Yield x nstate)   -> do
                 PP.hPutSemDoc IO.stdout $ prefix "=" <+> PP.pretty x
-                IORef.writeIORef (h ^. mode) (SteppingMode Nothing nstate)
+                IORef.writeIORef (h ^. mode) (StepMode stepTo nstate)
                 processStep h
             Just (Interpreter.Suspend suspension nstate) -> do
                 sauce <- IORef.readIORef (h ^. sources)
                 PP.hPutSemDoc IO.stdout $ prettySnippet sauce (fst suspension)
-                IORef.writeIORef (h ^. mode) (SteppingMode (Just suspension) nstate)
+                IORef.writeIORef (h ^. mode) (Suspended suspension nstate)
             Just (Interpreter.Error e)   -> do
                 PP.hPutSemDoc IO.stdout $ prefix "error"
                 sauce <- IORef.readIORef (h ^. sources)
                 Error.hPutErrors IO.stderr sauce Error.TextFmt [e]
   where
     prefix = (PP.hint "(debug)" <+>)
+
+    continueStepping :: StepTo -> Suspension -> IO (Maybe StepTo)
+    continueStepping (StepToBreak mbOldStack) (_, stack)
+        | Just stack == mbOldStack = return $ Just (StepToBreak mbOldStack)
+        | otherwise                = do
+            breakpoints <- IORef.readIORef (h ^. breakpoints)
+            let shouldBreak = case Stack.peek stack of
+                    Nothing                           -> False
+                    Just (Stack.RuleStackFrame pkg v _) -> (pkg, v) `HS.member` breakpoints
+                    Just (Stack.FunctionStackFrame pkg v _) -> (pkg, v) `HS.member` breakpoints
+            return $ if shouldBreak then Nothing else Just $ StepToBreak mbOldStack
+
+    continueStepping StepInto _ = return (Just StepInto)
+
+    continueStepping (StepOver oldStack) (_, stack)
+        | stepOver oldStack stack = return Nothing
+        | otherwise               = return $ Just $ StepOver oldStack
 
 prettySnippet :: Sources.Sources -> SourceSpan -> PP.SemDoc
 prettySnippet sauce loc = case SourceSpan.citeSourceSpan PP.hint sauce loc of
@@ -281,8 +305,9 @@ run h = do
         return $
             review packageNameFromString pkg <>
             (case emode of
-                RegularMode         -> ""
-                SteppingMode _ _    -> "(debug)") <>
+                RegularMode   -> ""
+                Suspended _ _ -> "(debug)"
+                StepMode _ _  -> "(debug)") <>
             "% "
 
 metaShortcuts :: HMS.HashMap T.Text MetaCommand
@@ -377,7 +402,7 @@ metaCommands =
     , MetaCommand ":where" "print your location" $ \h _ -> liftIO $ do
         emode <- IORef.readIORef (h ^. mode)
         case emode of
-            SteppingMode (Just suspension) _ -> do
+            Suspended suspension _ -> do
                 sauce <- IORef.readIORef (h ^. sources)
                 PP.hPutSemDoc IO.stdout $ prettySuspension sauce suspension
             _ -> PP.hPutSemDoc IO.stderr "only available when in debugging"

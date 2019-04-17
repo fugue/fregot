@@ -48,6 +48,8 @@ module Fregot.Eval.Monad
     , withPackage
 
     , pushStackFrame
+    , pushRuleStackFrame
+    , pushFunctionStackFrame
 
     , raise
     , raise'
@@ -318,6 +320,20 @@ withPackage pkg = local (package .~ pkg)
 
 pushStackFrame :: Stack.StackFrame -> EvalM a -> EvalM a
 pushStackFrame frame = local (stack %~ Stack.push frame)
+
+pushRuleStackFrame :: SourceSpan -> Var -> EvalM a -> EvalM a
+pushRuleStackFrame source var = local $ \env -> env
+    { _stack = Stack.push
+        (Stack.RuleStackFrame (env ^. package . Package.packageName) var source)
+        (env ^. stack)
+    }
+
+pushFunctionStackFrame :: SourceSpan -> Var -> EvalM a -> EvalM a
+pushFunctionStackFrame src v = local $ \env -> env
+    { _stack = Stack.push
+        (Stack.FunctionStackFrame (env ^. package . Package.packageName) v src)
+        (env ^. stack)
+    }
 
 -- | Raise an error.  We currently don't allow catching exceptions, but they are
 -- handled at the top level `runEvalM` and converted to an `Either`.
