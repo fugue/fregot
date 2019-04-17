@@ -378,9 +378,11 @@ metaCommands =
                     ":open takes a package name as argument"
                 return True
 
-    , MetaCommand ":quit" "exit the repl" $ \_ _ -> return False
-        -- TODO(jaspervdj): Make it exit the debug/error mode, then the
-        -- regular mode.
+    , MetaCommand ":quit" "exit the repl" $ \h _ -> liftIO $ do
+        oldMode <- IORef.atomicModifyIORef (h ^. mode) $ \m -> (RegularMode, m)
+        case oldMode of
+            RegularMode -> return False
+            _           -> return True
 
     , MetaCommand ":reload" "reload the file from the last `:load`" $
         \h _ -> liftIO $ do
@@ -414,6 +416,9 @@ metaCommands =
             Suspended suspension _ -> do
                 sauce <- IORef.readIORef (h ^. sources)
                 PP.hPutSemDoc IO.stdout $ prettySuspension sauce suspension
+            Errored err -> do
+                sauce <- IORef.readIORef (h ^. sources)
+                Error.hPutErrors IO.stderr sauce Error.TextFmt [err]
             _ -> PP.hPutSemDoc IO.stderr "only available when in debugging"
         return True
     ]
