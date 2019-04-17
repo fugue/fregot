@@ -1,0 +1,15 @@
+repl% repl% 14|   low_a
+      [32m^^^^^[0m
+repl(debug)% 4|   "a" == "a"
+     [32m^^^^^^^^^^[0m
+repl(debug)% 5|   true
+     [32m^^^^[0m
+repl(debug)% 15|   low_b
+      [32m^^^^^[0m
+repl(debug)% 9|   "b" == "b"
+     [32m^^^^^^^^^^[0m
+repl(debug)% 10|   true
+      [32m^^^^[0m
+repl(debug)% [32m(debug)[0m = [31mtrue[0m
+[32m(debug)[0m finished
+repl% 

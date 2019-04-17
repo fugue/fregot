@@ -40,7 +40,6 @@ import           Data.Maybe                (fromMaybe, isNothing)
 import qualified Data.Unification          as Unification
 import qualified Data.Vector.Extended      as V
 import qualified Fregot.Compile.Package    as Package
-import qualified Fregot.Error.Stack        as Stack
 import           Fregot.Eval.Builtins
 import qualified Fregot.Eval.Cache         as Cache
 import           Fregot.Eval.Monad
@@ -293,8 +292,7 @@ evalCompiledRule callerSource crule mbIndex = push $ case crule ^. ruleKind of
         snd <$> branches
   where
     -- Update the stack
-    push = pushStackFrame
-        (Stack.RuleStackFrame (crule ^. ruleName) callerSource)
+    push = pushRuleStackFrame callerSource (crule ^. ruleName)
 
     -- Standard branching evaluation of rule definitions, with caching.
     branches :: EvalM (Maybe Value, Value)
@@ -368,8 +366,7 @@ evalRuleDefinition callerSource rule mbIndex =
 evalUserFunction
     :: SourceSpan -> Rule SourceSpan -> [Value] -> EvalM Value
 evalUserFunction callerSource crule callerArgs =
-    pushStackFrame
-        (Stack.FunctionStackFrame (crule ^. ruleName) callerSource) $
+    pushFunctionStackFrame callerSource (crule ^. ruleName) $
     case crule ^? ruleKind . _FunctionRule of
         Nothing -> raise' callerSource "type error" $
             PP.pretty (crule ^. ruleName) <+>

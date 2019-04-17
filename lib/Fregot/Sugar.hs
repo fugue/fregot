@@ -16,6 +16,8 @@ module Fregot.Sugar
 
     , Var, unVar, mkVar
     , varToString, varToText
+    , varFromText
+    , qualifiedVarFromText
 
     , Rule (..), ruleHead, ruleBodies
     , RuleHead (..), ruleAnn, ruleDefault, ruleName, ruleArgs, ruleIndex
@@ -37,7 +39,7 @@ module Fregot.Sugar
     , nestedVarToString
     ) where
 
-import           Control.Lens       (Lens', lens, review, (^.))
+import           Control.Lens       (Lens', lens, review, (^.), (^?))
 import           Control.Lens.Prism (Prism', prism')
 import           Control.Lens.TH    (makeLenses)
 import           Control.Monad      (guard)
@@ -129,6 +131,29 @@ varToString = T.unpack . varToText
 
 varToText :: Var -> T.Text
 varToText = unVar
+
+varFromText :: Prism' T.Text Var
+varFromText = prism' varToText $ \txt -> do
+    guard $ T.all allowedChar txt
+    return $ mkVar txt
+  where
+    allowedChar c =
+        (c >= 'a' && c <= 'z') ||
+        (c >= 'A' && c <= 'Z') ||
+        (c >= '0' && c <= '9') ||
+        c == '_'
+
+qualifiedVarFromText :: Prism' T.Text (Maybe PackageName, Var)
+qualifiedVarFromText = prism'
+    (\(mbPkgName, var) -> case mbPkgName of
+        Nothing      -> review varFromText var
+        Just pkgName ->
+            review packageNameFromText pkgName <> "." <> review varFromText var)
+    (\txt -> case T.breakOnEnd "." txt of
+        ("", var) -> ((,) Nothing) <$> var ^? varFromText
+        (pkgName, var) -> (,)
+            <$> (Just <$> T.init pkgName ^? packageNameFromText)
+            <*> var ^? varFromText)
 
 data Rule a = Rule
     { _ruleHead   :: !(RuleHead a)

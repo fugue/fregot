@@ -17,15 +17,16 @@ import           Control.Monad.Extended            (foldMapM, forM_, guard,
                                                     void, when)
 import           Control.Monad.Parachute
 import           Control.Monad.Trans               (liftIO)
-import           Data.Bifunctor                    (bimap)
-import           Data.Char                         (isSpace)
+import           Data.Bifunctor                    (bimap, first)
 import           Data.Functor                      (($>))
 import qualified Data.HashMap.Strict.Extended      as HMS
+import qualified Data.HashSet                      as HS
 import           Data.IORef.Extended               (IORef)
 import qualified Data.IORef.Extended               as IORef
 import qualified Data.List                         as L
 import           Data.Maybe                        (fromMaybe, isNothing)
 import qualified Data.Text                         as T
+import qualified Data.Text.IO                      as T
 import           Data.Version                      (showVersion)
 import qualified Fregot.Error                      as Error
 import qualified Fregot.Error.Stack                as Stack
@@ -52,10 +53,17 @@ import qualified System.IO.Extended                as IO
 
 type Suspension = (SourceSpan, Stack.StackTrace)
 
+type Breakpoint = (PackageName, Var)
+
 data Mode
-    = StartSteppingMode
-    | SteppingMode (Maybe Suspension) (Eval.StepState Eval.Value)
-    | RegularMode
+    = RegularMode
+    | Suspended   Suspension (Eval.StepState Eval.Value)
+    | Errored     Error.Error  -- TODO(jaspervdj): Context for eval
+
+data StepTo
+    = StepToBreak (Maybe Stack.StackTrace)
+    | StepInto
+    | StepOver    Stack.StackTrace
 
 data Handle = Handle
     { _sources     :: !Sources.Handle
@@ -68,6 +76,7 @@ data Handle = Handle
 
     -- | Current mode; either debugging or regular evaluation.
     , _mode        :: !(IORef Mode)
+    , _breakpoints :: !(IORef (HS.HashSet Breakpoint))
     }
 
 data MetaCommand = MetaCommand
@@ -89,6 +98,7 @@ withHandle _sources _interpreter f = do
     _lastLoad    <- IORef.newIORef Nothing
     _openPackage <- IORef.newIORef "repl"
     _mode        <- IORef.newIORef RegularMode
+    _breakpoints <- IORef.newIORef HS.empty
     f Handle {..}
 
 -- | Auxiliary function to invoke the interpreter.
@@ -144,13 +154,11 @@ parseRuleOrExpr h input = do
         a = r ^. ruleHead . ruleAnn
 
 processInput :: Handle -> T.Text -> IO ()
-processInput h input | T.all isSpace input =
-    -- NOTE(jaspervdj): Step if in stepping mode.
-    processStep h
 processInput h input = do
     (sourcep, mbRuleOrTerm) <- parseRuleOrExpr h input
     pkgname <- IORef.readIORef (h ^. openPackage)
     emode   <- IORef.readIORef (h ^. mode)
+    bkpts   <- IORef.readIORef (h ^. breakpoints)
     case mbRuleOrTerm of
         Just (Left rule) -> do
             PP.hPutSemDoc IO.stdout $ PP.pretty rule
@@ -158,18 +166,19 @@ processInput h input = do
                 Interpreter.insertRule i pkgname sourcep rule
                 Interpreter.compilePackages i
 
-        Just (Right expr) | StartSteppingMode <- emode -> do
+        Just (Right expr) | not (HS.null bkpts), RegularMode <- emode -> do
             mbStepState <- runInterpreter h $ \i ->
                 Interpreter.mkStepState i pkgname expr
-            forM_ mbStepState $ \stepState -> do
-                IORef.writeIORef (h ^. mode) (SteppingMode Nothing stepState)
-            processStep h
+
+            case mbStepState of
+                Nothing     -> return()
+                Just sstate -> processStep h (StepToBreak Nothing) sstate
 
         Just (Right expr) -> do
             PP.hPutSemDoc IO.stdout $ PP.pretty expr
             let ctx = case emode of
-                    SteppingMode _ state -> state ^. Eval.ssContext
-                    _                    -> Eval.emptyContext
+                    Suspended _ state -> state ^. Eval.ssContext
+                    _                 -> Eval.emptyContext
             mbRows <- runInterpreter h $ \i ->
                 Interpreter.evalExpr i ctx pkgname expr
             forM_ mbRows $ \rows -> forM_ rows $ \row ->
@@ -178,34 +187,50 @@ processInput h input = do
         Nothing -> return ()
 
 -- | Only makes sense in stepping mode.  Otherwise, does nothing.
-processStep :: Handle -> IO ()
-processStep h = do
-    emode <- IORef.readIORef (h ^. mode)
-    case emode of
-        RegularMode          -> return ()
-        StartSteppingMode    -> return ()
-        SteppingMode _ state -> do
-            mbStep <- runInterpreter h $ \i -> Interpreter.step i state
-            case mbStep of
-                Nothing                      ->
-                    PP.hPutSemDoc IO.stdout $ prefix "internal error"
-                Just Interpreter.Done        -> do
-                    PP.hPutSemDoc IO.stdout $ prefix "finished"
-                    IORef.writeIORef (h ^. mode) StartSteppingMode
-                Just (Interpreter.Yield x nstate)   -> do
-                    PP.hPutSemDoc IO.stdout $ prefix "=" <+> PP.pretty x
-                    IORef.writeIORef (h ^. mode) (SteppingMode Nothing nstate)
-                    processStep h
-                Just (Interpreter.Suspend suspension nstate) -> do
+processStep :: Handle -> StepTo -> Eval.StepState Eval.Value -> IO ()
+processStep h stepTo state = do
+    mbStep <- runInterpreter h $ \i -> Interpreter.step i state
+    case mbStep of
+        Nothing                      ->
+            PP.hPutSemDoc IO.stdout $ prefix "internal error"
+        Just Interpreter.Done        -> do
+            PP.hPutSemDoc IO.stdout $ prefix "finished"
+            IORef.writeIORef (h ^. mode) RegularMode
+        Just (Interpreter.Yield x nstate)   -> do
+            PP.hPutSemDoc IO.stdout $ prefix "=" <+> PP.pretty x
+            processStep h stepTo nstate
+        Just (Interpreter.Suspend suspension nstate) -> do
+            maybeCont <- continueStepping stepTo suspension
+            case maybeCont of
+                Just cont -> processStep h cont nstate
+                Nothing -> do
                     sauce <- IORef.readIORef (h ^. sources)
                     PP.hPutSemDoc IO.stdout $ prettySnippet sauce (fst suspension)
-                    IORef.writeIORef (h ^. mode) (SteppingMode (Just suspension) nstate)
-                Just (Interpreter.Error e)   -> do
-                    PP.hPutSemDoc IO.stdout $ prefix "error"
-                    sauce <- IORef.readIORef (h ^. sources)
-                    Error.hPutErrors IO.stderr sauce Error.TextFmt [e]
+                    IORef.writeIORef (h ^. mode) (Suspended suspension nstate)
+        Just (Interpreter.Error e)   -> do
+            PP.hPutSemDoc IO.stdout $ prefix "error"
+            sauce <- IORef.readIORef (h ^. sources)
+            Error.hPutErrors IO.stderr sauce Error.TextFmt [e]
+            IORef.writeIORef (h ^. mode) (Errored e)
   where
     prefix = (PP.hint "(debug)" <+>)
+
+    continueStepping :: StepTo -> Suspension -> IO (Maybe StepTo)
+    continueStepping (StepToBreak mbOldStack) (_, stack)
+        | Just stack == mbOldStack = return $ Just (StepToBreak mbOldStack)
+        | otherwise                = do
+            bkpnts <- IORef.readIORef (h ^. breakpoints)
+            let shouldBreak = case Stack.peek stack of
+                    Nothing                           -> False
+                    Just (Stack.RuleStackFrame pkg v _) -> (pkg, v) `HS.member` bkpnts
+                    Just (Stack.FunctionStackFrame pkg v _) -> (pkg, v) `HS.member` bkpnts
+            return $ if shouldBreak then Nothing else Just $ StepToBreak mbOldStack
+
+    continueStepping StepInto _ = return Nothing
+
+    continueStepping (StepOver oldStack) (_, stack)
+        | Stack.isStepOver stack oldStack = return Nothing
+        | otherwise                       = return $ Just (StepOver oldStack)
 
 prettySnippet :: Sources.Sources -> SourceSpan -> PP.SemDoc
 prettySnippet sauce loc = case SourceSpan.citeSourceSpan PP.hint sauce loc of
@@ -278,9 +303,9 @@ run h = do
         return $
             review packageNameFromString pkg <>
             (case emode of
-                RegularMode       -> ""
-                SteppingMode _ _  -> "(debug)"
-                StartSteppingMode -> "(debug)") <>
+                RegularMode   -> ""
+                Suspended _ _ -> "(debug)"
+                Errored _     -> "(error)") <>
             "% "
 
 metaShortcuts :: HMS.HashMap T.Text MetaCommand
@@ -299,12 +324,27 @@ metaShortcuts =
 
 metaCommands :: [MetaCommand]
 metaCommands =
-    [ MetaCommand ":debug" "Toggle debug mode" $ \h _ -> do
-        liftIO $ IORef.atomicModifyIORef_ (h ^. mode) $ \case
-            RegularMode       -> StartSteppingMode
-            StartSteppingMode -> RegularMode
-            SteppingMode _ _  -> RegularMode
-        return True
+    [ MetaCommand ":break" "Set a breakpoint" $ \h args -> case args of
+        [point] | Just qualify <- point ^? qualifiedVarFromText -> do
+            openPkg <- liftIO $ IORef.readIORef (h ^. openPackage)
+            let bpt = first (fromMaybe openPkg) qualify
+            liftIO $ IORef.atomicModifyIORef_ (h ^. breakpoints) $ HS.insert bpt
+            return True
+
+        [] -> do
+            bpts  <- liftIO $ IORef.readIORef (h ^. breakpoints)
+            liftIO $ if HS.null bpts
+                then IO.hPutStrLn IO.stderr "no breakpoints set"
+                else forM_ bpts $
+                        T.hPutStrLn IO.stdout . review qualifiedVarFromText .
+                        first Just
+
+            return True
+
+        _ -> do
+            liftIO $ IO.hPutStrLn IO.stderr $
+                ":break takes a qualified rule name as an argument"
+            return True
 
     , MetaCommand ":help" "show this info" $ \_ _ -> do
         liftIO $ PP.hPutSemDoc IO.stderr $
@@ -339,6 +379,8 @@ metaCommands =
                 return True
 
     , MetaCommand ":quit" "exit the repl" $ \_ _ -> return False
+        -- TODO(jaspervdj): Make it exit the debug/error mode, then the
+        -- regular mode.
 
     , MetaCommand ":reload" "reload the file from the last `:load`" $
         \h _ -> liftIO $ do
@@ -346,6 +388,15 @@ metaCommands =
             case mbLastLoad of
                 Just ll -> load h ll
                 Nothing -> IO.hPutStrLn IO.stderr "No files loaded" $> True
+
+    , MetaCommand ":run" "continue running the debugged program" $
+        stepWith (StepToBreak . Just . snd)
+
+    , MetaCommand ":stepover" "continue running the debugged program" $
+        stepWith (StepOver . snd)
+
+    , MetaCommand ":stepinto" "continue running the debugged program" $
+        stepWith (const StepInto)
 
     , MetaCommand ":test" "run tests in the current package" $
         \h _ -> liftIO $ do
@@ -360,7 +411,7 @@ metaCommands =
     , MetaCommand ":where" "print your location" $ \h _ -> liftIO $ do
         emode <- IORef.readIORef (h ^. mode)
         case emode of
-            SteppingMode (Just suspension) _ -> do
+            Suspended suspension _ -> do
                 sauce <- IORef.readIORef (h ^. sources)
                 PP.hPutSemDoc IO.stdout $ prettySuspension sauce suspension
             _ -> PP.hPutSemDoc IO.stderr "only available when in debugging"
@@ -373,6 +424,15 @@ metaCommands =
         void $ runInterpreter h $ \i -> do
             Interpreter.loadModule i path
             Interpreter.compilePackages i
+        return True
+
+    stepWith f = \h _ -> liftIO $ do
+        emode <- IORef.readIORef (h ^. mode)
+        case emode of
+            RegularMode                -> IO.hPutStrLn IO.stderr "Not paused"
+            Errored _                  -> IO.hPutStrLn IO.stderr "Not paused"
+            Suspended suspension nstep ->
+                processStep h (f suspension) nstep
         return True
 
 completeBuiltins :: Handle -> Hl.CompletionFunc IO
@@ -390,21 +450,32 @@ completeRules h = Hl.completeDictionary completeWhitespace $ do
 completePackages :: Handle -> Hl.CompletionFunc IO
 completePackages h = Hl.completeDictionary completeWhitespace $ do
     pkgs <- fromMaybe [] <$> runInterpreter h Interpreter.readPackages
-    return (map ((<> ".") . review dataPackageNameFromString) pkgs)
+    return $
+        map ((<> ".") . review dataPackageNameFromString) pkgs ++
+        map ((<> ".") . review packageNameFromString) pkgs
 
 completePackageRules :: Handle -> Hl.CompletionFunc IO
 completePackageRules h = Hl.completeWord Nothing completeWhitespace $ \str0 -> do
     let (prefix, pkgname) =
             bimap reverse (reverse . drop 1) $
             break (== '.') (reverse str0)
-    case pkgname ^? dataPackageNameFromString of
+        dataPrefix = "data." `L.isPrefixOf` pkgname
+        mbPkgName = pkgname ^?
+            (if dataPrefix
+                then dataPackageNameFromString
+                else packageNameFromString)
+    case mbPkgName of
         Nothing      -> return []
         Just pkg -> do
             rules <- runInterpreter h $ \i -> Interpreter.readPackageRules i pkg
             return $ do
                 rule <- fromMaybe [] rules
                 let r = varToString rule
-                    text = review dataPackageNameFromString pkg <> "." <> r
+                    text =
+                        review (if dataPrefix
+                                    then dataPackageNameFromString
+                                    else packageNameFromString) pkg <>
+                        "." <> r
                 guard $ prefix `L.isPrefixOf` r
                 return (Hl.Completion text text False)
 
