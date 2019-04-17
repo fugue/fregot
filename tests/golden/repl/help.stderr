@@ -11,5 +11,6 @@ Other commands:
   :quit  exit the repl
   :reload  reload the file from the last `:load`
   :test  run tests in the current package
+  :where  print your location
 
 Shortcuts are supported for commands, e.g. `:l` for `:load`.

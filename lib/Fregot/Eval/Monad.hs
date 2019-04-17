@@ -131,7 +131,7 @@ instance Show EvalException where
 
 instance Exception EvalException
 
-type Suspension = (SourceSpan, Context)
+type Suspension = (SourceSpan, Context, Stack.StackTrace)
 
 newtype EvalM a = EvalM
     { unEvalM :: Environment -> Context -> Stream Suspension IO (Row a)
@@ -194,7 +194,7 @@ mkStepState env0 (EvalM f) = StepState
 
 data Step a
     = Yield (Row a) (StepState a)
-    | Suspend SourceSpan (StepState a)
+    | Suspend (SourceSpan, Stack.StackTrace) (StepState a)
     | Done
     -- NOTE(jaspervdj): We can recover the latest 'StepState' here?
     | Error Error
@@ -209,14 +209,15 @@ stepEvalM ss = catch
         case sstep of
             Stream.Yield r ns ->
                 return $ Yield r (StepState ns (r ^. rowContext) env)
-            Stream.Suspend (i, ctx) ns ->
-                return $ Suspend i (StepState ns ctx env)
+            Stream.Suspend (i, ctx, stck) ns ->
+                let env' = env & stack .~ stck in
+                return $ Suspend (i, stck) (StepState ns ctx env')
             Stream.Done         -> return Done)
     (\(EvalException err) -> return (Error err))
 
 suspend :: SourceSpan -> EvalM a -> EvalM a
 suspend source (EvalM f) =
-    EvalM $ \rs ctx -> Stream.suspend (source, ctx) (f rs ctx)
+    EvalM $ \env ctx -> Stream.suspend (source, ctx, env ^. stack) (f env ctx)
 {-# INLINE suspend #-}
 
 branch :: [EvalM a] -> EvalM a

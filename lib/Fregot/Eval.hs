@@ -7,7 +7,7 @@
 {-# LANGUAGE TemplateHaskell            #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}  -- for the MonadUnify instance...
 module Fregot.Eval
-    ( Environment (..), packages, package, inputDoc, imports
+    ( Environment (..), packages, package, inputDoc, imports, stack
     , Context, locals
     , emptyContext
 
