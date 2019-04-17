@@ -7,9 +7,11 @@ module Fregot.Error.Stack
     , empty
     , null
     , push
+    , peek
     ) where
 
 import qualified Data.List                 as L
+import           Data.Maybe                (listToMaybe)
 import           Fregot.PrettyPrint        ((<+>))
 import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources.SourceSpan (SourceSpan)
@@ -42,3 +44,6 @@ null (StackTrace s) = L.null s
 
 push :: StackFrame -> StackTrace -> StackTrace
 push frame (StackTrace frames) = StackTrace (frame : frames)
+
+peek :: StackTrace -> Maybe StackFrame
+peek (StackTrace frames) = listToMaybe frames
