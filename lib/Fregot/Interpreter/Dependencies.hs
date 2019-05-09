@@ -1,33 +1,23 @@
 -- | Pure, simple dependency management.
+{-# LANGUAGE GADTs               #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TemplateHaskell     #-}
 module Fregot.Interpreter.Dependencies
-    ( Graph (..), graphDone, graphDependencies
-    , empty
+    ( Graph (..)
     , plan
+    , evict
     ) where
 
-import           Control.Lens    ((^.))
-import           Control.Lens.TH (makeLenses)
-import           Data.Hashable   (Hashable)
-import qualified Data.HashSet    as HS
+import           Data.Hashable       (Hashable)
+import qualified Data.HashMap.Strict as HMS
+import qualified Data.HashSet        as HS
 
 data DependencyError k
     = DependencyCycle [k]
     deriving (Show)
 
--- | Somewhat abstract graph representation.  We use a higher-order record so
--- that we actually never need to construct a graph, we can just get information
--- from the modules in the functions.
-data Graph k = Graph
-    { _graphDone         :: k -> Bool
-    , _graphDependencies :: k -> [k]
-    }
-
-$(makeLenses ''Graph)
-
-empty :: Graph k
-empty = Graph (const True) (const [])
+-- | Somewhat abstract graph representation.
+data Graph k where
+    Graph :: HMS.HashMap k a -> (k -> [k]) -> Graph k
 
 -- | Compute a plan to build the requested nodes.
 plan
@@ -35,7 +25,7 @@ plan
     => Graph k                         -- ^ Dependency graph
     -> HS.HashSet k                    -- ^ Wanted nodes
     -> Either (DependencyError k) [k]  -- ^ Error or plan
-plan graph = go HS.empty []
+plan (Graph gdone gdeps) = go HS.empty []
   where
     go :: HS.HashSet k -> [k] -> HS.HashSet k -> Either (DependencyError k) [k]
     go done acc wanted = case HS.toList wanted of
@@ -49,9 +39,9 @@ plan graph = go HS.empty []
         -- All dependencies not yet taken care of.
         let next =
                 [ n
-                | n <- (graph ^. graphDependencies) current
+                | n <- gdeps current
                 , not (n `HS.member` done)
-                , not $ (graph ^. graphDone) n
+                , not (n `HMS.member` gdone)
                 ] in
 
         -- Look where we should head next.
@@ -59,3 +49,21 @@ plan graph = go HS.empty []
             []                       -> Right current
             (n : _) | n `elem` trail -> Left $ DependencyCycle (n : trail)
             n : _                    -> chase done (current : trail) n
+
+-- | If a node is removed from the "done" set, we'll also need to remove all the
+-- nodes that depended on it.  This function computes that set in a simple way
+-- by just computing the fixpoint.
+evict
+    :: (Eq k, Hashable k)
+    => Graph k          -- ^ Dependency graph
+    -> HS.HashSet k     -- ^ Nodes you want to evict
+    -> HS.HashSet k     -- ^ All nodes that need to be evicted
+evict (Graph gdone gdeps) = go
+  where
+    go closure =
+        let new     = HS.fromMap $ () <$ HMS.filterWithKey ood gdone
+            ood n _ =
+                not (n `HS.member` closure) &&
+                any (`HS.member` closure) (gdeps n) in
+
+        if HS.null new then closure else go (closure `HS.union` new)
