@@ -194,6 +194,7 @@ builtins = HMS.fromList
     , (OperatorFunction MinusO,              builtin_minus)
     , (OperatorFunction TimesO,              builtin_times)
     , (OperatorFunction DivideO,             builtin_divide)
+    , (OperatorFunction ModuloO,             builtin_modulo)
     , (OperatorFunction BinOrO,              builtin_bin_or)
     ]
 
@@ -363,6 +364,10 @@ builtin_times = Builtin (In (In Out)) $
 builtin_divide :: Builtin
 builtin_divide = Builtin (In (In Out)) $
   \(Cons x (Cons y Nil)) -> return $! num $ x / y
+
+builtin_modulo :: Builtin
+builtin_modulo = Builtin (In (In Out)) $
+  \(Cons x (Cons y Nil)) -> return $! x `Number.mod` y
 
 builtin_bin_or :: Builtin
 builtin_bin_or = Builtin (In (In Out)) $

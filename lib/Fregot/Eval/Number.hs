@@ -5,15 +5,19 @@ module Fregot.Eval.Number
     , int
     , double
     , fromScientific
+    , mod
     ) where
 
 import           Control.Lens       ((^.))
 import           Control.Lens.Iso   (Iso', iso)
 import           Control.Lens.Prism (Prism', prism')
+import qualified Data.Fixed         as Fixed
 import           Data.Hashable      (Hashable (..))
 import           Data.Scientific    (Scientific)
 import qualified Data.Scientific    as Scientific
 import qualified Fregot.PrettyPrint as PP
+import           Prelude            hiding (mod)
+import qualified Prelude            as Prelude
 
 data Number = I {-# UNPACK #-} !Int | D {-# UNPACK #-} !Double
 
@@ -83,3 +87,6 @@ homoBinOp _ g (D x) (D y) = g x y
 
 fromScientific :: Scientific -> Number
 fromScientific = either D I . Scientific.floatingOrInteger
+
+mod :: Number -> Number -> Number
+mod = numBinOp Prelude.mod Fixed.mod'

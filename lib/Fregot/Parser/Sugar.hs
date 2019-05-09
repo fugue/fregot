@@ -119,6 +119,7 @@ expr :: FregotParser (Expr SourceSpan)
 expr = Parsec.buildExpressionParser
     [ [ binary Tok.TTimes  TimesO  Parsec.AssocLeft
       , binary Tok.TDivide DivideO Parsec.AssocLeft
+      , binary Tok.TModulo ModuloO Parsec.AssocLeft
       ]
 
     , [ binary Tok.TPlus  PlusO  Parsec.AssocLeft

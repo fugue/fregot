@@ -262,6 +262,7 @@ data BinOp
     | MinusO
     | TimesO
     | DivideO
+    | ModuloO
     | BinOrO
     deriving (Generic, Show)
 
@@ -435,6 +436,7 @@ instance PP.Pretty PP.Sem BinOp where
         MinusO              -> "-"
         TimesO              -> "*"
         DivideO             -> "/"
+        ModuloO             -> "%"
         BinOrO              -> "|"
 
 instance PP.Pretty PP.Sem (With a) where
