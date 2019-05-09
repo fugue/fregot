@@ -30,6 +30,7 @@ Library
     Fregot.Find
     Fregot.Interpreter
     Fregot.Interpreter.Bundle
+    Fregot.Interpreter.Dependencies
     Fregot.Lexer
     Fregot.Lexer.Comment
     Fregot.Lexer.Internal

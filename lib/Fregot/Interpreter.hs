@@ -101,6 +101,7 @@ insertModule h sourcep modul = do
 
     -- Remove the corresponding compiled module.
     liftIO $ IORef.atomicModifyIORef_ (h ^. compiled) $ HMS.delete pkgname
+    -- TODO(jaspervdj): Remove its dependencies as well.
 
 loadModule :: Handle -> FilePath -> InterpreterM ()
 loadModule h path = do
@@ -173,6 +174,19 @@ readCompiledPackage h pkgname = do
                 HMS.insert pkgname cp
             return cp
 
+compilePackages :: Handle -> InterpreterM ()
+compilePackages h = do
+    mods  <- liftIO $ IORef.readIORef (h ^. modules)
+    comps <- liftIO $ IORef.readIORef (h ^. compiled)
+    let needComp = mods `HMS.difference` comps
+    -- TODO(jaspervdj): Compile them in the "right" order and pass through the
+    -- state.
+    newComp <- ifor needComp $ \pkgname _ -> do
+        prep <- readPreparedPackage h pkgname
+        Compile.compilePackage prep
+    liftIO $ IORef.atomicModifyIORef_ (h ^. compiled) $
+        \oldComp -> oldComp <> newComp
+
 -- | Get a list of loaded packages.
 readPackages :: Handle -> InterpreterM [PackageName]
 readPackages h = do
@@ -208,17 +222,6 @@ insertRule h pkgname sourcep rule =
         , _moduleImports = []  -- TODO(jaspervdj): REPL imports here?
         , _modulePolicy  = [rule]
         }
-
-compilePackages :: Handle -> InterpreterM ()
-compilePackages h = do
-    mods  <- liftIO $ IORef.readIORef (h ^. modules)
-    comps <- liftIO $ IORef.readIORef (h ^. compiled)
-    let needComp = mods `HMS.difference` comps
-    newComp <- ifor needComp $ \pkgname _ -> do
-        prep <- readPreparedPackage h pkgname
-        Compile.compilePackage prep
-    liftIO $ IORef.atomicModifyIORef_ (h ^. compiled) $
-        \oldComp -> oldComp <> newComp
 
 eval
     :: Handle -> Eval.Context -> PackageName -> Eval.EvalM a
