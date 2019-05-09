@@ -30,6 +30,7 @@ Library
     Fregot.Find
     Fregot.Interpreter
     Fregot.Interpreter.Bundle
+    Fregot.Interpreter.Dependencies
     Fregot.Lexer
     Fregot.Lexer.Comment
     Fregot.Lexer.Internal
@@ -151,6 +152,7 @@ Test-suite fregot-tests
   Other-modules:
     Data.SafeVar.Tests
     Fregot.Compile.Order.Tests
+    Fregot.Interpreter.Dependencies.Tests
     Fregot.Prepare.Dsl
     Fregot.Prepare.Lens.Tests
     Fregot.Prepare.Vars.Tests

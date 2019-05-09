@@ -176,18 +176,9 @@ prepareImports =
                     []   -> Nothing
                     bits -> return $ mkVar $ last bits)
 
-        mbStripped <- case unPackageName (imp ^. Sugar.importPackage) of
-            "data" : xs -> return $ Just $ PackageName $ xs
-            _           -> do
-                tellError $ Error.mkError "compile" (imp ^. Sugar.importAnn)
-                    "invalid import"
-                    "Import should start with `data`"
-                return Nothing
-
         return $ do
-            alias    <- mbAlias
-            stripped <- mbStripped
-            return $ (alias, (imp ^. Sugar.importAnn, stripped))
+            alias <- mbAlias
+            return $ (alias, (imp ^. Sugar.importAnn, imp ^. Sugar.importPackage))
 
 prepareRuleBody
     :: Monad m

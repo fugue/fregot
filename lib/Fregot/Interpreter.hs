@@ -27,42 +27,44 @@ module Fregot.Interpreter
     , step
     ) where
 
-import qualified Codec.Compression.GZip    as GZip
-import           Control.Lens              (forOf_, ifor, to, (^.))
-import           Control.Lens.TH           (makeLenses)
-import           Control.Monad             (foldM)
-import           Control.Monad.Parachute   (ParachuteT, fatal)
-import           Control.Monad.Trans       (liftIO)
-import qualified Data.Binary               as Binary
-import qualified Data.ByteString.Lazy      as BL
-import qualified Data.HashMap.Strict       as HMS
-import qualified Data.HashSet.Extended     as HS
-import           Data.IORef.Extended       (IORef)
-import qualified Data.IORef.Extended       as IORef
-import           Data.Maybe                (fromMaybe)
-import qualified Data.Text.IO              as T
-import           Fregot.Compile.Package    (CompiledPackage)
-import qualified Fregot.Compile.Package    as Compile
-import           Fregot.Error              (Error, catchIO)
-import qualified Fregot.Error              as Error
-import qualified Fregot.Error.Stack        as Stack
-import qualified Fregot.Eval               as Eval
-import qualified Fregot.Eval.Cache         as Cache
-import           Fregot.Eval.Monad         (EvalCache)
-import           Fregot.Eval.Value         (emptyObject)
+import qualified Codec.Compression.GZip          as GZip
+import           Control.Lens                    (forOf_, ifor_, to, (^.),
+                                                  (^..), _2)
+import           Control.Lens.TH                 (makeLenses)
+import           Control.Monad                   (foldM)
+import           Control.Monad.Parachute         (ParachuteT, fatal)
+import           Control.Monad.Trans             (liftIO)
+import qualified Data.Binary                     as Binary
+import qualified Data.ByteString.Lazy            as BL
+import qualified Data.HashMap.Strict             as HMS
+import qualified Data.HashSet.Extended           as HS
+import           Data.IORef.Extended             (IORef)
+import qualified Data.IORef.Extended             as IORef
+import           Data.Maybe                      (fromMaybe)
+import qualified Data.Text.IO                    as T
+import           Fregot.Compile.Package          (CompiledPackage)
+import qualified Fregot.Compile.Package          as Compile
+import           Fregot.Error                    (Error, catchIO)
+import qualified Fregot.Error                    as Error
+import qualified Fregot.Error.Stack              as Stack
+import qualified Fregot.Eval                     as Eval
+import qualified Fregot.Eval.Cache               as Cache
+import           Fregot.Eval.Monad               (EvalCache)
+import           Fregot.Eval.Value               (emptyObject)
 import           Fregot.Interpreter.Bundle
-import qualified Fregot.Parser             as Parser
-import qualified Fregot.Prepare            as Prepare
-import           Fregot.Prepare.Package    (PreparedPackage)
-import qualified Fregot.Prepare.Package    as Prepare
-import           Fregot.PrettyPrint        ((<$$>), (<+>))
-import qualified Fregot.PrettyPrint        as PP
-import           Fregot.Sources            (SourcePointer)
-import qualified Fregot.Sources            as Sources
-import           Fregot.Sources.SourceSpan (SourceSpan)
-import           Fregot.Sugar              (PackageName, Var)
-import qualified Fregot.Sugar              as Sugar
-import           System.FilePath.Extended  (listExtensions)
+import qualified Fregot.Interpreter.Dependencies as Deps
+import qualified Fregot.Parser                   as Parser
+import qualified Fregot.Prepare                  as Prepare
+import           Fregot.Prepare.Package          (PreparedPackage)
+import qualified Fregot.Prepare.Package          as Prepare
+import           Fregot.PrettyPrint              ((<$$>), (<+>))
+import qualified Fregot.PrettyPrint              as PP
+import           Fregot.Sources                  (SourcePointer)
+import qualified Fregot.Sources                  as Sources
+import           Fregot.Sources.SourceSpan       (SourceSpan)
+import           Fregot.Sugar                    (PackageName, Var)
+import qualified Fregot.Sugar                    as Sugar
+import           System.FilePath.Extended        (listExtensions)
 
 type InterpreterM a = ParachuteT Error IO a
 
@@ -89,6 +91,16 @@ newHandle _sources = do
     _cacheVersion <- liftIO $ Cache.bump _cache
     return Handle {..}
 
+readDependencyGraph
+    :: Handle -> IO (Deps.Graph PackageName)
+readDependencyGraph h = do
+    done <- IORef.readIORef (h ^. compiled)
+    mods <- IORef.readIORef (h ^. modules)
+    let dependencies k = maybe [] (^.. deps) (HMS.lookup k mods)
+    return $ Deps.Graph done dependencies
+  where
+    deps = traverse . _2 . Sugar.moduleImports . traverse . Sugar.importPackage
+
 insertModule
     :: Handle -> SourcePointer -> Sugar.Module SourceSpan -> InterpreterM ()
 insertModule h sourcep modul = do
@@ -99,8 +111,14 @@ insertModule h sourcep modul = do
             m2 = (sourcep, modul) : filter ((/= sourcep) . fst) m1 in
         HMS.insert pkgname m2 mods
 
-    -- Remove the corresponding compiled module.
-    liftIO $ IORef.atomicModifyIORef_ (h ^. compiled) $ HMS.delete pkgname
+    -- Compute all modules that depend on the module, so we can evict all of
+    -- them.
+    depGraph <- liftIO (readDependencyGraph h)
+    let evict = Deps.evict depGraph (HS.singleton pkgname)
+
+    -- Remove everything that's in the evict set.
+    liftIO $ IORef.atomicModifyIORef_ (h ^. compiled) $
+        HMS.filterWithKey (\k _ -> not (k `HS.member` evict))
 
 loadModule :: Handle -> FilePath -> InterpreterM ()
 loadModule h path = do
@@ -145,6 +163,9 @@ saveBundle h path = liftIO $ do
 
 -- | Get a single package by package name.  If the package does not exist, an
 -- empty one is created.
+--
+-- TODO(jaspervdj): We should probably crash rather than creating an empty
+-- package.
 readPreparedPackage :: Handle -> PackageName -> InterpreterM PreparedPackage
 readPreparedPackage h pkgname = do
     modmap <- liftIO $ IORef.readIORef (h ^. modules)
@@ -160,18 +181,40 @@ readPreparedPackage h pkgname = do
             pkg0
             (modul ^. Sugar.modulePolicy)
 
--- | Get a compiled package.  If it does not exist, it is compiled.
-readCompiledPackage :: Handle -> PackageName -> InterpreterM CompiledPackage
-readCompiledPackage h pkgname = do
-    comp <- liftIO $ IORef.readIORef (h ^. compiled)
-    case HMS.lookup pkgname comp of
+-- | Compile a specific package.  This will compile its dependencies first.
+readCompiledPackage
+    :: Handle -> PackageName -> InterpreterM CompiledPackage
+readCompiledPackage h want = do
+    graph <- liftIO (readDependencyGraph h)
+    comp0 <- liftIO $ IORef.readIORef (h ^. compiled)
+    plan  <- case Deps.plan graph (HS.singleton want) of
+        Left _  -> fail "todo: dependency planning error"
+        Right x -> return x
+
+    -- Execute plan.
+    comp1 <- case plan of
+        []    -> return comp0
+        _ : _ -> do
+            comp1 <- foldM
+                (\uni pkgname -> do
+                    prep <- readPreparedPackage h pkgname
+                    cp   <- Compile.compilePackage uni prep
+                    return $ HMS.insert pkgname cp uni)
+                comp0
+                plan
+            liftIO $ IORef.writeIORef (h ^. compiled) comp1
+            return comp1
+
+    case HMS.lookup want comp1 of
         Just cp -> return cp
-        Nothing -> do
-            prep <- readPreparedPackage h pkgname
-            cp   <- Compile.compilePackage prep
-            liftIO $ IORef.atomicModifyIORef_ (h ^. compiled) $
-                HMS.insert pkgname cp
-            return cp
+        Nothing -> fail $ "package not found: " ++ show want
+
+compilePackages :: Handle -> InterpreterM ()
+compilePackages h = do
+    mods  <- liftIO $ IORef.readIORef (h ^. modules)
+    comps <- liftIO $ IORef.readIORef (h ^. compiled)
+    let needComp = mods `HMS.difference` comps
+    ifor_ needComp $ \pkgname _ -> readCompiledPackage h pkgname
 
 -- | Get a list of loaded packages.
 readPackages :: Handle -> InterpreterM [PackageName]
@@ -208,17 +251,6 @@ insertRule h pkgname sourcep rule =
         , _moduleImports = []  -- TODO(jaspervdj): REPL imports here?
         , _modulePolicy  = [rule]
         }
-
-compilePackages :: Handle -> InterpreterM ()
-compilePackages h = do
-    mods  <- liftIO $ IORef.readIORef (h ^. modules)
-    comps <- liftIO $ IORef.readIORef (h ^. compiled)
-    let needComp = mods `HMS.difference` comps
-    newComp <- ifor needComp $ \pkgname _ -> do
-        prep <- readPreparedPackage h pkgname
-        Compile.compilePackage prep
-    liftIO $ IORef.atomicModifyIORef_ (h ^. compiled) $
-        \oldComp -> oldComp <> newComp
 
 eval
     :: Handle -> Eval.Context -> PackageName -> Eval.EvalM a

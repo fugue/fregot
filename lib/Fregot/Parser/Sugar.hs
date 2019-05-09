@@ -1,4 +1,5 @@
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards   #-}
 module Fregot.Parser.Sugar
     ( parseModule
     , rule
@@ -22,6 +23,14 @@ parsePackageName :: FregotParser PackageName
 parsePackageName =
     PackageName <$> Parsec.sepBy1 Tok.var (Tok.symbol Tok.TPeriod)
 
+parseDataPackageName :: FregotParser PackageName
+parseDataPackageName = do
+    PackageName vars <- parsePackageName
+    case vars of
+        ("data" : vs) -> return (PackageName vs)
+        _             -> Parsec.unexpected
+            "import that does not start with data."
+
 parseModule :: FregotParser (Module SourceSpan)
 parseModule = Module
     <$> parseModuleHead
@@ -34,7 +43,7 @@ parseModuleHead = Tok.symbol Tok.TPackage *> parsePackageName
 parseModuleImport :: FregotParser (Import SourceSpan)
 parseModuleImport = withSourceSpan $ do
     Tok.symbol Tok.TImport
-    _importPackage <- parsePackageName
+    _importPackage <- parseDataPackageName
     _importAs <- Parsec.optionMaybe $ do
         Tok.symbol Tok.TAs
         var
