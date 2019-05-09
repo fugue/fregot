@@ -307,6 +307,7 @@ prepareBinOp source = \case
     Sugar.MinusO              -> pure MinusO
     Sugar.TimesO              -> pure TimesO
     Sugar.DivideO             -> pure DivideO
+    Sugar.ModuloO             -> pure ModuloO
     Sugar.BinOrO              -> pure BinOrO
     Sugar.UnifyO              -> do
         tellError $ Error.mkError "compile" source

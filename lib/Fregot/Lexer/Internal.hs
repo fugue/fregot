@@ -170,6 +170,7 @@ data Token
     | TMinus
     | TTimes
     | TDivide
+    | TModulo
     | TBinAnd
     deriving (Eq, Show, Generic)
 
@@ -266,6 +267,7 @@ parseSomeOperator = do
         '-' -> return TMinus
         '*' -> return TTimes
         '/' -> return TDivide
+        '%' -> return TModulo
         '&' -> return TBinAnd
         ':' -> do
             n <- Parsec.lookAhead Parsec.anyChar
@@ -335,6 +337,7 @@ prettyToken token = case token of
     TMinus                     -> "-"
     TTimes                     -> "*"
     TDivide                    -> "/"
+    TModulo                    -> "%"
     TBinAnd                    -> "&"
   where
     quote :: String -> String
