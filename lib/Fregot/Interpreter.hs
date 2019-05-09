@@ -198,7 +198,7 @@ readCompiledPackage h want = do
             comp1 <- foldM
                 (\uni pkgname -> do
                     prep <- readPreparedPackage h pkgname
-                    cp   <- Compile.compilePackage prep
+                    cp   <- Compile.compilePackage uni prep
                     return $ HMS.insert pkgname cp uni)
                 comp0
                 plan

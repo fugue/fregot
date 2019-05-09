@@ -1,6 +1,6 @@
 # This package only defines some rules and functions; they are used in the
-# `packages_02` file.
-package fregot.tests.packages_01
+# `package_02` file.
+package fregot.tests.package_01
 
 one = 1
 

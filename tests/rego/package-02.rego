@@ -1,16 +1,16 @@
-# This package tests some things from `packages_01`.
-package fregot.tests.packages_02
+# This package tests some things from `package_01`.
+package fregot.tests.package_02
 
-import data.fregot.tests.packages_01
+import data.fregot.tests.package_01
 
 test_one {
-  packages_01.one == 1
+  package_01.one == 1
 }
 
 test_odds {
-  packages_01.odds[3]
+  package_01.odds[3]
 }
 
 test_double {
-  packages_01.double(3) == 6
+  package_01.double(3) == 6
 }

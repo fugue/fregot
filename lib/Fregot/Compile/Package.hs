@@ -37,28 +37,42 @@ import           Prelude                     hiding (head, lookup)
 
 type CompiledPackage = Package ()
 
+type Dependencies = HMS.HashMap PackageName CompiledPackage
+
 aritiesFromPackage :: PreparedPackage -> Arities
 aritiesFromPackage prep = \func ->
     (do
         builtin <- HMS.lookup func Builtins.builtins
         return $ Builtins.arity builtin) <|>
     (do
-        -- TODO(jaspervdj): Look up functions in other packages as well.
         NamedFunction [fname] <- Just func
         userdef <- lookup fname prep
         FunctionRule arity <- Just (userdef ^. ruleKind)
         return arity)
+
+aritiesFromDependencies :: Imports a -> Dependencies -> Arities
+aritiesFromDependencies imports deps = \func -> do
+    -- TODO(jaspervdj): Remove this madness once we have proper scopechecking.
+    NamedFunction [imp, fname] <- Just func
+    (_, pkgname)               <- HMS.lookup imp imports
+    pkg                        <- HMS.lookup pkgname deps
+    userdef                    <- lookup fname pkg
+    FunctionRule arity         <- Just (userdef ^. ruleKind)
+    return arity
 
 -- | Construct the safe-to-use global variables.
 safeGlobals :: PreparedPackage -> Safe Var
 safeGlobals prep = Safe $ HS.fromList (rules prep) <> ["data", "input"]
 
 compilePackage
-    :: Monad m => PreparedPackage -> ParachuteT Error m CompiledPackage
-compilePackage prep =
+    :: Monad m
+    => Dependencies
+    -> PreparedPackage
+    -> ParachuteT Error m CompiledPackage
+compilePackage dependencies prep =
     traverseOf (packageRules . traverse) compileRule prep
   where
-    arities = aritiesFromPackage prep
+    selfArities = aritiesFromPackage prep
 
     compileRule
         :: Monad m => Rule SourceSpan -> ParachuteT Error m (Rule SourceSpan)
@@ -110,6 +124,10 @@ compilePackage prep =
 
         orderRuleBody = runOrder . orderForSafety arities safe
         orderTerm = runOrder . orderTermForSafety arities safe
+
+        arities = \f ->
+            selfArities f <|>
+            aritiesFromDependencies (def ^. ruleDefImports) dependencies f
 
 compileTerm
     :: Monad m
