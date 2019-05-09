@@ -169,6 +169,7 @@ builtins = HMS.fromList
     , (NamedFunction ["endswith"],           builtin_endswith)
     , (NamedFunction ["format_int"],         builtin_format_int)
     , (NamedFunction ["indexof"],            builtin_indexof)
+    , (NamedFunction ["is_array"],           builtin_is_array)
     , (NamedFunction ["is_object"],          builtin_is_object)
     , (NamedFunction ["is_string"],          builtin_is_string)
     , (NamedFunction ["json", "unmarshal"],  builtin_json_unmarshal)
@@ -238,6 +239,11 @@ builtin_indexof = Builtin (In (In Out)) $ \(Cons haystack (Cons needle Nil)) ->
         | T.null needle -> 0
         | T.null match  -> -1
         | otherwise     -> T.length prefix
+
+builtin_is_array :: Builtin
+builtin_is_array = Builtin (In Out) $ \(Cons val Nil) -> case val of
+    ArrayV _ -> return True
+    _        -> return False
 
 builtin_is_object :: Builtin
 builtin_is_object = Builtin (In Out) $ \(Cons val Nil) -> case val of
