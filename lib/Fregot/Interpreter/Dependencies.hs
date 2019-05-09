@@ -3,6 +3,7 @@
 {-# LANGUAGE TemplateHaskell     #-}
 module Fregot.Interpreter.Dependencies
     ( Graph (..), graphDone, graphDependencies
+    , empty
     , plan
     ) where
 
@@ -24,6 +25,9 @@ data Graph k = Graph
     }
 
 $(makeLenses ''Graph)
+
+empty :: Graph k
+empty = Graph (const True) (const [])
 
 -- | Compute a plan to build the requested nodes.
 plan

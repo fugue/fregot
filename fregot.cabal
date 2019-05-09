@@ -152,6 +152,7 @@ Test-suite fregot-tests
   Other-modules:
     Data.SafeVar.Tests
     Fregot.Compile.Order.Tests
+    Fregot.Interpreter.Dependencies.Tests
     Fregot.Prepare.Dsl
     Fregot.Prepare.Lens.Tests
     Fregot.Prepare.Vars.Tests
