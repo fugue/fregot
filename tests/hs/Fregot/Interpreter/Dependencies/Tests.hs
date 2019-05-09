@@ -15,6 +15,9 @@ tests = Tasty.testGroup "Fregot.Interpreter.Dependencies.Tests"
     [ Tasty.testCase "plan" $
         let graph = Graph [(2, ()), (3, ())] dependOnLower in
         Deps.plan graph [8] ^? _Right @?= Just [0, 4, 6, 8 :: Int]
+    , Tasty.testCase "empty plan" $
+        let graph = Graph [(0, ()), (2, ()), (4, ())] dependOnLower in
+        Deps.plan graph [4 :: Int] ^? _Right @?= Just []
     , Tasty.testCase "evict" $
         let graph = Graph
                 (HMS.fromList $ zip [0 .. 10] $ repeat ())

@@ -29,7 +29,9 @@ plan (Graph gdone gdeps) = go HS.empty []
   where
     go :: HS.HashSet k -> [k] -> HS.HashSet k -> Either (DependencyError k) [k]
     go done acc wanted = case HS.toList wanted of
-        []    -> pure (reverse acc)
+        [] -> pure (reverse acc)
+        w : _ | w `HS.member` done || w `HMS.member` gdone ->
+            go done acc (w `HS.delete` wanted)
         w : _ -> do
             x <- chase done [] w
             go (x `HS.insert` done) (x : acc) (x `HS.delete` wanted)
