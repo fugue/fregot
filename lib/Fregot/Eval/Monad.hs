@@ -297,7 +297,17 @@ lookupRule :: [Var] -> EvalM (Maybe (Rule SourceSpan))
 lookupRule [root] = do
     env0 <- ask
     return $ Package.lookup root (env0 ^. package)
-lookupRule vs = fail $ "todo: lookup rules in other packages: " ++ show vs
+lookupRule [imp, name] = do
+    -- NOTE(jaspervdj): Note that this path is only taken for simple calls,
+    -- because they translate to a `CallT [Var] ...`.  This will change when we
+    -- have proper scopechecking.
+    imps <- view imports
+    env0 <- ask
+    pure $ do
+        (_ann, pkgname) <- HMS.lookup imp imps
+        pkg <- HMS.lookup pkgname (env0 ^. packages)
+        Package.lookup name pkg
+lookupRule _ = pure Nothing
 
 clearLocals :: EvalM a -> EvalM a
 clearLocals mx = do
