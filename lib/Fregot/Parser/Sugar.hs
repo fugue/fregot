@@ -13,11 +13,12 @@ import           Data.Functor              (($>))
 import qualified Data.Scientific           as Scientific
 import           Fregot.Parser.Internal
 import qualified Fregot.Parser.Token       as Tok
+import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources.SourceSpan
 import           Fregot.Sugar
 import           Prelude                   hiding (head)
-import qualified Text.Parsec               as Parsec
 import qualified Text.Parsec.Expr          as Parsec
+import qualified Text.Parsec.Extended      as Parsec
 
 parsePackageName :: FregotParser PackageName
 parsePackageName =
@@ -25,11 +26,12 @@ parsePackageName =
 
 parseDataPackageName :: FregotParser PackageName
 parseDataPackageName = do
-    PackageName vars <- parsePackageName
+    pos                        <- Parsec.getPosition
+    pkgname@(PackageName vars) <- parsePackageName
     case vars of
         ("data" : vs) -> return (PackageName vs)
-        _             -> Parsec.unexpected
-            "import that does not start with data."
+        _             -> Parsec.unexpectedAt pos $
+            show (PP.pretty pkgname) ++ " (imports should start with `data.`)"
 
 parseModule :: FregotParser (Module SourceSpan)
 parseModule = Module
