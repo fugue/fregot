@@ -39,47 +39,16 @@ module Fregot.Sugar
     , nestedVarToString
     ) where
 
-import           Control.Lens       (Lens', lens, review, (^.), (^?))
-import           Control.Lens.Prism (Prism', prism')
+import           Control.Lens       (Lens', lens, (^.))
 import           Control.Lens.TH    (makeLenses)
-import           Control.Monad      (guard)
 import           Data.Binary        (Binary)
-import qualified Data.Binary        as Binary
-import           Data.Hashable      (Hashable (..))
 import qualified Data.List          as L
 import           Data.Scientific    (Scientific)
-import           Data.String        (IsString (..))
 import qualified Data.Text.Extended as T
-import           Data.Unique        (HasUnique (..), Unique, Uniquely (..))
-import qualified Data.Unique        as Unique
+import           Fregot.Names
 import           Fregot.PrettyPrint ((<$$>), (<+>), (<+>?), (?<+>))
 import qualified Fregot.PrettyPrint as PP
 import           GHC.Generics       (Generic)
-import           System.IO.Unsafe   (unsafePerformIO)
-
-newtype PackageName = PackageName {unPackageName :: [T.Text]}
-    deriving (Binary, Eq, Hashable, Monoid, Ord, Semigroup, Show)
-
-instance IsString PackageName where
-    fromString = PackageName . T.split (== '.') . T.pack
-
-packageNameFromString :: Prism' String PackageName
-packageNameFromString = T.fromString . packageNameFromText
-
-packageNameFromText :: Prism' T.Text PackageName
-packageNameFromText = prism'
-    (T.intercalate "." . unPackageName)
-    (\txt -> do
-        let parts = T.split (== '.') txt
-        guard $ not $ any T.null parts
-        return $ PackageName parts)
-
--- | Like 'packageNameFromString', but with "data." prepended.
-dataPackageNameFromString :: Prism' String PackageName
-dataPackageNameFromString = prependData . packageNameFromString
-  where
-    prependData :: Prism' String String
-    prependData = prism' ("data." ++) (L.stripPrefix "data.")
 
 data Import a = Import
     { _importAnn     :: !a
@@ -96,64 +65,6 @@ data Module a = Module
     } deriving (Generic, Show)
 
 instance Binary a => Binary (Module a)
-
-data Var = Var {-# UNPACK #-} !Unique {-# UNPACK #-} !T.Text
-    deriving Eq via (Uniquely Var)
-    deriving Hashable via (Uniquely Var)
-    deriving Ord via (Uniquely Var)
-
-instance Show Var where
-    show = show . unVar
-
-instance HasUnique Var where
-    getUnique (Var u _) = u
-    {-# INLINE getUnique #-}
-
-instance IsString Var where
-    fromString = mkVar . fromString
-
-instance Binary Var where
-    get = mkVar <$> Binary.get
-    put = Binary.put . unVar
-
-unVar :: Var -> T.Text
-unVar (Var _ t) = t
-
-mkVar :: T.Text -> Var
-mkVar t = Var (Unique.getStableUnique varUniqueGen t) t
-
-varUniqueGen :: Unique.StableUniqueGen T.Text
-varUniqueGen = unsafePerformIO Unique.newStableUniqueGen
-{-# NOINLINE varUniqueGen #-}
-
-varToString :: Var -> String
-varToString = T.unpack . varToText
-
-varToText :: Var -> T.Text
-varToText = unVar
-
-varFromText :: Prism' T.Text Var
-varFromText = prism' varToText $ \txt -> do
-    guard $ T.all allowedChar txt
-    return $ mkVar txt
-  where
-    allowedChar c =
-        (c >= 'a' && c <= 'z') ||
-        (c >= 'A' && c <= 'Z') ||
-        (c >= '0' && c <= '9') ||
-        c == '_'
-
-qualifiedVarFromText :: Prism' T.Text (Maybe PackageName, Var)
-qualifiedVarFromText = prism'
-    (\(mbPkgName, var) -> case mbPkgName of
-        Nothing      -> review varFromText var
-        Just pkgName ->
-            review packageNameFromText pkgName <> "." <> review varFromText var)
-    (\txt -> case T.breakOnEnd "." txt of
-        ("", var) -> ((,) Nothing) <$> var ^? varFromText
-        (pkgName, var) -> (,)
-            <$> (Just <$> T.init pkgName ^? packageNameFromText)
-            <*> var ^? varFromText)
 
 data Rule a = Rule
     { _ruleHead   :: !(RuleHead a)
@@ -284,19 +195,6 @@ $(makeLenses ''RuleElse)
 $(makeLenses ''Literal)
 $(makeLenses ''With)
 
--- | This type exists solely for pretty-printing.
-newtype NestedVar = NestedVar {unNestedVar :: [Var]}
-
-nestedVarToString :: NestedVar -> String
-nestedVarToString = L.intercalate "." . map varToString . unNestedVar
-
-instance PP.Pretty PP.Sem NestedVar where
-    pretty = mconcat .
-        L.intersperse (PP.punctuation ".") . map PP.pretty . unNestedVar
-
-instance PP.Pretty a PackageName where
-    pretty = PP.pretty . review packageNameFromString
-
 instance PP.Pretty PP.Sem (Import a) where
     pretty imp =
         PP.keyword "import" <+> PP.pretty (imp ^. importPackage) <+>?
@@ -309,9 +207,6 @@ instance PP.Pretty PP.Sem (Module a) where
             []   -> []
             imps -> [PP.vcat $ map PP.pretty imps]) ++
         map PP.pretty (pkg ^. modulePolicy)
-
-instance PP.Pretty a Var where
-    pretty = PP.pretty . unVar
 
 prettyRuleBody :: RuleBody a -> PP.SemDoc
 prettyRuleBody bs =

@@ -36,6 +36,7 @@ Library
     Fregot.Lexer.Internal
     Fregot.Lexer.Position
     Fregot.Lexer.String
+    Fregot.Names
     Fregot.Main
     Fregot.Main.Bundle
     Fregot.Main.Repl
