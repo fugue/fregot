@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DerivingVia                #-}
+{-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
@@ -35,8 +36,8 @@ module Fregot.Sugar
     , BinOp (..)
     , With (..), withAnn, withWith, withAs
 
-    , NestedVar (..)
-    , nestedVarToString
+    , Nested (..)
+    , nestedToString
     ) where
 
 import           Control.Lens       (Lens', lens, (^.))
@@ -53,93 +54,93 @@ import           GHC.Generics       (Generic)
 data Import a = Import
     { _importAnn     :: !a
     , _importPackage :: !PackageName
-    , _importAs      :: !(Maybe Var)
+    , _importAs      :: !(Maybe UnqualifiedVar)
     } deriving (Generic, Show)
 
 instance Binary a => Binary (Import a)
 
-data Module a = Module
+data Module a n = Module
     { _modulePackage :: !PackageName
     , _moduleImports :: ![Import a]
-    , _modulePolicy  :: ![Rule a]
+    , _modulePolicy  :: ![Rule a n]
     } deriving (Generic, Show)
 
-instance Binary a => Binary (Module a)
+instance (Binary a, Binary n) => Binary (Module a n)
 
-data Rule a = Rule
-    { _ruleHead   :: !(RuleHead a)
-    , _ruleBodies :: ![RuleBody a]
-    , _ruleElses  :: ![RuleElse a]
+data Rule a n = Rule
+    { _ruleHead   :: !(RuleHead a n)
+    , _ruleBodies :: ![RuleBody a n]
+    , _ruleElses  :: ![RuleElse a n]
     } deriving (Generic, Show)
 
-instance Binary a => Binary (Rule a)
+instance (Binary a, Binary n) => Binary (Rule a n)
 
-data RuleHead a = RuleHead
+data RuleHead a n = RuleHead
     { _ruleAnn     :: !a
     , _ruleDefault :: !Bool
-    , _ruleName    :: !Var
-    , _ruleArgs    :: !(Maybe [Term a])
-    , _ruleIndex   :: !(Maybe (Term a))
-    , _ruleValue   :: !(Maybe (Term a))
+    , _ruleName    :: !UnqualifiedVar
+    , _ruleArgs    :: !(Maybe [Term a n])
+    , _ruleIndex   :: !(Maybe (Term a n))
+    , _ruleValue   :: !(Maybe (Term a n))
     } deriving (Generic, Show)
 
-instance Binary a => Binary (RuleHead a)
+instance (Binary a, Binary n) => Binary (RuleHead a n)
 
-type RuleBody a = [Literal a]
+type RuleBody a n = [Literal a n]
 
-data RuleElse a = RuleElse
+data RuleElse a n = RuleElse
     { _ruleElseAnn   :: !a
-    , _ruleElseValue :: !(Maybe (Term a))
-    , _ruleElseBody  :: !(RuleBody a)
+    , _ruleElseValue :: !(Maybe (Term a n))
+    , _ruleElseBody  :: !(RuleBody a n)
     } deriving (Generic, Show)
 
-instance Binary a => Binary (RuleElse a)
+instance (Binary a, Binary n) => Binary (RuleElse a n)
 
-data Literal a = Literal
+data Literal a n = Literal
     { _literalAnn      :: !a
     , _literalNegation :: !Bool
-    , _literalExpr     :: !(Expr a)
-    , _literalWith     :: ![With a]
+    , _literalExpr     :: !(Expr a n)
+    , _literalWith     :: ![With a n]
     } deriving (Generic, Show)
 
-instance Binary a => Binary (Literal a)
+instance (Binary a, Binary n) => Binary (Literal a n)
 
-data Expr a
-    = TermE   a (Term a)
+data Expr a n
+    = TermE   a (Term a n)
     -- NOTE(jaspervdj): Perhaps assign should be part of 'Literal'.  It is
     -- missing from the grammar, so I'm not sure at this point.
-    | BinOpE  a (Expr a) BinOp (Expr a)
-    | ParensE a (Expr a)
+    | BinOpE  a (Expr a n) BinOp (Expr a n)
+    | ParensE a (Expr a n)
     deriving (Generic, Show)
 
-instance Binary a => Binary (Expr a)
+instance (Binary a, Binary n) => Binary (Expr a n)
 
-data Term a
-    = RefT      a a Var [RefArg a]
+data Term a n
+    = RefT      a a n [RefArg a n]
     -- NOTE(jaspervdj): According to the grammar, a function call should be an
     -- expression, not a term.  Putting it here is more permissive though, so I
     -- hope that won't cause any trouble.
-    | CallT     a [Var] [Term a]
-    | VarT      a Var
+    | CallT     a [n] [Term a n]
+    | VarT      a n
     | ScalarT   a (Scalar a)
 
-    | ArrayT    a [Expr a]
-    | SetT      a [Expr a]
-    | ObjectT   a (Object a)
+    | ArrayT    a [Expr a n]
+    | SetT      a [Expr a n]
+    | ObjectT   a (Object a n)
 
-    | ArrayCompT  a (Term a) (RuleBody a)
-    | SetCompT    a (Term a) (RuleBody a)
-    | ObjectCompT a (ObjectKey a) (Term a) (RuleBody a)
+    | ArrayCompT  a (Term a n) (RuleBody a n)
+    | SetCompT    a (Term a n) (RuleBody a n)
+    | ObjectCompT a (ObjectKey a n) (Term a n) (RuleBody a n)
     deriving (Generic, Show)
 
-instance Binary a => Binary (Term a)
+instance (Binary a, Binary n) => Binary (Term a n)
 
-data RefArg a
-    = RefBrackArg !(Expr a)
-    | RefDotArg !a !Var
+data RefArg a n
+    = RefBrackArg !(Expr a n)
+    | RefDotArg !a !UnqualifiedVar
     deriving (Generic, Show)
 
-instance Binary a => Binary (RefArg a)
+instance (Binary a, Binary n) => Binary (RefArg a n)
 
 data Scalar a
     = String T.Text
@@ -150,15 +151,15 @@ data Scalar a
 
 instance Binary a => Binary (Scalar a)
 
-type Object a = [(ObjectKey a, Expr a)]
+type Object a n = [(ObjectKey a n, Expr a n)]
 
-data ObjectKey a
+data ObjectKey a n
     = ScalarK a (Scalar a)
-    | VarK    a Var
-    | RefK    a Var [RefArg a]
+    | VarK    a UnqualifiedVar
+    | RefK    a n [RefArg a n]
     deriving (Generic, Show)
 
-instance Binary a => Binary (ObjectKey a)
+instance (Binary a, Binary n) => Binary (ObjectKey a n)
 
 data BinOp
     = UnifyO
@@ -179,13 +180,13 @@ data BinOp
 
 instance Binary BinOp
 
-data With a = With
+data With a n = With
     { _withAnn  :: !a
-    , _withWith :: ![Var]
-    , _withAs   :: !(Term a)
+    , _withWith :: ![UnqualifiedVar]
+    , _withAs   :: !(Term a n)
     } deriving (Generic, Show)
 
-instance Binary a => Binary (With a)
+instance (Binary a, Binary n) => Binary (With a n)
 
 $(makeLenses ''Import)
 $(makeLenses ''Module)
@@ -200,7 +201,7 @@ instance PP.Pretty PP.Sem (Import a) where
         PP.keyword "import" <+> PP.pretty (imp ^. importPackage) <+>?
         fmap PP.pretty (imp ^. importAs)
 
-instance PP.Pretty PP.Sem (Module a) where
+instance PP.Pretty PP.Sem n => PP.Pretty PP.Sem (Module a n) where
     pretty pkg = PP.vcat2 $
         (PP.keyword "package" <+> PP.pretty (pkg ^. modulePackage)) :
         (case pkg ^. moduleImports of
@@ -208,13 +209,13 @@ instance PP.Pretty PP.Sem (Module a) where
             imps -> [PP.vcat $ map PP.pretty imps]) ++
         map PP.pretty (pkg ^. modulePolicy)
 
-prettyRuleBody :: RuleBody a -> PP.SemDoc
+prettyRuleBody :: PP.Pretty PP.Sem n => RuleBody a n -> PP.SemDoc
 prettyRuleBody bs =
     PP.punctuation "{" <$$>
     PP.ind (PP.vcat $ map (\b -> PP.pretty b) bs) <$$>
     PP.punctuation "}"
 
-instance PP.Pretty PP.Sem (Rule a) where
+instance PP.Pretty PP.Sem n => PP.Pretty PP.Sem (Rule a n) where
     pretty r =
         PP.pretty (r ^. ruleHead) <+>?
         (case r ^. ruleBodies of
@@ -224,7 +225,7 @@ instance PP.Pretty PP.Sem (Rule a) where
             [] -> Nothing
             es -> Just $ mconcat $ L.intersperse " " $ map PP.pretty es)
 
-instance PP.Pretty PP.Sem (RuleHead a) where
+instance PP.Pretty PP.Sem n => PP.Pretty PP.Sem (RuleHead a n) where
     pretty r =
         (if r ^. ruleDefault then Just (PP.keyword "default") else Nothing) ?<+>
         PP.pretty (r ^. ruleName) <>
@@ -242,7 +243,7 @@ instance PP.Pretty PP.Sem (RuleHead a) where
             Just val -> PP.space <>
                 PP.punctuation "=" <+> PP.pretty val)
 
-instance PP.Pretty PP.Sem (RuleElse a) where
+instance PP.Pretty PP.Sem n => PP.Pretty PP.Sem (RuleElse a n) where
     pretty re =
         PP.keyword "else" <+>
         (case re ^. ruleElseValue of
@@ -250,7 +251,7 @@ instance PP.Pretty PP.Sem (RuleElse a) where
             Just v  -> Just $ PP.punctuation "=" <+> PP.pretty v) ?<+>
         prettyRuleBody (re ^. ruleElseBody)
 
-instance PP.Pretty PP.Sem (Literal a) where
+instance PP.Pretty PP.Sem n => PP.Pretty PP.Sem (Literal a n) where
     pretty lit =
         (if lit ^. literalNegation
             then Just (PP.keyword "not")
@@ -260,16 +261,16 @@ instance PP.Pretty PP.Sem (Literal a) where
             []    -> Nothing
             withs -> Just $ PP.hcat (L.intersperse " " (map PP.pretty withs)))
 
-instance PP.Pretty PP.Sem (Expr a) where
+instance PP.Pretty PP.Sem n => PP.Pretty PP.Sem (Expr a n) where
     pretty (TermE _ t)      = PP.pretty t
     pretty (BinOpE _ x o y) = PP.pretty x <+> PP.pretty o <+> PP.pretty y
     pretty (ParensE _ e)    =
         PP.punctuation "(" <> PP.pretty e <> PP.punctuation ")"
 
-instance PP.Pretty PP.Sem (Term a) where
+instance PP.Pretty PP.Sem n => PP.Pretty PP.Sem (Term a n) where
     pretty (RefT _ _ v args) = PP.pretty v <> mconcat (map PP.pretty args)
     pretty (CallT _ vs as)  =
-        PP.pretty (NestedVar vs) <>
+        PP.pretty (Nested vs) <>
         PP.punctuation "(" <>
         PP.commaSep (map PP.pretty as) <>
         PP.punctuation ")"
@@ -295,12 +296,12 @@ instance PP.Pretty PP.Sem (Term a) where
         prettyComprehensionBody lits <>
         PP.punctuation "}"
 
-prettyComprehensionBody :: RuleBody a -> PP.SemDoc
+prettyComprehensionBody :: PP.Pretty PP.Sem n => RuleBody a n -> PP.SemDoc
 prettyComprehensionBody lits = mconcat $ L.intersperse
     (PP.punctuation ";" <> PP.space)
     (map PP.pretty lits)
 
-instance PP.Pretty PP.Sem (RefArg a) where
+instance PP.Pretty PP.Sem n => PP.Pretty PP.Sem (RefArg a n) where
     pretty (RefBrackArg a) =
         PP.punctuation "[" <> PP.pretty a <> PP.punctuation "]"
     pretty (RefDotArg _ k) =
@@ -312,7 +313,7 @@ instance PP.Pretty PP.Sem (Scalar a) where
     pretty (Bool   b) = PP.literal $ if b then "true" else "false"
     pretty Null       = PP.literal "null"
 
-instance PP.Pretty PP.Sem (ObjectKey a) where
+instance PP.Pretty PP.Sem n => PP.Pretty PP.Sem (ObjectKey a n) where
     pretty (ScalarK _ s) = PP.pretty s
     pretty (VarK _ v)    = PP.pretty v
     pretty (RefK _ v a)  = PP.pretty v <> mconcat (map PP.pretty a)
@@ -334,14 +335,14 @@ instance PP.Pretty PP.Sem BinOp where
         ModuloO             -> "%"
         BinOrO              -> "|"
 
-instance PP.Pretty PP.Sem (With a) where
+instance PP.Pretty PP.Sem n => PP.Pretty PP.Sem (With a n) where
     pretty with = PP.keyword "with" <+>
         (mconcat $ L.intersperse
             (PP.punctuation ".")
             (map PP.pretty (with ^. withWith))) <+>
         PP.keyword "as" <+> PP.pretty (with ^. withAs)
 
-exprAnn :: Lens' (Expr a) a
+exprAnn :: Lens' (Expr a n) a
 exprAnn = lens getAnn setAnn
   where
     getAnn = \case
@@ -354,7 +355,7 @@ exprAnn = lens getAnn setAnn
         BinOpE  _ x o y -> BinOpE  a x o y
         ParensE _ x     -> ParensE a x
 
-termAnn :: Lens' (Term a) a
+termAnn :: Lens' (Term a n) a
 termAnn = lens getAnn setAnn
   where
     getAnn = \case

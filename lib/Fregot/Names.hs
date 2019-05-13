@@ -1,6 +1,7 @@
 -- | Variable- and name-like things.
 {-# LANGUAGE DerivingVia                #-}
 {-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
@@ -16,8 +17,10 @@ module Fregot.Names
     , varFromText
     , qualifiedVarFromText
 
-    , NestedVar (..)
-    , nestedVarToString
+    , Nested (..)
+    , nestedToString
+
+    , UnqualifiedVar
     ) where
 
 import           Control.Lens       (review, (^?))
@@ -123,11 +126,15 @@ qualifiedVarFromText = prism'
             <*> var ^? varFromText)
 
 -- | This type exists solely for pretty-printing.
-newtype NestedVar = NestedVar {unNestedVar :: [Var]}
+newtype Nested a = Nested {unNested :: [a]}
 
-nestedVarToString :: NestedVar -> String
-nestedVarToString = L.intercalate "." . map varToString . unNestedVar
+nestedToString :: (a -> String) -> Nested a -> String
+nestedToString f = L.intercalate "." . map f . unNested
 
-instance PP.Pretty PP.Sem NestedVar where
+instance PP.Pretty PP.Sem a => PP.Pretty PP.Sem (Nested a) where
     pretty = mconcat .
-        L.intersperse (PP.punctuation ".") . map PP.pretty . unNestedVar
+        L.intersperse (PP.punctuation ".") . map PP.pretty . unNested
+
+-- | Sometimes we want to be really clear in the source code that a variable
+-- cannot be qualified in a specific position.
+type UnqualifiedVar = Var
