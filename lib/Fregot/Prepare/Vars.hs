@@ -15,6 +15,7 @@ import           Data.Hashable         (Hashable)
 import qualified Data.HashSet.Extended as HS
 import           Data.List             (foldl')
 import           Data.Maybe            (fromMaybe)
+import           Fregot.Names
 import           Fregot.Prepare.Ast
 import           Fregot.Prepare.Lens
 
@@ -24,7 +25,7 @@ newtype Safe v = Safe {unSafe :: HS.HashSet v}
 markSafe :: (Eq v, Hashable v) => v -> Safe v
 markSafe = Safe . HS.singleton
 
-markTermSafe :: Term a -> Safe Var
+markTermSafe :: Term a -> Safe Name
 markTermSafe t =
     Safe (HS.toHashSetOf (termCosmosNoClosures . termVars . traverse) t)
 
@@ -33,7 +34,7 @@ isSafe v (Safe s) = HS.member v s
 
 type Arities = Function -> Maybe Int
 
-ovRuleBody :: Arities -> Safe Var -> RuleBody a -> Safe Var
+ovRuleBody :: Arities -> Safe Name -> RuleBody a -> Safe Name
 ovRuleBody arities safe@(Safe initial) body =
     Safe $ total `HS.difference` initial
   where
@@ -42,19 +43,19 @@ ovRuleBody arities safe@(Safe initial) body =
         safe
         body
 
-ovLiteral :: Arities -> Safe Var -> Literal a -> Safe Var
+ovLiteral :: Arities -> Safe Name -> Literal a -> Safe Name
 ovLiteral arities safe lit
     | lit ^. literalNegation = mempty
     | otherwise              =
         ovStatement arities safe (lit ^. literalStatement)
 
-ovStatement :: Arities -> Safe Var -> Statement a -> Safe Var
+ovStatement :: Arities -> Safe Name -> Statement a -> Safe Name
 ovStatement arities safe = \case
     TermS t       -> ovTerm arities safe t
-    AssignS _ v t -> markSafe v <> ovTerm arities safe t
+    AssignS _ v t -> markSafe (LocalName v) <> ovTerm arities safe t
     UnifyS _ x y  -> ovUnify arities safe x y
 
-ovTerm :: Arities -> Safe Var -> Term a -> Safe Var
+ovTerm :: Arities -> Safe Name -> Term a -> Safe Name
 ovTerm arities safe (RefT _ x k) =
     ovTerm arities safe x <>
     markTermSafe k
@@ -79,7 +80,7 @@ ovTerm _arities _safe (ArrayCompT _ _ _) = mempty
 ovTerm _arities _safe (SetCompT _ _ _) = mempty
 ovTerm _arities _safe (ObjectCompT _ _ _ _) = mempty
 
-ovUnify :: Arities -> Safe Var -> Term a -> Term a -> Safe Var
+ovUnify :: Arities -> Safe Name -> Term a -> Term a -> Safe Name
 ovUnify _arities safe (VarT _ alpha) (VarT _ beta)
     | isSafe alpha safe = markSafe beta
     | isSafe beta  safe = markSafe alpha

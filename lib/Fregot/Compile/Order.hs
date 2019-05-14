@@ -22,6 +22,7 @@ import           Data.List.NonEmpty.Extended (NonEmpty)
 import qualified Data.List.NonEmpty.Extended as NonEmpty
 import qualified Data.Map                    as Map
 import           Data.Maybe                  (fromMaybe)
+import           Fregot.Names
 import           Fregot.Prepare.Ast
 import           Fregot.Prepare.Lens
 import           Fregot.Prepare.Vars
@@ -71,7 +72,7 @@ newtype Unsafe v a = Unsafe {unUnsafe :: HMS.HashMap v (NonEmpty a)}
     deriving (Eq, Monoid, Semigroup, Show)
 
 orderForClosures
-    :: Arities -> Safe Var -> RuleBody a -> (RuleBody a, Unsafe Var a)
+    :: Arities -> Safe Name -> RuleBody a -> (RuleBody a, Unsafe Name a)
 orderForClosures arities safe body =
     let (_, body', unsafes) = reorder step () body in
     (body', mconcat unsafes)
@@ -109,7 +110,7 @@ orderForClosures arities safe body =
 
 orderForSafety
     :: forall a.
-       Arities -> Safe Var -> RuleBody a -> (RuleBody a, Unsafe Var a)
+       Arities -> Safe Name -> RuleBody a -> (RuleBody a, Unsafe Name a)
 orderForSafety arities safe0 body0
     -- If ordering for closures fails, shortcut here.
     | not (HMS.null (unUnsafe unsafes1)) = (body1, unsafes1)
@@ -142,12 +143,12 @@ orderForSafety arities safe0 body0
     (body1, unsafes1) = orderForClosures arities safe0 body0
 
     step
-        :: (Safe Var, Map.Map Int (HS.HashSet Var))
+        :: (Safe Name, Map.Map Int (HS.HashSet Name))
         -> [(Int, Literal a)]
         -> (Int, Literal a)
         -> OrderPredicate
-            (Safe Var, Map.Map Int (HS.HashSet Var))
-            (Unsafe Var a)
+            (Safe Name, Map.Map Int (HS.HashSet Name))
+            (Unsafe Name a)
 
     step (safe, unsafes) _ordered (idx, lit)
         -- Find the unsafes we previously stored for this literal.
@@ -161,11 +162,11 @@ orderForSafety arities safe0 body0
             HS.toMap (prevUnsafes `HS.difference` unSafe nowSafe)
 
     -- Recursively rewrite all closures in a literal using the given safe list.
-    recurse :: Safe Var -> Literal a -> Writer (Unsafe Var a) (Literal a)
+    recurse :: Safe Name -> Literal a -> Writer (Unsafe Name a) (Literal a)
     recurse rsafe =
         transformMOn literalTerms (writer . orderTermForSafety arities rsafe)
 
 orderTermForSafety
-    :: Arities -> Safe Var -> Term a -> (Term a, Unsafe Var a)
+    :: Arities -> Safe Name -> Term a -> (Term a, Unsafe Name a)
 orderTermForSafety arities safe = runWriter .
     traverseOf termRuleBodies (writer . orderForSafety arities safe)

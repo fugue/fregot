@@ -19,6 +19,7 @@ import           Data.Maybe                (catMaybes)
 import           Data.Maybe                (isJust, isNothing, mapMaybe)
 import           Fregot.Error              (Error)
 import qualified Fregot.Error              as Error
+import           Fregot.Names
 import           Fregot.Prepare.Ast
 import           Fregot.Prepare.Lens
 import           Fregot.PrettyPrint        ((<+>))
@@ -30,7 +31,7 @@ import           Prelude                   hiding (head)
 -- | Create a new compiled rule from a sugared rule.
 prepareRule
     :: Monad m
-    => Imports SourceSpan -> Sugar.Rule SourceSpan
+    => Imports SourceSpan -> Sugar.Rule SourceSpan Name
     -> ParachuteT Error m (Rule SourceSpan)
 prepareRule imports rule
     | head ^. Sugar.ruleDefault = do
@@ -182,13 +183,13 @@ prepareImports =
 
 prepareRuleBody
     :: Monad m
-    => Sugar.RuleBody SourceSpan
+    => Sugar.RuleBody SourceSpan Name
     -> ParachuteT Error m (RuleBody SourceSpan)
 prepareRuleBody = mapM prepareLiteral
 
 prepareRuleElse
     :: Monad m
-    => Sugar.RuleElse SourceSpan
+    => Sugar.RuleElse SourceSpan Name
     -> ParachuteT Error m (RuleElse SourceSpan)
 prepareRuleElse re = RuleElse (re ^. Sugar.ruleElseAnn)
     <$> traverse prepareTerm (re ^. Sugar.ruleElseValue)
@@ -196,13 +197,15 @@ prepareRuleElse re = RuleElse (re ^. Sugar.ruleElseAnn)
 
 prepareLiteral
     :: Monad m
-    => Sugar.Literal SourceSpan
+    => Sugar.Literal SourceSpan Name
     -> ParachuteT Error m (Literal SourceSpan)
 prepareLiteral slit = do
     statement <- case slit ^. Sugar.literalExpr of
         Sugar.BinOpE ann x Sugar.UnifyO y ->
             UnifyS ann <$> prepareExpr x <*> prepareExpr y
-        Sugar.BinOpE ann (Sugar.TermE _ (Sugar.VarT _ v)) Sugar.AssignO y ->
+        -- NOTE(jaspervdj): If there's no local name here, we obviously cannot
+        -- consider it an assignment.
+        Sugar.BinOpE ann (Sugar.TermE _ (Sugar.VarT _ (LocalName v))) Sugar.AssignO y ->
             AssignS ann v <$> prepareExpr y
         expr -> TermS <$> prepareExpr expr
 
@@ -216,7 +219,7 @@ prepareLiteral slit = do
 
 prepareExpr
     :: Monad m
-    => Sugar.Expr SourceSpan
+    => Sugar.Expr SourceSpan Name
     -> ParachuteT Error m (Term SourceSpan)
 prepareExpr = \case
     Sugar.TermE _source t -> prepareTerm t
@@ -229,14 +232,16 @@ prepareExpr = \case
 
 prepareTerm
     :: Monad m
-    => Sugar.Term SourceSpan
+    => Sugar.Term SourceSpan Name
     -> ParachuteT Error m (Term SourceSpan)
 prepareTerm = \case
-    Sugar.RefT source varSource var0 refs ->
-        prepareRef source varSource var0 refs
+    Sugar.RefT source nameSource name0 refs ->
+        prepareRef source nameSource name0 refs
 
-    Sugar.CallT source vars args ->
-        CallT source (NamedFunction vars) <$> traverse prepareTerm args
+    Sugar.CallT source names args -> case names of
+        [name] -> CallT source (NamedFunction name) <$> traverse prepareTerm args
+        _ -> error "TODO: this doesn't seem right"
+
     Sugar.VarT source v -> pure $ VarT source v
     Sugar.ScalarT source s -> pure $ ScalarT source s
 
@@ -255,31 +260,31 @@ prepareTerm = \case
 
 prepareRef
     :: Monad m
-    => SourceSpan -> SourceSpan -> Var -> [Sugar.RefArg SourceSpan]
+    => SourceSpan -> SourceSpan -> Name -> [Sugar.RefArg SourceSpan Name]
     -> ParachuteT Error m (Term SourceSpan)
-prepareRef source varSource var0 refs = foldM
+prepareRef source nameSource name0 refs = foldM
     (\acc refArg -> case refArg of
         Sugar.RefDotArg ann v -> return $
             RefT source acc (ScalarT ann (Sugar.String (unVar v)))
         Sugar.RefBrackArg k -> do
             k' <- prepareExpr k
             return $ RefT source acc k')
-    (VarT varSource var0)
+    (VarT nameSource name0)
     refs
 
 prepareObjectItem
     :: Monad m
-    => (Sugar.ObjectKey SourceSpan, Sugar.Expr SourceSpan)
+    => (Sugar.ObjectKey SourceSpan Name, Sugar.Expr SourceSpan Name)
     -> ParachuteT Error m (Term SourceSpan, Term SourceSpan)
 prepareObjectItem (k, e) = (,) <$> prepareObjectKey k <*> prepareExpr e
 
 prepareObjectKey
     :: Monad m
-    => Sugar.ObjectKey SourceSpan
+    => Sugar.ObjectKey SourceSpan Name
     -> ParachuteT Error m (Term SourceSpan)
 prepareObjectKey = \case
     Sugar.ScalarK ann s      -> return $! ScalarT ann s
-    Sugar.VarK    ann v      -> return $! VarT ann v
+    Sugar.VarK    ann v      -> return $! VarT ann (LocalName v)
     Sugar.RefK    ann v args -> prepareRef ann ann v args
 
 prepareBinOp
@@ -315,7 +320,7 @@ prepareBinOp source = \case
 
 prepareWith
     :: Monad m
-    => Sugar.With SourceSpan
+    => Sugar.With SourceSpan Name
     -> ParachuteT Error m (With SourceSpan)
 prepareWith with = do
     path <- case L.stripPrefix ["input"] (with ^. Sugar.withWith) of

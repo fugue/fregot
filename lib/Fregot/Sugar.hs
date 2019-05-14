@@ -8,7 +8,7 @@
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE TemplateHaskell            #-}
 module Fregot.Sugar
-    ( PackageName (..)
+    ( PackageName (..), unPackageName, mkPackageName
     , packageNameFromString, packageNameFromText
     , dataPackageNameFromString
 

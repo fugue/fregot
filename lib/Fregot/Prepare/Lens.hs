@@ -17,6 +17,7 @@ import           Control.Lens        (Fold, Lens', Traversal', lens, to,
                                       traverseOf, (^.))
 import           Control.Lens.Plated (Plated (..), cosmos, cosmosOnOf)
 import           Control.Lens.TH     (makePrisms)
+import           Fregot.Names
 import           Fregot.Prepare.Ast
 
 $(makePrisms ''Term)
@@ -78,10 +79,10 @@ instance Plated (Term a) where
                                 f k <*> f v <*> ruleBodyTerms f b
 
 -- | Fold over the direct vars of a term.
-termVars :: Traversal' (Term a) (a, Var)
+termVars :: Traversal' (Term a) (a, Name)
 termVars = _VarT
 
-termCosmosVars :: Fold (Term a) (a, Var)
+termCosmosVars :: Fold (Term a) (a, Name)
 termCosmosVars = cosmos . termVars
 
 -- | Fold over all closures in a term recursively.

@@ -33,13 +33,9 @@ module Fregot.Prepare.Ast
 
     , Sugar.Scalar (..)
 
-    , Sugar.NestedVar (..)
-
       -- * Constructors
     , literal
     ) where
-
-import           Fregot.Names.Renamer
 
 import           Control.Lens              ((^.))
 import           Control.Lens.TH           (makeLenses, makePrisms)
@@ -98,14 +94,14 @@ data Literal a = Literal
 
 data Statement a
     = UnifyS  a (Term a) (Term a)
-    | AssignS a Var (Term a)
+    | AssignS a UnqualifiedVar (Term a)
     | TermS     (Term a)
     deriving (Eq, Show)
 
 data Term a
     = RefT        a (Term a) (Term a)
     | CallT       a Function [Term a]
-    | VarT        a Var
+    | VarT        a Name
     | ScalarT     a (Sugar.Scalar a)
     | ArrayT      a [Term a]
     | SetT        a [Term a]
@@ -116,7 +112,7 @@ data Term a
     deriving (Eq, Show)
 
 data Function
-    = NamedFunction [Var]
+    = NamedFunction Name
     | OperatorFunction BinOp
     deriving (Eq, Generic, Show)
 
@@ -143,7 +139,7 @@ instance Hashable BinOp
 
 data With a = With
     { _withAnn  :: !a
-    , _withPath :: [Var]
+    , _withPath :: [UnqualifiedVar]
     , _withAs   :: !(Term a)
     } deriving (Eq, Show)
 
@@ -208,8 +204,8 @@ prettyComprehensionBody lits = mconcat $ L.intersperse
     (map PP.pretty lits)
 
 instance PP.Pretty PP.Sem Function where
-    pretty (NamedFunction    vs) = PP.pretty (Nested vs)
-    pretty (OperatorFunction o)  = PP.pretty o
+    pretty (NamedFunction    v) = PP.pretty v
+    pretty (OperatorFunction o) = PP.pretty o
 
 instance PP.Pretty PP.Sem BinOp where
     pretty = PP.punctuation . \case

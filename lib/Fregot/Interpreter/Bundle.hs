@@ -20,7 +20,7 @@ import qualified Fregot.Sugar              as Sugar
 import qualified Fregot.Version            as Fregot
 
 -- | The modules that make up a package.
-type ModuleBatch = [(SourcePointer, Sugar.Module SourceSpan)]
+type ModuleBatch = [(SourcePointer, Sugar.Module SourceSpan Var)]
 
 data Bundle = Bundle
     { _bundleSources :: !Sources

@@ -1,14 +1,15 @@
 -- | Variable- and name-like things.
+{-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DerivingVia                #-}
-{-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE TemplateHaskell            #-}
 module Fregot.Names
-    ( PackageName (..)
+    ( PackageName (..), unPackageName, mkPackageName
     , packageNameFromString, packageNameFromText
     , dataPackageNameFromString
 
@@ -22,12 +23,12 @@ module Fregot.Names
     , UnqualifiedVar
 
     , Name (..)
+    , nameToText
     , nameFromText
     ) where
 
 import           Control.Lens       (review, (^?))
 import           Control.Lens.Prism (Prism', prism')
-import           Control.Lens.Iso (Iso', iso)
 import           Control.Monad      (guard)
 import           Data.Binary        (Binary)
 import qualified Data.Binary        as Binary
@@ -38,6 +39,7 @@ import qualified Data.Text.Extended as T
 import           Data.Unique        (HasUnique (..), Unique, Uniquely (..))
 import qualified Data.Unique        as Unique
 import qualified Fregot.PrettyPrint as PP
+import           GHC.Generics       (Generic)
 import           System.IO.Unsafe   (unsafePerformIO)
 
 data PackageName = PackageName {-# UNPACK #-} !Unique [T.Text]
@@ -155,27 +157,33 @@ instance PP.Pretty PP.Sem a => PP.Pretty PP.Sem (Nested a) where
 type UnqualifiedVar = Var
 
 data Name
+    -- Variables inside rules
     = LocalName !Var
+    -- Rules, functions
     | QualifiedName !PackageName !Var
+    -- Global names, used for builtin functions such ass all, concat...
+    | BuiltinName !Var
+    deriving (Eq, Generic, Ord, Show)
 
-nameFromTuple :: Iso' (Maybe PackageName, Var) Name
-nameFromTuple = iso
-    (\case
-        (Nothing, v) -> LocalName v
-        (Just p, v)  -> QualifiedName p v)
-    (\case
-        LocalName v       -> (Nothing, v)
-        QualifiedName p v -> (Just p, v))
+instance Hashable Name
 
-nameFromText :: Prism' T.Text Name
-nameFromText = prism'
-    (\(mbPkgName, var) -> case mbPkgName of
-        Nothing      -> review varFromText var
-        Just pkgName ->
-            review packageNameFromText pkgName <> "." <> review varFromText var)
-    (\txt -> case T.breakOnEnd "." txt of
-        ("", var) -> ((,) Nothing) <$> var ^? varFromText
-        (pkgName, var) -> (,)
-            <$> (Just <$> T.init pkgName ^? packageNameFromText)
-            <*> var ^? varFromText) .
-    nameFromTuple
+instance PP.Pretty PP.Sem Name where
+    pretty = \case
+        LocalName       v -> PP.pretty v
+        QualifiedName p v -> PP.pretty p <> PP.punctuation "." <> PP.pretty v
+        BuiltinName     v -> PP.keyword (PP.pretty v)
+
+nameToText :: Name -> T.Text
+nameToText = \case
+    LocalName v -> review varFromText v
+    QualifiedName p v ->
+        review packageNameFromText p <> "." <> review varFromText v
+    BuiltinName v -> review varFromText v
+
+-- | We cannot define a lawful Prism' because we don't convert to BuiltinName.
+nameFromText :: T.Text -> Maybe Name
+nameFromText txt = case T.breakOnEnd "." txt of
+    ("", var) -> LocalName <$> var ^? varFromText
+    (pkgName, var) -> QualifiedName
+        <$> T.init pkgName ^? packageNameFromText
+        <*> var ^? varFromText
