@@ -43,6 +43,7 @@ import qualified Fregot.Compile.Package    as Package
 import           Fregot.Eval.Builtins
 import qualified Fregot.Eval.Cache         as Cache
 import           Fregot.Eval.Monad
+import           Fregot.Names
 import qualified Fregot.Eval.Number        as Number
 import           Fregot.Eval.Value
 import           Fregot.Prepare.Ast
@@ -80,7 +81,7 @@ mkObject source assoc = fmap ObjectV $ foldM
 evalTerm :: Term SourceSpan -> EvalM Value
 evalTerm (RefT source lhs arg) = do
     mbCompiledRule <- case lhs of
-        VarT _ v -> lookupRule [v]
+        VarT _ n -> lookupRule n
         _        -> return Nothing
     case mbCompiledRule of
         -- Using a rule with an index.  This only triggers if the rule requires
@@ -111,7 +112,7 @@ evalTerm (CallT source f args)
     | otherwise = raise' source "unknown function" $
         "Unknown function call:" <+> PP.pretty f
 
-evalTerm (VarT source v) = evalVar source v
+evalTerm (VarT source v) = evalName source v
 evalTerm (ScalarT _ s) = evalScalar s
 evalTerm (ArrayT _ a) = do
     bs <- mapM evalTerm a
@@ -139,28 +140,38 @@ evalTerm (ObjectCompT source khead vhead cbody) = do
         (,) <$> evalTerm khead <*> evalTerm vhead
     mkObject source rows
 
+evalName :: SourceSpan -> Name -> EvalM Value
+evalName source (LocalName var) = evalVar source var
+evalName source name@(BuiltinName _) =
+    raise' source "type error" $
+    "Builtin" <+> PP.pretty name <+> "can only be used as function"
+evalName source name@(QualifiedName _pkgname _var) = do
+    mbCompiledRule <- lookupRule name
+    case mbCompiledRule of
+        Nothing -> raise' source "rule not found" $
+            "Rule not found:" <+> PP.pretty name
+        Just crule | FunctionRule _ <- crule ^. ruleKind ->
+            -- We allow calling a null-ary function `report()` both
+            -- as just `report` as well as `report()`
+            evalUserFunction source crule []
+        Just crule -> evalCompiledRule source crule Nothing
+
 evalVar :: SourceSpan -> Var -> EvalM Value
 evalVar _source "_"     = return WildcardV
 evalVar _source "input" = view inputDoc
 evalVar _source "data"  = return $! PackageV mempty
-evalVar source v       = do
+evalVar _source v       = do
     imps <- view imports
     lcls <- use locals
     case HMS.lookup v imps of
         Just (_ann, pkgname) -> return $ PackageV pkgname
         Nothing  -> case HMS.lookup v lcls of
+            -- TODO(jaspervdj): This import lookup is probably unnecessary now
+            -- that we have proper scope checking.
             Just iv -> do
                 mbVal <- Unification.lookup iv
                 return $ fromMaybe (FreeV iv) mbVal
-            Nothing  -> do
-                mbCompiledRule <- lookupRule [v]
-                case mbCompiledRule of
-                    Nothing    -> FreeV <$> toInstVar v
-                    Just crule | FunctionRule _ <- crule ^. ruleKind ->
-                        -- We allow calling a null-ary function `report()` both
-                        -- as just `report` as well as `report()`
-                        evalUserFunction source crule []
-                    Just crule -> evalCompiledRule source crule Nothing
+            Nothing -> FreeV <$> toInstVar v
 
 evalBuiltin :: SourceSpan -> Builtin -> [Value] -> EvalM Value
 evalBuiltin source (Builtin sig impl) args0 = do
@@ -210,7 +221,7 @@ evalRefArg source indexee refArg = do
                 -- Otherwise, we'll construct a further package name.  This
                 -- package name does not actually need to exist (yet), since we
                 -- might append more pieces to it.
-                _ -> return $! PackageV (pkgname <> PackageName [k])
+                _ -> return $! PackageV (pkgname <> mkPackageName [k])
 
         WildcardV -> case indexee of
             ArrayV a  -> branch [return val | val <- V.toList a]
@@ -435,7 +446,7 @@ evalRuleBody lits0 final = go lits0
                     Nothing -> raise' (w ^. withAnn) "with error" $
                         "Could not update input document." <$$>
                         "Path:" <$$>
-                        PP.ind (PP.pretty (NestedVar $ w ^. withPath))
+                        PP.ind (PP.pretty (Nested $ w ^. withPath))
                     Just i  -> return i
                 updateInput input1 ws
 

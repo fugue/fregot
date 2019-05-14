@@ -32,7 +32,9 @@ import           Control.Lens                    (forOf_, ifor_, to, (^.),
                                                   (^..), _2)
 import           Control.Lens.TH                 (makeLenses)
 import           Control.Monad                   (foldM)
-import           Control.Monad.Parachute         (ParachuteT, fatal)
+import           Control.Monad.Parachute         (ParachuteT, fatal,
+                                                  mapParachuteT)
+import           Control.Monad.Reader            (runReader)
 import           Control.Monad.Trans             (liftIO)
 import qualified Data.Binary                     as Binary
 import qualified Data.ByteString.Lazy            as BL
@@ -53,6 +55,8 @@ import           Fregot.Eval.Monad               (EvalCache)
 import           Fregot.Eval.Value               (emptyObject)
 import           Fregot.Interpreter.Bundle
 import qualified Fregot.Interpreter.Dependencies as Deps
+import           Fregot.Names
+import qualified Fregot.Names.Renamer            as Renamer
 import qualified Fregot.Parser                   as Parser
 import qualified Fregot.Prepare                  as Prepare
 import           Fregot.Prepare.Package          (PreparedPackage)
@@ -62,7 +66,6 @@ import qualified Fregot.PrettyPrint              as PP
 import           Fregot.Sources                  (SourcePointer)
 import qualified Fregot.Sources                  as Sources
 import           Fregot.Sources.SourceSpan       (SourceSpan)
-import           Fregot.Sugar                    (PackageName, Var)
 import qualified Fregot.Sugar                    as Sugar
 import           System.FilePath.Extended        (listExtensions)
 
@@ -102,7 +105,7 @@ readDependencyGraph h = do
     deps = traverse . _2 . Sugar.moduleImports . traverse . Sugar.importPackage
 
 insertModule
-    :: Handle -> SourcePointer -> Sugar.Module SourceSpan -> InterpreterM ()
+    :: Handle -> SourcePointer -> Sugar.Module SourceSpan Var -> InterpreterM ()
 insertModule h sourcep modul = do
     -- Insert or replace the module.
     let pkgname = modul ^. Sugar.modulePackage
@@ -172,14 +175,16 @@ readPreparedPackage h pkgname = do
     let mods = maybe [] (map snd) (HMS.lookup pkgname modmap)
         pkg0 = Prepare.empty pkgname
     foldM addMod pkg0 mods
-
   where
-    addMod pkg0 modul = do
-        imports <- Prepare.prepareImports (modul ^. Sugar.moduleImports)
+    addMod pkg0 modul0 = do
+        modul1 <- mapParachuteT
+            (return . flip runReader Renamer.RenamerEnv)
+            (Renamer.renameModule modul0)
+        imports <- Prepare.prepareImports (modul1 ^. Sugar.moduleImports)
         foldM
             (\pkg rule -> Prepare.insert imports rule pkg)
             pkg0
-            (modul ^. Sugar.modulePolicy)
+            (modul1 ^. Sugar.modulePolicy)
 
 -- | Compile a specific package.  This will compile its dependencies first.
 readCompiledPackage
@@ -241,7 +246,7 @@ readAllRules h = do
         return (pkgname, rule)
 
 insertRule
-    :: Handle -> PackageName -> SourcePointer -> Sugar.Rule SourceSpan
+    :: Handle -> PackageName -> SourcePointer -> Sugar.Rule SourceSpan Var
     -> InterpreterM ()
 insertRule h pkgname sourcep rule =
     insertModule h sourcep modul
@@ -271,11 +276,16 @@ eval h ctx pkgname mx = do
     either fatal return =<< liftIO (Eval.runEvalM env ctx mx)
 
 evalExpr
-    :: Handle -> Eval.Context -> PackageName -> Sugar.Expr SourceSpan
+    :: Handle -> Eval.Context -> PackageName -> Sugar.Expr SourceSpan Var
     -> InterpreterM (Eval.Document Eval.Value)
 evalExpr h ctx pkgname expr = do
     pkg   <- readCompiledPackage h pkgname
-    pterm <- Prepare.prepareExpr expr
+
+    rterm <- mapParachuteT
+        (return . flip runReader Renamer.RenamerEnv)
+        (Renamer.renameExpr expr)
+
+    pterm <- Prepare.prepareExpr rterm
     cterm <- Compile.compileTerm pkg safeLocals pterm
     eval h ctx pkgname (Eval.evalTerm cterm)
   where
@@ -288,12 +298,17 @@ evalVar h source pkgname =
     eval h Eval.emptyContext pkgname . Eval.evalVar source
 
 mkStepState
-    :: Handle -> PackageName -> Sugar.Expr SourceSpan
+    :: Handle -> PackageName -> Sugar.Expr SourceSpan Var
     -> InterpreterM (Eval.StepState Eval.Value)
 mkStepState h pkgname expr = do
     comp  <- liftIO $ IORef.readIORef (h ^. compiled)
     pkg   <- readCompiledPackage h pkgname
-    pterm <- Prepare.prepareExpr expr
+
+    rexpr <- mapParachuteT
+        (return . flip runReader Renamer.RenamerEnv)
+        (Renamer.renameExpr expr)
+
+    pterm <- Prepare.prepareExpr rexpr
     cterm <- Compile.compileTerm pkg mempty pterm
     let env = Eval.Environment
             { Eval._packages     = comp

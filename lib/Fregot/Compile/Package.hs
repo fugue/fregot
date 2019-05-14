@@ -16,6 +16,7 @@ module Fregot.Compile.Package
 import           Control.Applicative         ((<|>))
 import           Control.Lens                (forOf_, iforM_, traverseOf, (^.),
                                               (^..))
+import           Control.Monad               (guard)
 import           Control.Monad.Parachute     (ParachuteT, tellError, tellErrors)
 import qualified Data.HashMap.Strict         as HMS
 import qualified Data.HashSet.Extended       as HS
@@ -25,6 +26,7 @@ import           Fregot.Compile.Order
 import           Fregot.Error                (Error)
 import qualified Fregot.Error                as Error
 import qualified Fregot.Eval.Builtins        as Builtins
+import           Fregot.Names
 import           Fregot.Prepare.Ast
 import           Fregot.Prepare.Lens
 import           Fregot.Prepare.Package
@@ -45,19 +47,18 @@ aritiesFromPackage prep = \func ->
         builtin <- HMS.lookup func Builtins.builtins
         return $ Builtins.arity builtin) <|>
     (do
-        NamedFunction [fname] <- Just func
+        NamedFunction (QualifiedName pkg fname) <- Just func
+        guard $ pkg == prep ^. packageName
         userdef <- lookup fname prep
         FunctionRule arity <- Just (userdef ^. ruleKind)
         return arity)
 
-aritiesFromDependencies :: Imports a -> Dependencies -> Arities
-aritiesFromDependencies imports deps = \func -> do
-    -- TODO(jaspervdj): Remove this madness once we have proper scopechecking.
-    NamedFunction [imp, fname] <- Just func
-    (_, pkgname)               <- HMS.lookup imp imports
-    pkg                        <- HMS.lookup pkgname deps
-    userdef                    <- lookup fname pkg
-    FunctionRule arity         <- Just (userdef ^. ruleKind)
+aritiesFromDependencies :: Dependencies -> Arities
+aritiesFromDependencies deps = \func -> do
+    NamedFunction (QualifiedName pkgname fname) <- Just func
+    pkg                                         <- HMS.lookup pkgname deps
+    userdef                                     <- lookup fname pkg
+    FunctionRule arity                          <- Just (userdef ^. ruleKind)
     return arity
 
 -- | Construct the safe-to-use global variables.
@@ -113,21 +114,19 @@ compilePackage dependencies prep =
         return ordered
       where
         -- Safe set before ordering.
-        safe = safeGlobals prep <> safeLocals <> safeImports
+        safe = safeGlobals prep <> safeLocals
 
         safeLocals = Safe $ HS.toHashSetOf
             (ruleArgs . traverse . traverse .
-                termCosmosNoClosures . termVars . traverse)
+                termCosmosNoClosures . termVars . traverse . _LocalName)
             def
-
-        safeImports = Safe $ HS.fromMap $ () <$ def ^. ruleDefImports
 
         orderRuleBody = runOrder . orderForSafety arities safe
         orderTerm = runOrder . orderTermForSafety arities safe
 
         arities = \f ->
             selfArities f <|>
-            aritiesFromDependencies (def ^. ruleDefImports) dependencies f
+            aritiesFromDependencies dependencies f
 
 compileTerm
     :: Monad m
@@ -157,7 +156,8 @@ checkTermVars (Safe safe) term =
     [ Error.mkError "var check" source "unsafe variable" $
         "Variable" <+> PP.pretty var <+> "is referenced, but it is never" <$$>
         "assigned a value."
-    | (source, var) <- term ^.. termCosmosNoClosures . termVars
+    | (source, name) <- term ^.. termCosmosNoClosures . termVars
+    , var            <- name ^.. _LocalName
     , not $ var `HS.member` safe
     ]
 

@@ -1,9 +1,11 @@
-{-# LANGUAGE DeriveFunctor          #-}
-{-# LANGUAGE FlexibleInstances      #-}
-{-# LANGUAGE MultiParamTypeClasses  #-}
+{-# LANGUAGE DeriveFunctor         #-}
+{-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE Rank2Types            #-}
 module Control.Monad.Parachute
     ( ParachuteT (..)
     , runParachuteT
+    , mapParachuteT
 
     , fatal
     , tellErrors
@@ -56,6 +58,12 @@ runParachuteT p = do
     case ma of
         Fatal -> return (errors, Nothing)
         Ok x  -> return (errors, Just x)
+
+mapParachuteT
+    :: (Monad m, Monad n)
+    => (forall b. m b -> n b)
+    -> ParachuteT e m a -> ParachuteT e n a
+mapParachuteT f (ParachuteT p) = ParachuteT (f . p)
 
 fatal :: Monad m => e -> ParachuteT e m a
 fatal x = ParachuteT $ \errors -> return (x : errors, Fatal)

@@ -22,13 +22,14 @@ module Fregot.Names
 
     , UnqualifiedVar
 
-    , Name (..)
+    , Name (..), _LocalName, _QualifiedName
     , nameToText
     , nameFromText
     ) where
 
 import           Control.Lens       (review, (^?))
 import           Control.Lens.Prism (Prism', prism')
+import           Control.Lens.TH    (makePrisms)
 import           Control.Monad      (guard)
 import           Data.Binary        (Binary)
 import qualified Data.Binary        as Binary
@@ -63,6 +64,14 @@ instance PP.Pretty a PackageName where
 instance Binary PackageName where
     get = mkPackageName <$> Binary.get
     put = Binary.put . unPackageName
+
+-- TODO(jaspervdj): We can probably remove this instance now that we have scope
+-- checking.
+instance Semigroup PackageName where
+    x <> y = mkPackageName (unPackageName x <> unPackageName y)
+
+instance Monoid PackageName where
+    mempty = mkPackageName mempty
 
 unPackageName :: PackageName -> [T.Text]
 unPackageName (PackageName _ t) = t
@@ -172,6 +181,8 @@ instance PP.Pretty PP.Sem Name where
         LocalName       v -> PP.pretty v
         QualifiedName p v -> PP.pretty p <> PP.punctuation "." <> PP.pretty v
         BuiltinName     v -> PP.keyword (PP.pretty v)
+
+$(makePrisms ''Name)
 
 nameToText :: Name -> T.Text
 nameToText = \case

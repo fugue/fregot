@@ -1,7 +1,9 @@
 {-# LANGUAGE LambdaCase #-}
 module Fregot.Names.Renamer
-    ( RenamerM
+    ( RenamerEnv (..)
+    , RenamerM
     , renameModule
+    , renameExpr
     ) where
 
 import           Control.Lens              ((^.))
@@ -12,7 +14,9 @@ import           Fregot.Names
 import           Fregot.Sources.SourceSpan (SourceSpan)
 import           Fregot.Sugar
 
-type RenamerM a = ParachuteT Error (Reader Int) a
+data RenamerEnv = RenamerEnv
+
+type RenamerM a = ParachuteT Error (Reader RenamerEnv) a
 
 type Rename f = f SourceSpan Var -> RenamerM (f SourceSpan Name)
 

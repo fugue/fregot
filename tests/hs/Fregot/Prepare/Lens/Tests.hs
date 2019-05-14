@@ -4,6 +4,7 @@ module Fregot.Prepare.Lens.Tests where
 
 import qualified Data.HashSet.Extended as HS
 import           Fregot.Prepare.Ast
+import           Fregot.Prepare.Dsl    ()
 import           Fregot.Prepare.Lens
 import qualified Test.Tasty            as Tasty
 import           Test.Tasty.HUnit      ((@?=))

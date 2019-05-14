@@ -72,21 +72,21 @@ newtype Unsafe v a = Unsafe {unUnsafe :: HMS.HashMap v (NonEmpty a)}
     deriving (Eq, Monoid, Semigroup, Show)
 
 orderForClosures
-    :: Arities -> Safe Name -> RuleBody a -> (RuleBody a, Unsafe Name a)
+    :: Arities -> Safe Var -> RuleBody a -> (RuleBody a, Unsafe Var a)
 orderForClosures arities safe body =
     let (_, body', unsafes) = reorder step () body in
     (body', mconcat unsafes)
   where
     -- Variables appearing in the body.
     bodyVars = HS.toHashSetOf
-        (ruleBodyTerms . termCosmosNoClosures . termVars . traverse)
+        (ruleBodyTerms . termCosmosNoClosures . termVars . traverse . _LocalName)
         body
 
     -- Order predicate.
     step () reordered lit =
         -- Variables appearing in closures in this statement.
         let inClosureVars = HS.toHashSetOf
-                (literalTerms . termCosmosClosures . termCosmosVars . traverse)
+                (literalTerms . termCosmosClosures . termCosmosVars . traverse . _LocalName)
                 lit
 
             -- Variabels that are both in the body as well as in the closures
@@ -110,7 +110,7 @@ orderForClosures arities safe body =
 
 orderForSafety
     :: forall a.
-       Arities -> Safe Name -> RuleBody a -> (RuleBody a, Unsafe Name a)
+       Arities -> Safe Var -> RuleBody a -> (RuleBody a, Unsafe Var a)
 orderForSafety arities safe0 body0
     -- If ordering for closures fails, shortcut here.
     | not (HMS.null (unUnsafe unsafes1)) = (body1, unsafes1)
@@ -122,7 +122,7 @@ orderForSafety arities safe0 body0
             unsafes = Map.fromList $ do
                 (idx, lit) <- idxBody
                 let inLit = HS.toHashSetOf
-                        (literalTerms . termCosmosNoClosures . termVars . traverse)
+                        (literalTerms . termCosmosNoClosures . termVars . traverse . _LocalName)
                         lit
                 return (idx, inLit `HS.difference` unSafe safe0)
 
@@ -143,12 +143,12 @@ orderForSafety arities safe0 body0
     (body1, unsafes1) = orderForClosures arities safe0 body0
 
     step
-        :: (Safe Name, Map.Map Int (HS.HashSet Name))
+        :: (Safe Var, Map.Map Int (HS.HashSet Var))
         -> [(Int, Literal a)]
         -> (Int, Literal a)
         -> OrderPredicate
-            (Safe Name, Map.Map Int (HS.HashSet Name))
-            (Unsafe Name a)
+            (Safe Var, Map.Map Int (HS.HashSet Var))
+            (Unsafe Var a)
 
     step (safe, unsafes) _ordered (idx, lit)
         -- Find the unsafes we previously stored for this literal.
@@ -162,11 +162,11 @@ orderForSafety arities safe0 body0
             HS.toMap (prevUnsafes `HS.difference` unSafe nowSafe)
 
     -- Recursively rewrite all closures in a literal using the given safe list.
-    recurse :: Safe Name -> Literal a -> Writer (Unsafe Name a) (Literal a)
+    recurse :: Safe Var -> Literal a -> Writer (Unsafe Var a) (Literal a)
     recurse rsafe =
         transformMOn literalTerms (writer . orderTermForSafety arities rsafe)
 
 orderTermForSafety
-    :: Arities -> Safe Name -> Term a -> (Term a, Unsafe Name a)
+    :: Arities -> Safe Var -> Term a -> (Term a, Unsafe Var a)
 orderTermForSafety arities safe = runWriter .
     traverseOf termRuleBodies (writer . orderForSafety arities safe)

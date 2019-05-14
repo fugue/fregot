@@ -76,6 +76,7 @@ import qualified Fregot.Error.Stack        as Stack
 import           Fregot.Eval.Cache         (Cache)
 import qualified Fregot.Eval.Cache         as Cache
 import           Fregot.Eval.Value
+import           Fregot.Names
 import           Fregot.Prepare.Ast
 import           Fregot.PrettyPrint        ((<$$>))
 import qualified Fregot.PrettyPrint        as PP
@@ -114,8 +115,12 @@ type EvalCache = Cache (PackageName, Var) Value
 
 data Environment = Environment
     { _packages     :: !(HMS.HashMap PackageName CompiledPackage)
+    -- NOTE(jaspervdj): The following is probably unnecessary with the
+    -- scopechecking.
     , _package      :: !CompiledPackage
     , _inputDoc     :: !Value
+    -- NOTE(jaspervdj): The following is probably unnecessary with the
+    -- scopechecking.
     , _imports      :: !(Imports SourceSpan)
     , _cache        :: !EvalCache
     , _cacheVersion :: !Cache.Version
@@ -293,18 +298,11 @@ toInstVar v = state $ \ctx -> case HMS.lookup v (ctx ^. locals) of
             !lcls = HMS.insert v iv (ctx ^. locals) in
         (iv, ctx {_nextInstVar = _nextInstVar ctx + 1, _locals = lcls})
 
-lookupRule :: [Var] -> EvalM (Maybe (Rule SourceSpan))
-lookupRule [root] = do
-    env0 <- ask
-    return $ Package.lookup root (env0 ^. package)
-lookupRule [imp, name] = do
-    -- NOTE(jaspervdj): Note that this path is only taken for simple calls,
-    -- because they translate to a `CallT [Var] ...`.  This will change when we
-    -- have proper scopechecking.
-    imps <- view imports
+lookupRule :: Name -> EvalM (Maybe (Rule SourceSpan))
+lookupRule (LocalName _) = pure Nothing
+lookupRule (QualifiedName pkgname name) = do
     env0 <- ask
     pure $ do
-        (_ann, pkgname) <- HMS.lookup imp imps
         pkg <- HMS.lookup pkgname (env0 ^. packages)
         Package.lookup name pkg
 lookupRule _ = pure Nothing

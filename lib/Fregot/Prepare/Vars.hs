@@ -1,3 +1,6 @@
+-- | NOTE(jaspervdj): Even though the code is scope checked at this point, we'll
+-- mostly talk about `Save Var` rather than `Save Name`, since non-local names
+-- are always by now.
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
@@ -25,16 +28,16 @@ newtype Safe v = Safe {unSafe :: HS.HashSet v}
 markSafe :: (Eq v, Hashable v) => v -> Safe v
 markSafe = Safe . HS.singleton
 
-markTermSafe :: Term a -> Safe Name
-markTermSafe t =
-    Safe (HS.toHashSetOf (termCosmosNoClosures . termVars . traverse) t)
+markTermSafe :: Term a -> Safe Var
+markTermSafe t = Safe $
+    HS.toHashSetOf (termCosmosNoClosures . termVars . traverse . _LocalName) t
 
 isSafe :: (Eq v, Hashable v) => v -> Safe v -> Bool
 isSafe v (Safe s) = HS.member v s
 
 type Arities = Function -> Maybe Int
 
-ovRuleBody :: Arities -> Safe Name -> RuleBody a -> Safe Name
+ovRuleBody :: Arities -> Safe Var -> RuleBody a -> Safe Var
 ovRuleBody arities safe@(Safe initial) body =
     Safe $ total `HS.difference` initial
   where
@@ -43,19 +46,19 @@ ovRuleBody arities safe@(Safe initial) body =
         safe
         body
 
-ovLiteral :: Arities -> Safe Name -> Literal a -> Safe Name
+ovLiteral :: Arities -> Safe Var -> Literal a -> Safe Var
 ovLiteral arities safe lit
     | lit ^. literalNegation = mempty
     | otherwise              =
         ovStatement arities safe (lit ^. literalStatement)
 
-ovStatement :: Arities -> Safe Name -> Statement a -> Safe Name
+ovStatement :: Arities -> Safe Var -> Statement a -> Safe Var
 ovStatement arities safe = \case
     TermS t       -> ovTerm arities safe t
-    AssignS _ v t -> markSafe (LocalName v) <> ovTerm arities safe t
+    AssignS _ v t -> markSafe v <> ovTerm arities safe t
     UnifyS _ x y  -> ovUnify arities safe x y
 
-ovTerm :: Arities -> Safe Name -> Term a -> Safe Name
+ovTerm :: Arities -> Safe Var -> Term a -> Safe Var
 ovTerm arities safe (RefT _ x k) =
     ovTerm arities safe x <>
     markTermSafe k
@@ -80,14 +83,14 @@ ovTerm _arities _safe (ArrayCompT _ _ _) = mempty
 ovTerm _arities _safe (SetCompT _ _ _) = mempty
 ovTerm _arities _safe (ObjectCompT _ _ _ _) = mempty
 
-ovUnify :: Arities -> Safe Name -> Term a -> Term a -> Safe Name
-ovUnify _arities safe (VarT _ alpha) (VarT _ beta)
+ovUnify :: Arities -> Safe Var -> Term a -> Term a -> Safe Var
+ovUnify _arities safe (VarT _ (LocalName alpha)) (VarT _ (LocalName beta))
     | isSafe alpha safe = markSafe beta
     | isSafe beta  safe = markSafe alpha
     | otherwise         = mempty  -- TODO(jaspervdj): Mark as unknown.
 
-ovUnify arities safe (VarT _ alpha) y = markSafe alpha <> ovTerm arities safe y
-ovUnify arities safe x (VarT _ beta)  = markSafe beta <> ovTerm arities safe x
+ovUnify arities safe (VarT _ (LocalName alpha)) y = markSafe alpha <> ovTerm arities safe y
+ovUnify arities safe x (VarT _ (LocalName beta))  = markSafe beta <> ovTerm arities safe x
 
 ovUnify arities safe x y =
     ovTerm arities safe x <> ovTerm arities safe y

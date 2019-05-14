@@ -22,14 +22,14 @@ import qualified Text.Parsec.Extended      as Parsec
 
 parsePackageName :: FregotParser PackageName
 parsePackageName =
-    PackageName <$> Parsec.sepBy1 Tok.var (Tok.symbol Tok.TPeriod)
+    mkPackageName <$> Parsec.sepBy1 Tok.var (Tok.symbol Tok.TPeriod)
 
 parseDataPackageName :: FregotParser PackageName
 parseDataPackageName = do
-    pos                        <- Parsec.getPosition
-    pkgname@(PackageName vars) <- parsePackageName
-    case vars of
-        ("data" : vs) -> return (PackageName vs)
+    pos     <- Parsec.getPosition
+    pkgname <- parsePackageName
+    case unPackageName pkgname of
+        ("data" : vs) -> return (mkPackageName vs)
         _             -> Parsec.unexpectedAt pos $
             show (PP.pretty pkgname) ++ " (imports should start with `data.`)"
 
@@ -54,13 +54,13 @@ parseModuleImport = withSourceSpan $ do
 var :: FregotParser Var
 var = mkVar <$> Tok.var
 
-rule :: FregotParser (Rule SourceSpan)
+rule :: FregotParser (Rule SourceSpan Var)
 rule = Rule
     <$> parseRuleHead
     <*> Parsec.many parseRuleBody
     <*> Parsec.many parseRuleElse
 
-parseRuleHead :: FregotParser (RuleHead SourceSpan)
+parseRuleHead :: FregotParser (RuleHead SourceSpan Var)
 parseRuleHead = withSourceSpan $ do
     _ruleDefault <- Parsec.option False $ Tok.symbol Tok.TDefault $> True
     _ruleName <- var
@@ -76,14 +76,14 @@ parseRuleHead = withSourceSpan $ do
         term
     return $ \_ruleAnn -> RuleHead {..}
 
-parseRuleBody :: FregotParser (RuleBody SourceSpan)
+parseRuleBody :: FregotParser (RuleBody SourceSpan Var)
 parseRuleBody = do
     Tok.symbol Tok.TLBrace
     body <- parseUnbracedRuleBody
     Tok.symbol Tok.TRBrace
     return body
 
-parseRuleElse :: FregotParser (RuleElse SourceSpan)
+parseRuleElse :: FregotParser (RuleElse SourceSpan Var)
 parseRuleElse = withSourceSpan $ do
     Tok.symbol Tok.TElse
     _ruleElseValue <- Parsec.optionMaybe $ do
@@ -92,7 +92,7 @@ parseRuleElse = withSourceSpan $ do
     _ruleElseBody <- parseRuleBody
     return $ \_ruleElseAnn -> RuleElse {..}
 
-parseUnbracedRuleBody :: FregotParser (RuleBody SourceSpan)
+parseUnbracedRuleBody :: FregotParser (RuleBody SourceSpan Var)
 parseUnbracedRuleBody = blockOrSemi literal
 
 -- | Parse either a block of lines, or lines separated by a semicolon, or both.
@@ -119,14 +119,14 @@ blockOrSemi linep =
                     (l :) <$> go pos1) <|>
         return []
 
-literal :: FregotParser (Literal SourceSpan)
+literal :: FregotParser (Literal SourceSpan Var)
 literal = withSourceSpan $ do
     _literalNegation <- Parsec.option False $ Tok.symbol Tok.TNot $> True
     _literalExpr <- expr
     _literalWith <- Parsec.many parseWith
     return $ \_literalAnn -> Literal {..}
 
-expr :: FregotParser (Expr SourceSpan)
+expr :: FregotParser (Expr SourceSpan Var)
 expr = Parsec.buildExpressionParser
     [ [ binary Tok.TTimes  TimesO  Parsec.AssocLeft
       , binary Tok.TDivide DivideO Parsec.AssocLeft
@@ -169,7 +169,7 @@ expr = Parsec.buildExpressionParser
         return $ \x y ->
             BinOpE (unsafeMergeSourceSpan (x ^. exprAnn) (y ^. exprAnn)) x op y)
 
-term :: FregotParser (Term SourceSpan)
+term :: FregotParser (Term SourceSpan Var)
 term = withSourceSpan $
     (do
         (v, vss) <- withSourceSpan $ var >>= \v -> return $ \vss -> (v, vss)
@@ -214,7 +214,7 @@ term = withSourceSpan $
             Left  o -> ObjectT ss o
             Right s -> SetT ss s)
 
-refArg :: FregotParser (RefArg SourceSpan)
+refArg :: FregotParser (RefArg SourceSpan Var)
 refArg =
     (do
         Tok.symbol Tok.TLBracket
@@ -238,10 +238,11 @@ scalar =
     (pure (Bool False) <* Tok.symbol Tok.TFalse) <|>
     (pure Null <* Tok.symbol Tok.TNull)
 
-array :: FregotParser [Expr SourceSpan]
+array :: FregotParser [Expr SourceSpan Var]
 array = sepTrailing Tok.TLBracket Tok.TRBracket Tok.TComma expr
 
-objectOrSet :: FregotParser (Either (Object SourceSpan) [Expr SourceSpan])
+objectOrSet
+    :: FregotParser (Either (Object SourceSpan Var) [Expr SourceSpan Var])
 objectOrSet = do
     items <- sepTrailing Tok.TLBrace Tok.TRBrace Tok.TComma item
     case partitionEithers items of
@@ -257,7 +258,7 @@ objectOrSet = do
         (do
             fmap Right expr)
 
-objectKey :: FregotParser (ObjectKey SourceSpan)
+objectKey :: FregotParser (ObjectKey SourceSpan Var)
 objectKey = withSourceSpan $
     (do
         s <- scalar
@@ -269,7 +270,7 @@ objectKey = withSourceSpan $
             [] -> VarK ss v
             _  -> RefK ss v refArgs)
 
-parseWith :: FregotParser (With SourceSpan)
+parseWith :: FregotParser (With SourceSpan Var)
 parseWith = withSourceSpan $ do
     Tok.symbol Tok.TWith
     _withWith <- Parsec.sepBy1 var (Tok.symbol Tok.TPeriod)
@@ -283,7 +284,7 @@ comprehension
     :: Tok.Token       -- ^ '(' or '{'
     -> Tok.Token       -- ^ ')' or '}'
     -> FregotParser a  -- ^ Comprehension head
-    -> FregotParser (a, RuleBody SourceSpan)
+    -> FregotParser (a, RuleBody SourceSpan Var)
 comprehension open close phead = do
     chead <- Parsec.try $ do
         Tok.symbol open
