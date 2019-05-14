@@ -5,6 +5,8 @@ module Fregot.Interpreter.Bundle
     , Bundle (..), bundleSources, bundleModules
     ) where
 
+import           Fregot.Names.Renamer
+
 import           Control.Lens              ((^.))
 import           Control.Lens.TH           (makeLenses)
 import           Control.Monad             (when)

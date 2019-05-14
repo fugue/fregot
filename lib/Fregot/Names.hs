@@ -15,16 +15,19 @@ module Fregot.Names
     , Var, unVar, mkVar
     , varToString, varToText
     , varFromText
-    , qualifiedVarFromText
 
     , Nested (..)
     , nestedToString
 
     , UnqualifiedVar
+
+    , Name (..)
+    , nameFromText
     ) where
 
 import           Control.Lens       (review, (^?))
 import           Control.Lens.Prism (Prism', prism')
+import           Control.Lens.Iso (Iso', iso)
 import           Control.Monad      (guard)
 import           Data.Binary        (Binary)
 import qualified Data.Binary        as Binary
@@ -37,14 +40,38 @@ import qualified Data.Unique        as Unique
 import qualified Fregot.PrettyPrint as PP
 import           System.IO.Unsafe   (unsafePerformIO)
 
-newtype PackageName = PackageName {unPackageName :: [T.Text]}
-    deriving (Binary, Eq, Hashable, Monoid, Ord, Semigroup, Show)
+data PackageName = PackageName {-# UNPACK #-} !Unique [T.Text]
+    deriving Eq via (Uniquely PackageName)
+    deriving Hashable via (Uniquely PackageName)
+    deriving Ord via (Uniquely PackageName)
+
+instance HasUnique PackageName where
+    getUnique (PackageName u _) = u
+    {-# INLINE getUnique #-}
 
 instance IsString PackageName where
-    fromString = PackageName . T.split (== '.') . T.pack
+    fromString = mkPackageName . T.split (== '.') . T.pack
+
+instance Show PackageName where
+    show = review packageNameFromString
 
 instance PP.Pretty a PackageName where
     pretty = PP.pretty . review packageNameFromString
+
+instance Binary PackageName where
+    get = mkPackageName <$> Binary.get
+    put = Binary.put . unPackageName
+
+unPackageName :: PackageName -> [T.Text]
+unPackageName (PackageName _ t) = t
+
+mkPackageName :: [T.Text] -> PackageName
+mkPackageName ps =
+    Unique.getStableUnique packageNameUniqueGen ps $ \u -> PackageName u ps
+
+packageNameUniqueGen :: Unique.StableUniqueGen [T.Text]
+packageNameUniqueGen = unsafePerformIO Unique.newStableUniqueGen
+{-# NOINLINE packageNameUniqueGen #-}
 
 packageNameFromString :: Prism' String PackageName
 packageNameFromString = T.fromString . packageNameFromText
@@ -55,7 +82,7 @@ packageNameFromText = prism'
     (\txt -> do
         let parts = T.split (== '.') txt
         guard $ not $ any T.null parts
-        return $ PackageName parts)
+        return $ mkPackageName parts)
 
 -- | Like 'packageNameFromString', but with "data." prepended.
 dataPackageNameFromString :: Prism' String PackageName
@@ -90,7 +117,7 @@ unVar :: Var -> T.Text
 unVar (Var _ t) = t
 
 mkVar :: T.Text -> Var
-mkVar t = Var (Unique.getStableUnique varUniqueGen t) t
+mkVar t = Unique.getStableUnique varUniqueGen t $ \u -> Var u t
 
 varUniqueGen :: Unique.StableUniqueGen T.Text
 varUniqueGen = unsafePerformIO Unique.newStableUniqueGen
@@ -113,18 +140,6 @@ varFromText = prism' varToText $ \txt -> do
         (c >= '0' && c <= '9') ||
         c == '_'
 
-qualifiedVarFromText :: Prism' T.Text (Maybe PackageName, Var)
-qualifiedVarFromText = prism'
-    (\(mbPkgName, var) -> case mbPkgName of
-        Nothing      -> review varFromText var
-        Just pkgName ->
-            review packageNameFromText pkgName <> "." <> review varFromText var)
-    (\txt -> case T.breakOnEnd "." txt of
-        ("", var) -> ((,) Nothing) <$> var ^? varFromText
-        (pkgName, var) -> (,)
-            <$> (Just <$> T.init pkgName ^? packageNameFromText)
-            <*> var ^? varFromText)
-
 -- | This type exists solely for pretty-printing.
 newtype Nested a = Nested {unNested :: [a]}
 
@@ -138,3 +153,29 @@ instance PP.Pretty PP.Sem a => PP.Pretty PP.Sem (Nested a) where
 -- | Sometimes we want to be really clear in the source code that a variable
 -- cannot be qualified in a specific position.
 type UnqualifiedVar = Var
+
+data Name
+    = LocalName !Var
+    | QualifiedName !PackageName !Var
+
+nameFromTuple :: Iso' (Maybe PackageName, Var) Name
+nameFromTuple = iso
+    (\case
+        (Nothing, v) -> LocalName v
+        (Just p, v)  -> QualifiedName p v)
+    (\case
+        LocalName v       -> (Nothing, v)
+        QualifiedName p v -> (Just p, v))
+
+nameFromText :: Prism' T.Text Name
+nameFromText = prism'
+    (\(mbPkgName, var) -> case mbPkgName of
+        Nothing      -> review varFromText var
+        Just pkgName ->
+            review packageNameFromText pkgName <> "." <> review varFromText var)
+    (\txt -> case T.breakOnEnd "." txt of
+        ("", var) -> ((,) Nothing) <$> var ^? varFromText
+        (pkgName, var) -> (,)
+            <$> (Just <$> T.init pkgName ^? packageNameFromText)
+            <*> var ^? varFromText) .
+    nameFromTuple

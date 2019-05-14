@@ -39,15 +39,17 @@ module Fregot.Prepare.Ast
     , literal
     ) where
 
+import           Fregot.Names.Renamer
+
 import           Control.Lens              ((^.))
 import           Control.Lens.TH           (makeLenses, makePrisms)
 import           Data.Hashable             (Hashable)
 import qualified Data.HashMap.Strict       as HMS
 import qualified Data.List                 as L
+import           Fregot.Names
 import           Fregot.PrettyPrint        ((<+>), (<+>?), (?<+>))
 import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources.SourceSpan (SourceSpan)
-import           Fregot.Sugar              (Var)
 import qualified Fregot.Sugar              as Sugar
 import           GHC.Generics              (Generic)
 
@@ -206,7 +208,7 @@ prettyComprehensionBody lits = mconcat $ L.intersperse
     (map PP.pretty lits)
 
 instance PP.Pretty PP.Sem Function where
-    pretty (NamedFunction    vs) = PP.pretty (Sugar.NestedVar vs)
+    pretty (NamedFunction    vs) = PP.pretty (Nested vs)
     pretty (OperatorFunction o)  = PP.pretty o
 
 instance PP.Pretty PP.Sem BinOp where

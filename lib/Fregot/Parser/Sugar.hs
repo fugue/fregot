@@ -33,7 +33,7 @@ parseDataPackageName = do
         _             -> Parsec.unexpectedAt pos $
             show (PP.pretty pkgname) ++ " (imports should start with `data.`)"
 
-parseModule :: FregotParser (Module SourceSpan)
+parseModule :: FregotParser (Module SourceSpan Var)
 parseModule = Module
     <$> parseModuleHead
     <*> Parsec.many parseModuleImport

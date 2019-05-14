@@ -18,7 +18,6 @@ module Fregot.Sugar
     , Var, unVar, mkVar
     , varToString, varToText
     , varFromText
-    , qualifiedVarFromText
 
     , Rule (..), ruleHead, ruleBodies
     , RuleHead (..), ruleAnn, ruleDefault, ruleName, ruleArgs, ruleIndex
