@@ -46,7 +46,7 @@ import qualified Fregot.PrettyPrint  as PP
 import           GHC.Generics        (Generic)
 import           System.IO.Unsafe    (unsafePerformIO)
 
-data PackageName = PackageName {-# UNPACK #-} !Unique [T.Text]
+data PackageName = PackageName {-# UNPACK #-} !Unique ![T.Text]
     deriving Eq via (Uniquely PackageName)
     deriving Hashable via (Uniquely PackageName)
     deriving Ord via (Uniquely PackageName)
@@ -71,7 +71,7 @@ instance Binary PackageName where
 -- TODO(jaspervdj): We can probably remove this instance now that we have scope
 -- checking.
 instance Semigroup PackageName where
-    x <> y = mkPackageName (unPackageName x <> unPackageName y)
+    PackageName _ x <> PackageName _ y = mkPackageName (x <> y)
 
 instance Monoid PackageName where
     mempty = mkPackageName mempty
