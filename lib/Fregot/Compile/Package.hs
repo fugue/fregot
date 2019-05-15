@@ -21,7 +21,6 @@ import           Control.Monad.Parachute     (ParachuteT, tellError, tellErrors)
 import qualified Data.HashMap.Strict         as HMS
 import qualified Data.HashSet.Extended       as HS
 import           Data.List.NonEmpty.Extended (NonEmpty (..))
-import           Data.Maybe                  (isNothing)
 import           Fregot.Compile.Order
 import           Fregot.Error                (Error)
 import qualified Fregot.Error                as Error
@@ -107,10 +106,6 @@ compilePackage dependencies prep =
             forOf_ (ruleElseValue . traverse) els $ \v ->
                 tellErrors $ checkTerm arities safe1 v
 
-        -- Call check inside rule bodies.
-        forOf_ (ruleBodies . traverse . ruleBodyTerms) ordered $
-            \term -> tellErrors $ checkTermCalls arities term
-
         return ordered
       where
         -- Safe set before ordering.
@@ -143,9 +138,8 @@ compileTerm pkg safeLocals term0 = do
 
 -- | Various checks on terms.
 checkTerm :: Arities -> Safe Var -> Term SourceSpan -> [Error]
-checkTerm arities safe term =
-    checkTermVars safe term <>
-    checkTermCalls arities term
+checkTerm _arities safe term =
+    checkTermVars safe term
 
 -- | Check that all variables in the term occurr in the safe set.
 checkTermVars
@@ -159,18 +153,6 @@ checkTermVars (Safe safe) term =
     | (source, name) <- term ^.. termCosmosNoClosures . termVars
     , var            <- name ^.. _LocalName
     , not $ var `HS.member` safe
-    ]
-
--- | Check that all calls in the term are known functions.
-checkTermCalls
-    :: Arities
-    -> Term SourceSpan
-    -> [Error]
-checkTermCalls arities term =
-    [ Error.mkError "var check" source "unknown function" $
-        "Function" <+> PP.pretty fun <+> "is not defined."
-    | (source, fun) <- term ^.. termCosmosCalls
-    , isNothing (arities fun)
     ]
 
 -- | Designed to match the return type of `orderTermForSafety`.

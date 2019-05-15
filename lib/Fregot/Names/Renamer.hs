@@ -21,6 +21,7 @@ import qualified Fregot.Error              as Error
 import           Fregot.Eval.Builtins      (Builtin)
 import           Fregot.Names
 import           Fregot.Prepare.Ast        (Function (..))
+import           Fregot.PrettyPrint        ((<+>))
 import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources.SourceSpan (SourceSpan)
 import           Fregot.Sugar
@@ -157,8 +158,14 @@ renameTerm = \case
                 pure $ CallT s [QualifiedName (mkPackageName pkg) n] args'
 
             -- Calling a rule in the same package.
-            Just ([], n) | HS.member n rules ->
-                pure $ CallT s [QualifiedName thispkg n] args'
+            Just ([], n)
+                | HS.member n rules ->
+                    pure $ CallT s [QualifiedName thispkg n] args'
+                | otherwise -> do
+                    tellRenameError s "unknown function" $
+                        "Function" <+> PP.pretty n <+> "is not defined."
+                    -- TODO(jaspervdj): Return ErrorT?
+                    pure $ CallT s [QualifiedName thispkg n] args'
 
             -- Calling a rule in another package.
             Just ([imp], n) | Just (_, pkg) <- HMS.lookup (mkVar imp) imports ->
