@@ -85,41 +85,43 @@ renameExpr = \case
     BinOpE a x b y -> BinOpE  a <$> renameExpr x <*> pure b <*> renameExpr y
     ParensE a x    -> ParensE a <$> renameExpr x
 
--- | Resolves a reference as far as possible.  Returns the new expression, and
+-- | Resolves a reference as far as possible.  Returns the new name, and
 -- bits that were not resolved yet.
+--
+-- For example, `foo` is a package, and `foo.bar` is a rule in that package
+-- that evaluates to `foo.bar = {"value": 1}`.
+--
+-- We resolve the `foo.bar` part in `foo.bar.value` and keep the `.value`
+-- part unresolved, then "attach it back on".
 resolveRef
-    :: SourceSpan -> SourceSpan -> Var -> [RefArg SourceSpan Var]
-    -> RenamerM (Term SourceSpan Name)
-resolveRef source varSource var refArgs = do
+    :: Var -> [RefArg SourceSpan Var]
+    -> RenamerM (Name, [RefArg SourceSpan Name])
+resolveRef var refArgs = do
     imports <- view reImports
+    rules   <- view rePackageRules
+    thispkg <- view rePackage
     case var of
         _       | Just (_, pkg) <- HMS.lookup var imports
                 , (ra1 : ras)   <- refArgs
-                , Just rname    <- refArgToVar ra1 ->
+                , Just rname    <- refArgToVar ra1 -> do
             -- TODO(jaspervdj): Check that the name actually exists in the
             -- package?
-            reattach (QualifiedName pkg rname) ras
+            ras' <- traverse renameRefArg ras
+            return (QualifiedName pkg rname, ras')
 
         -- Nothing was found.  Should we error here?
-        _ -> reattach (LocalName var) refArgs
+        _ -> do
+            refArgs' <- traverse renameRefArg refArgs
+            let name
+                    | HS.member var rules = QualifiedName thispkg var
+                    | otherwise           = LocalName var
+            return (name, refArgs')
 
   where
     refArgToVar = \case
         RefBrackArg (TermE _ (ScalarT _ (String k))) -> Just (mkVar k)
         RefDotArg _ k                                -> Just k
         _                                            -> Nothing
-
-    -- Some references may not be used when resolving.
-    --
-    -- For example, `foo` is a package, and `foo.bar` is a rule in that package
-    -- that evaluates to `foo.bar = {"value": 1}`.
-    --
-    -- We resolve the `foo.bar` part in `foo.bar.value` and keep the `.value`
-    -- part unresolved, then "attach it back on".
-    reattach name []    = return (VarT source name)
-    reattach name rargs = do
-        rargs' <- traverse renameRefArg rargs
-        return $ RefT source varSource name rargs'
 
     -- Hidden in this body because we don't want to naively call it.
     renameRefArg = \case
@@ -128,11 +130,17 @@ resolveRef source varSource var refArgs = do
 
 renameTerm :: Rename Term
 renameTerm = \case
-    RefT source varSource var refArgs ->
-        resolveRef source varSource var refArgs
+    RefT source varSource var refArgs -> do
+        (name, refArgs') <- resolveRef var refArgs
+        case refArgs' of
+            [] -> pure $ VarT source name
+            _  -> pure $ RefT source varSource name refArgs'
 
     CallT s ns args -> do
         builtins <- view reBuiltins
+        imports  <- view reImports
+        rules    <- view rePackageRules
+        thispkg  <- view rePackage
         args'    <- traverse renameTerm args
         case first (map unVar) <$> unsnoc ns of
             Nothing -> do
@@ -147,6 +155,14 @@ renameTerm = \case
             -- A qualified builtin name, e.g. "json.unmarshal".
             Just (pkg, n) | Just _ <- HMS.lookup (NamedFunction (QualifiedName (mkPackageName pkg) n)) builtins ->
                 pure $ CallT s [QualifiedName (mkPackageName pkg) n] args'
+
+            -- Calling a rule in the same package.
+            Just ([], n) | HS.member n rules ->
+                pure $ CallT s [QualifiedName thispkg n] args'
+
+            -- Calling a rule in another package.
+            Just ([imp], n) | Just (_, pkg) <- HMS.lookup (mkVar imp) imports ->
+                pure $ CallT s [QualifiedName pkg n] args'
 
             _ -> error "TODO: other calls"
 
@@ -180,7 +196,9 @@ renameObjectKey = \case
     ScalarK a s -> pure (ScalarK a s)
     -- TODO(jaspervdj): Can we have a rule name here?
     VarK a uv -> pure (VarK a uv)
-    RefK _ _ _ -> error "TODO: actual work"
+    RefK source var refArgs -> do
+        (name, refArgs') <- resolveRef var refArgs
+        return $ RefK source name refArgs'
 
 renameWith :: Rename With
 renameWith with = With
