@@ -43,9 +43,9 @@ import qualified Fregot.Compile.Package    as Package
 import           Fregot.Eval.Builtins
 import qualified Fregot.Eval.Cache         as Cache
 import           Fregot.Eval.Monad
-import           Fregot.Names
 import qualified Fregot.Eval.Number        as Number
 import           Fregot.Eval.Value
+import           Fregot.Names
 import           Fregot.Prepare.Ast
 import           Fregot.Prepare.Lens
 import           Fregot.PrettyPrint        ((<$$>), (<+>))
@@ -217,7 +217,7 @@ evalRefArg source indexee refArg = do
                 -- If the package exists *AND* actually has a rule with that
                 -- name, we'll evaluate that name.
                 Just pkg | Just _ <- Package.lookup v pkg ->
-                    withPackage pkg $ evalVar source v
+                    evalName source (QualifiedName pkgname v)
                 -- Otherwise, we'll construct a further package name.  This
                 -- package name does not actually need to exist (yet), since we
                 -- might append more pieces to it.
