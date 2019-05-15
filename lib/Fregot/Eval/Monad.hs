@@ -15,7 +15,7 @@ module Fregot.Eval.Monad
 
     , EvalCache
 
-    , Environment (..), packages, package, inputDoc, imports
+    , Environment (..), packages, inputDoc
     , cache, cacheVersion, stack
 
     , EvalException (..)
@@ -42,10 +42,8 @@ module Fregot.Eval.Monad
     , toInstVar
     , lookupRule
     , clearLocals
-    , withImports
 
     , lookupPackage
-    , withPackage
 
     , pushStackFrame
     , pushRuleStackFrame
@@ -115,13 +113,7 @@ type EvalCache = Cache (PackageName, Var) Value
 
 data Environment = Environment
     { _packages     :: !(HMS.HashMap PackageName CompiledPackage)
-    -- NOTE(jaspervdj): The following is probably unnecessary with the
-    -- scopechecking.
-    , _package      :: !CompiledPackage
     , _inputDoc     :: !Value
-    -- NOTE(jaspervdj): The following is probably unnecessary with the
-    -- scopechecking.
-    , _imports      :: !(Imports SourceSpan)
     , _cache        :: !EvalCache
     , _cacheVersion :: !Cache.Version
     , _stack        :: !Stack.StackTrace
@@ -314,32 +306,22 @@ clearLocals mx = do
     modify $ \ctx -> ctx {_locals = oldLocals}
     return x
 
-withImports :: Imports SourceSpan -> EvalM a -> EvalM a
-withImports imps = local (imports .~ imps)
-
 lookupPackage :: PackageName -> EvalM (Maybe CompiledPackage)
 lookupPackage pkgname = do
     pkgs <- view packages
     return $! HMS.lookup pkgname pkgs
 
-withPackage :: CompiledPackage -> EvalM a -> EvalM a
-withPackage pkg = local (package .~ pkg)
-
 pushStackFrame :: Stack.StackFrame -> EvalM a -> EvalM a
 pushStackFrame frame = local (stack %~ Stack.push frame)
 
-pushRuleStackFrame :: SourceSpan -> Var -> EvalM a -> EvalM a
-pushRuleStackFrame source var = local $ \env -> env
-    { _stack = Stack.push
-        (Stack.RuleStackFrame (env ^. package . Package.packageName) var source)
-        (env ^. stack)
+pushRuleStackFrame :: SourceSpan -> Name -> EvalM a -> EvalM a
+pushRuleStackFrame source n = local $ \env -> env
+    { _stack = Stack.push (Stack.RuleStackFrame n source) (env ^. stack)
     }
 
-pushFunctionStackFrame :: SourceSpan -> Var -> EvalM a -> EvalM a
-pushFunctionStackFrame src v = local $ \env -> env
-    { _stack = Stack.push
-        (Stack.FunctionStackFrame (env ^. package . Package.packageName) v src)
-        (env ^. stack)
+pushFunctionStackFrame :: SourceSpan -> Name -> EvalM a -> EvalM a
+pushFunctionStackFrame src n = local $ \env -> env
+    { _stack = Stack.push (Stack.FunctionStackFrame n src) (env ^. stack)
     }
 
 -- | Raise an error.  We currently don't allow catching exceptions, but they are

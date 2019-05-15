@@ -31,9 +31,9 @@ import           Prelude                   hiding (head)
 -- | Create a new compiled rule from a sugared rule.
 prepareRule
     :: Monad m
-    => Imports SourceSpan -> Sugar.Rule SourceSpan Name
+    => PackageName -> Imports SourceSpan -> Sugar.Rule SourceSpan Name
     -> ParachuteT Error m (Rule SourceSpan)
-prepareRule imports rule
+prepareRule pkgname imports rule
     | head ^. Sugar.ruleDefault = do
         -- NOTE(jaspervdj): Perform sanity checks on default rules.
         when (isJust $ head ^. Sugar.ruleIndex) $ tellError $ Error.mkError
@@ -55,7 +55,8 @@ prepareRule imports rule
         --     composite then it may not contain variables or references.
         def <- traverse prepareTerm (head ^. Sugar.ruleValue)
         pure Rule
-            { _ruleName    = head ^. Sugar.ruleName
+            { _rulePackage = pkgname
+            , _ruleName    = head ^. Sugar.ruleName
             , _ruleAnn     = head ^. Sugar.ruleAnn
             , _ruleDefault = def
             , _ruleKind    = CompleteRule
@@ -77,7 +78,8 @@ prepareRule imports rule
         index  <- traverse prepareTerm (head ^. Sugar.ruleIndex)
         value  <- traverse prepareTerm (head ^. Sugar.ruleValue)
         pure Rule
-            { _ruleName    = head ^. Sugar.ruleName
+            { _rulePackage = pkgname
+            , _ruleName    = head ^. Sugar.ruleName
             , _ruleAnn     = head ^. Sugar.ruleAnn
             , _ruleDefault = Nothing
             , _ruleKind    = FunctionRule (length args)
@@ -108,7 +110,8 @@ prepareRule imports rule
         index  <- traverse prepareTerm (head ^. Sugar.ruleIndex)
         value  <- traverse prepareTerm (head ^. Sugar.ruleValue)
         pure Rule
-            { _ruleName    = head ^. Sugar.ruleName
+            { _rulePackage = pkgname
+            , _ruleName    = head ^. Sugar.ruleName
             , _ruleAnn     = head ^. Sugar.ruleAnn
             , _ruleDefault = Nothing
             , _ruleKind    = kind

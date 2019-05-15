@@ -7,7 +7,7 @@
 {-# LANGUAGE TemplateHaskell            #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}  -- for the MonadUnify instance...
 module Fregot.Eval
-    ( Environment (..), packages, package, inputDoc, imports, stack
+    ( Environment (..), packages, inputDoc, stack
     , Context, locals
     , emptyContext
 
@@ -161,17 +161,12 @@ evalVar _source "_"     = return WildcardV
 evalVar _source "input" = view inputDoc
 evalVar _source "data"  = return $! PackageV mempty
 evalVar _source v       = do
-    imps <- view imports
     lcls <- use locals
-    case HMS.lookup v imps of
-        Just (_ann, pkgname) -> return $ PackageV pkgname
-        Nothing  -> case HMS.lookup v lcls of
-            -- TODO(jaspervdj): This import lookup is probably unnecessary now
-            -- that we have proper scope checking.
-            Just iv -> do
-                mbVal <- Unification.lookup iv
-                return $ fromMaybe (FreeV iv) mbVal
-            Nothing -> FreeV <$> toInstVar v
+    case HMS.lookup v lcls of
+        Just iv -> do
+            mbVal <- Unification.lookup iv
+            return $ fromMaybe (FreeV iv) mbVal
+        Nothing -> FreeV <$> toInstVar v
 
 evalBuiltin :: SourceSpan -> Builtin -> [Value] -> EvalM Value
 evalBuiltin source (Builtin sig impl) args0 = do
@@ -303,7 +298,8 @@ evalCompiledRule callerSource crule mbIndex = push $ case crule ^. ruleKind of
         snd <$> branches
   where
     -- Update the stack
-    push = pushRuleStackFrame callerSource (crule ^. ruleName)
+    push = pushRuleStackFrame callerSource
+        (QualifiedName (crule ^. rulePackage) (crule ^. ruleName))
 
     -- Standard branching evaluation of rule definitions, with caching.
     branches :: EvalM (Maybe Value, Value)
@@ -315,8 +311,7 @@ evalCompiledRule callerSource crule mbIndex = push $ case crule ^. ruleKind of
     -- This is currently only used for complete rules.
     cached :: EvalM Value -> EvalM Value
     cached computeValue = do
-        pkgname <- view (package . Package.packageName)
-        let key = (pkgname, crule ^. ruleName)
+        let key = (crule ^. rulePackage, crule ^. ruleName)
 
         version  <- view cacheVersion
         c        <- view cache
@@ -332,7 +327,6 @@ evalRuleDefinition
     :: SourceSpan -> RuleDefinition SourceSpan -> Maybe Value
     -> EvalM (Maybe Value, Value)
 evalRuleDefinition callerSource rule mbIndex =
-    withImports (rule ^. ruleDefImports) $
     clearLocals $ do
 
     mbIdxVal <- case (mbIndex, rule ^. ruleIndex) of
@@ -377,7 +371,8 @@ evalRuleDefinition callerSource rule mbIndex =
 evalUserFunction
     :: SourceSpan -> Rule SourceSpan -> [Value] -> EvalM Value
 evalUserFunction callerSource crule callerArgs =
-    pushFunctionStackFrame callerSource (crule ^. ruleName) $
+    pushFunctionStackFrame callerSource
+        (QualifiedName (crule ^. rulePackage) (crule ^. ruleName)) $
     case crule ^? ruleKind . _FunctionRule of
         Nothing -> raise' callerSource "type error" $
             PP.pretty (crule ^. ruleName) <+>
@@ -392,7 +387,6 @@ evalUserFunction callerSource crule callerArgs =
         Just term -> ground (crule ^. ruleAnn) =<< evalTerm term
 
     evalFunctionDefinition def =
-        withImports (def ^. ruleDefImports) $
         clearLocals $ do
         -- TODO(jaspervdj): Check arity.
         calleeArgs <- mapM evalTerm $ fromMaybe [] (def ^. ruleArgs)

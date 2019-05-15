@@ -268,14 +268,11 @@ insertRule h pkgname sourcep rule =
 eval
     :: Handle -> Eval.Context -> PackageName -> Eval.EvalM a
     -> InterpreterM (Eval.Document a)
-eval h ctx pkgname mx = do
+eval h ctx _pkgname mx = do
     comp <- liftIO $ IORef.readIORef (h ^. compiled)
-    pkg  <- readCompiledPackage h pkgname
     let env = Eval.Environment
             { Eval._packages     = comp
-            , Eval._package      = pkg
             , Eval._inputDoc     = emptyObject
-            , Eval._imports      = mempty
             , Eval._cache        = h ^. cache
             , Eval._cacheVersion = h ^. cacheVersion
             , Eval._stack        = Stack.empty
@@ -331,9 +328,7 @@ mkStepState h pkgname expr = do
     cterm <- Compile.compileTerm pkg mempty pterm
     let env = Eval.Environment
             { Eval._packages     = comp
-            , Eval._package      = pkg
             , Eval._inputDoc     = emptyObject
-            , Eval._imports      = mempty
             , Eval._cache        = h ^. cache
             , Eval._cacheVersion = h ^. cacheVersion
             , Eval._stack        = Stack.empty

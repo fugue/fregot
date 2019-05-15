@@ -45,7 +45,7 @@ insert
     -> Package ty
     -> ParachuteT Error m (Package ty)
 insert imports rule package = do
-    new <- prepareRule imports rule
+    new <- prepareRule (package ^. packageName) imports rule
     merged <- case HMS.lookup rname (package ^. packageRules) of
         Nothing  -> return new
         Just old -> mergeRules old new

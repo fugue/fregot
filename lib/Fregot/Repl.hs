@@ -224,8 +224,8 @@ processStep h stepTo state = do
             bkpnts <- IORef.readIORef (h ^. breakpoints)
             let shouldBreak = case Stack.peek stack of
                     Nothing                           -> False
-                    Just (Stack.RuleStackFrame pkg v _) -> QualifiedName pkg v `HS.member` bkpnts
-                    Just (Stack.FunctionStackFrame pkg v _) -> QualifiedName pkg v `HS.member` bkpnts
+                    Just (Stack.RuleStackFrame name _) -> name `HS.member` bkpnts
+                    Just (Stack.FunctionStackFrame name _) -> name `HS.member` bkpnts
             return $ if shouldBreak then Nothing else Just $ StepToBreak mbOldStack
 
     continueStepping StepInto _ = return Nothing

@@ -7,7 +7,7 @@
 {-# LANGUAGE TemplateHaskell            #-}
 module Fregot.Prepare.Ast
     ( RuleKind (..), _CompleteRule, _GenSetRule, _GenObjectRule, _FunctionRule
-    , Rule (..), ruleName, ruleAnn, ruleDefault, ruleKind, ruleDefs
+    , Rule (..), rulePackage, ruleName, ruleAnn, ruleDefault, ruleKind, ruleDefs
     , RuleDefinition (..), ruleDefName, ruleDefImports, ruleDefAnn, ruleArgs
     , ruleIndex, ruleValue, ruleBodies, ruleElses
     , RuleElse (..), ruleElseAnn, ruleElseValue, ruleElseBody
@@ -56,7 +56,8 @@ data RuleKind
     deriving (Eq, Show)
 
 data Rule a = Rule
-    { _ruleName    :: !Var
+    { _rulePackage :: !PackageName
+    , _ruleName    :: !Var
     , _ruleAnn     :: !SourceSpan
     , _ruleDefault :: !(Maybe (Term a))
     , _ruleKind    :: !RuleKind
