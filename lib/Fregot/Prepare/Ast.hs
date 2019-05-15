@@ -40,7 +40,6 @@ module Fregot.Prepare.Ast
 import           Control.Lens              ((^.))
 import           Control.Lens.TH           (makeLenses, makePrisms)
 import           Data.Hashable             (Hashable)
-import qualified Data.HashMap.Strict       as HMS
 import qualified Data.List                 as L
 import           Fregot.Names
 import           Fregot.PrettyPrint        ((<+>), (<+>?), (?<+>))
@@ -74,8 +73,6 @@ data RuleDefinition a = RuleDefinition
     , _ruleBodies     :: ![RuleBody a]
     , _ruleElses      :: ![RuleElse a]
     } deriving (Show)
-
-type Imports a = HMS.HashMap Var (a, Sugar.PackageName)
 
 type RuleBody a = [Literal a]
 

@@ -1,24 +1,46 @@
-{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE LambdaCase        #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell   #-}
 module Fregot.Names.Renamer
-    ( RenamerEnv (..)
+    ( RenamerEnv (..), reBuiltins, reImports, rePackage, rePackageRules
     , RenamerM
     , renameModule
     , renameExpr
     ) where
 
-import           Control.Lens              ((^.))
-import           Control.Monad.Parachute   (ParachuteT)
+import           Control.Lens              (view, (^.))
+import           Control.Lens.TH           (makeLenses)
+import           Control.Monad.Parachute   (ParachuteT, tellError)
 import           Control.Monad.Reader      (Reader)
+import           Data.Bifunctor            (first)
+import qualified Data.HashMap.Strict       as HMS
+import qualified Data.HashSet              as HS
+import           Data.List.Extended        (unsnoc)
 import           Fregot.Error              (Error)
+import qualified Fregot.Error              as Error
+import           Fregot.Eval.Builtins      (Builtin)
 import           Fregot.Names
+import           Fregot.Prepare.Ast        (Function (..))
+import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources.SourceSpan (SourceSpan)
 import           Fregot.Sugar
 
 data RenamerEnv = RenamerEnv
+    { _reBuiltins     :: !(HMS.HashMap Function Builtin)
+    , _reImports      :: !(Imports SourceSpan)
+    , _rePackage      :: !PackageName
+    , _rePackageRules :: !(HS.HashSet Var)
+    }
+
+$(makeLenses ''RenamerEnv)
 
 type RenamerM a = ParachuteT Error (Reader RenamerEnv) a
 
 type Rename f = f SourceSpan Var -> RenamerM (f SourceSpan Name)
+
+tellRenameError :: SourceSpan -> PP.SemDoc -> PP.SemDoc -> RenamerM ()
+tellRenameError source title = tellError .
+    Error.mkError "renamer" source title
 
 renameModule :: Rename Module
 renameModule modul = Module
@@ -63,14 +85,79 @@ renameExpr = \case
     BinOpE a x b y -> BinOpE  a <$> renameExpr x <*> pure b <*> renameExpr y
     ParensE a x    -> ParensE a <$> renameExpr x
 
+-- | Resolves a reference as far as possible.  Returns the new expression, and
+-- bits that were not resolved yet.
+resolveRef
+    :: SourceSpan -> SourceSpan -> Var -> [RefArg SourceSpan Var]
+    -> RenamerM (Term SourceSpan Name)
+resolveRef source varSource var refArgs = do
+    imports <- view reImports
+    case var of
+        _       | Just (_, pkg) <- HMS.lookup var imports
+                , (ra1 : ras)   <- refArgs
+                , Just rname    <- refArgToVar ra1 ->
+            -- TODO(jaspervdj): Check that the name actually exists in the
+            -- package?
+            reattach (QualifiedName pkg rname) ras
+
+        -- Nothing was found.  Should we error here?
+        _ -> reattach (LocalName var) refArgs
+
+  where
+    refArgToVar = \case
+        RefBrackArg (TermE _ (ScalarT _ (String k))) -> Just (mkVar k)
+        RefDotArg _ k                                -> Just k
+        _                                            -> Nothing
+
+    -- Some references may not be used when resolving.
+    --
+    -- For example, `foo` is a package, and `foo.bar` is a rule in that package
+    -- that evaluates to `foo.bar = {"value": 1}`.
+    --
+    -- We resolve the `foo.bar` part in `foo.bar.value` and keep the `.value`
+    -- part unresolved, then "attach it back on".
+    reattach name []    = return (VarT source name)
+    reattach name rargs = do
+        rargs' <- traverse renameRefArg rargs
+        return $ RefT source varSource name rargs'
+
+    -- Hidden in this body because we don't want to naively call it.
+    renameRefArg = \case
+        RefBrackArg e  -> RefBrackArg <$> renameExpr e
+        RefDotArg s uv -> pure (RefDotArg s uv)
+
 renameTerm :: Rename Term
 renameTerm = \case
-    RefT _ _ _ _ -> error "TODO: actual work"
-    CallT _ _ _ -> error "TODO: actual work"
+    RefT source varSource var refArgs ->
+        resolveRef source varSource var refArgs
 
-    -- TODO(jaspervdj): Find out of the variable is a rule in this package.  If
-    -- so, it's a QualifiedName, if not it's a LocalName.
-    VarT a v -> pure (VarT a (LocalName v))
+    CallT s ns args -> do
+        builtins <- view reBuiltins
+        args'    <- traverse renameTerm args
+        case first (map unVar) <$> unsnoc ns of
+            Nothing -> do
+                tellRenameError s "empty call" "Invalid empty call"
+                -- TODO(jaspervdj): Return ErrorT?
+                pure $ CallT s [] args'
+
+            -- A plain builtin name, e.g. "all".
+            Just ([], n) | Just _ <- HMS.lookup (NamedFunction (BuiltinName n)) builtins ->
+                pure $ CallT s [BuiltinName n] args'
+
+            -- A qualified builtin name, e.g. "json.unmarshal".
+            Just (pkg, n) | Just _ <- HMS.lookup (NamedFunction (QualifiedName (mkPackageName pkg) n)) builtins ->
+                pure $ CallT s [QualifiedName (mkPackageName pkg) n] args'
+
+            _ -> error "TODO: other calls"
+
+    -- Find out of the variable is a rule in this package.  If so, it's a
+    -- QualifiedName, if not it's a LocalName.
+    VarT a v -> do
+        pkg   <- view rePackage
+        rules <- view rePackageRules
+        case v `HS.member` rules of
+            True  -> pure (VarT a (QualifiedName pkg v))
+            False -> pure (VarT a (LocalName v))
 
     ScalarT a s -> pure (ScalarT a s)
 

@@ -25,23 +25,26 @@ module Fregot.Names
     , Name (..), _LocalName, _QualifiedName
     , nameToText
     , nameFromText
+
+    , Imports
     ) where
 
-import           Control.Lens       (review, (^?))
-import           Control.Lens.Prism (Prism', prism')
-import           Control.Lens.TH    (makePrisms)
-import           Control.Monad      (guard)
-import           Data.Binary        (Binary)
-import qualified Data.Binary        as Binary
-import           Data.Hashable      (Hashable (..))
-import qualified Data.List          as L
-import           Data.String        (IsString (..))
-import qualified Data.Text.Extended as T
-import           Data.Unique        (HasUnique (..), Unique, Uniquely (..))
-import qualified Data.Unique        as Unique
-import qualified Fregot.PrettyPrint as PP
-import           GHC.Generics       (Generic)
-import           System.IO.Unsafe   (unsafePerformIO)
+import           Control.Lens        (review, (^?))
+import           Control.Lens.Prism  (Prism', prism')
+import           Control.Lens.TH     (makePrisms)
+import           Control.Monad       (guard)
+import           Data.Binary         (Binary)
+import qualified Data.Binary         as Binary
+import           Data.Hashable       (Hashable (..))
+import qualified Data.HashMap.Strict as HMS
+import qualified Data.List           as L
+import           Data.String         (IsString (..))
+import qualified Data.Text.Extended  as T
+import           Data.Unique         (HasUnique (..), Unique, Uniquely (..))
+import qualified Data.Unique         as Unique
+import qualified Fregot.PrettyPrint  as PP
+import           GHC.Generics        (Generic)
+import           System.IO.Unsafe    (unsafePerformIO)
 
 data PackageName = PackageName {-# UNPACK #-} !Unique [T.Text]
     deriving Eq via (Uniquely PackageName)
@@ -198,3 +201,5 @@ nameFromText txt = case T.breakOnEnd "." txt of
     (pkgName, var) -> QualifiedName
         <$> T.init pkgName ^? packageNameFromText
         <*> var ^? varFromText
+
+type Imports a = HMS.HashMap Var (a, PackageName)

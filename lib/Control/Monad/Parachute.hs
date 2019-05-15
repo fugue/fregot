@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE Rank2Types            #-}
+{-# LANGUAGE UndecidableInstances  #-}
 module Control.Monad.Parachute
     ( ParachuteT (..)
     , runParachuteT
@@ -16,6 +17,7 @@ module Control.Monad.Parachute
     ) where
 
 import           Control.Monad.Except (MonadError (..))
+import           Control.Monad.Reader (MonadReader (..))
 import           Control.Monad.Trans  (MonadIO (..))
 
 data ParachuteResult e a
@@ -47,6 +49,13 @@ instance MonadIO m => MonadIO (ParachuteT e m) where
     liftIO io = ParachuteT $ \errors -> do
         x <- liftIO io
         pure (errors, Ok x)
+
+instance MonadReader r m => MonadReader r (ParachuteT e m) where
+    ask = ParachuteT $ \errors -> do
+        x <- ask
+        pure (errors, Ok x)
+
+    local f (ParachuteT p) = ParachuteT (local f . p)
 
 instance Monad m => MonadError [e] (ParachuteT e m) where
     throwError = fatals

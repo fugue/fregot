@@ -50,6 +50,7 @@ import           Fregot.Error                    (Error, catchIO)
 import qualified Fregot.Error                    as Error
 import qualified Fregot.Error.Stack              as Stack
 import qualified Fregot.Eval                     as Eval
+import qualified Fregot.Eval.Builtins            as Builtins
 import qualified Fregot.Eval.Cache               as Cache
 import           Fregot.Eval.Monad               (EvalCache)
 import           Fregot.Eval.Value               (emptyObject)
@@ -174,13 +175,20 @@ readPreparedPackage h pkgname = do
     modmap <- liftIO $ IORef.readIORef (h ^. modules)
     let mods = maybe [] (map snd) (HMS.lookup pkgname modmap)
         pkg0 = Prepare.empty pkgname
-    foldM addMod pkg0 mods
+        pkgRules = HS.toHashSetOf
+            (traverse . Sugar.modulePolicy . traverse . Sugar.ruleHead . Sugar.ruleName)
+            mods
+    foldM (addMod pkgRules) pkg0 mods
   where
-    addMod pkg0 modul0 = do
+    addMod pkgRules pkg0 modul0 = do
+        -- TODO(jaspervdj): Clean up this pattern
+        imports <- Prepare.prepareImports (modul0 ^. Sugar.moduleImports)
+        let renamerEnv = Renamer.RenamerEnv
+                Builtins.builtins imports pkgname pkgRules
         modul1 <- mapParachuteT
-            (return . flip runReader Renamer.RenamerEnv)
+            (return . flip runReader renamerEnv)
             (Renamer.renameModule modul0)
-        imports <- Prepare.prepareImports (modul1 ^. Sugar.moduleImports)
+
         foldM
             (\pkg rule -> Prepare.insert imports rule pkg)
             pkg0
@@ -281,8 +289,13 @@ evalExpr
 evalExpr h ctx pkgname expr = do
     pkg   <- readCompiledPackage h pkgname
 
+    let renamerEnv = Renamer.RenamerEnv
+            Builtins.builtins
+            mempty  -- No imports?
+            pkgname
+            (HS.fromList $ Compile.rules pkg)
     rterm <- mapParachuteT
-        (return . flip runReader Renamer.RenamerEnv)
+        (return . flip runReader renamerEnv)
         (Renamer.renameExpr expr)
 
     pterm <- Prepare.prepareExpr rterm
@@ -294,8 +307,9 @@ evalExpr h ctx pkgname expr = do
 evalVar
     :: Handle -> SourceSpan -> PackageName -> Var
     -> InterpreterM (Eval.Document Eval.Value)
-evalVar h source pkgname =
-    eval h Eval.emptyContext pkgname . Eval.evalVar source
+evalVar h source pkgname var =
+    let expr = Sugar.TermE source (Sugar.VarT source var) in
+    evalExpr h Eval.emptyContext pkgname expr
 
 mkStepState
     :: Handle -> PackageName -> Sugar.Expr SourceSpan Var
@@ -304,8 +318,13 @@ mkStepState h pkgname expr = do
     comp  <- liftIO $ IORef.readIORef (h ^. compiled)
     pkg   <- readCompiledPackage h pkgname
 
+    let renamerEnv = Renamer.RenamerEnv
+            Builtins.builtins
+            mempty  -- No imports?
+            pkgname
+            (HS.fromList $ Compile.rules pkg)
     rexpr <- mapParachuteT
-        (return . flip runReader Renamer.RenamerEnv)
+        (return . flip runReader renamerEnv)
         (Renamer.renameExpr expr)
 
     pterm <- Prepare.prepareExpr rexpr
