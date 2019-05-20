@@ -1,3 +1,8 @@
+-- | This module optimistically renames name in a program to their fully
+-- qualified versions.
+--
+-- This is not always possible, and at this phase, we don't know about local
+-- variables yet (that happens later in the safe variable analysis).
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell   #-}
@@ -11,13 +16,15 @@ module Fregot.Names.Renamer
 
 import           Control.Lens              (view, (^.))
 import           Control.Lens.TH           (makeLenses)
-import           Control.Monad.Parachute   (ParachuteT, tellError)
+import           Control.Monad.Parachute   (ParachuteT, fatal, tellError)
 import           Control.Monad.Reader      (Reader)
 import           Data.Bifunctor            (first)
 import qualified Data.HashMap.Strict       as HMS
 import qualified Data.HashSet              as HS
 import           Data.List.Extended        (unsnoc)
+import           Data.Maybe                (isNothing)
 import           Fregot.Compile.Package    (CompiledPackage)
+import qualified Fregot.Compile.Package    as Package
 import           Fregot.Error              (Error)
 import qualified Fregot.Error              as Error
 import           Fregot.Eval.Builtins      (Builtin)
@@ -98,22 +105,35 @@ renameExpr = \case
 -- We resolve the `foo.bar` part in `foo.bar.value` and keep the `.value`
 -- part unresolved, then "attach it back on".
 resolveRef
-    :: Var -> [RefArg SourceSpan Var]
+    :: SourceSpan
+    -> Var -> [RefArg SourceSpan Var]
     -> RenamerM (Name, [RefArg SourceSpan Name])
-resolveRef var refArgs = do
+resolveRef source var refArgs = do
     imports <- view reImports
     rules   <- view rePackageRules
     thispkg <- view rePackage
+    deps    <- view reDependencies
     case var of
         _       | Just (_, pkg) <- HMS.lookup var imports
                 , (ra1 : ras)   <- refArgs
                 , Just rname    <- refArgToVar ra1 -> do
-            -- TODO(jaspervdj): Check that the name actually exists in the
-            -- package?
+
+            -- Check that the name actually exists in the package.
+            case HMS.lookup pkg deps of
+                Nothing ->
+                    tellRenameError source "unknown package" $
+                    "Package" <+> PP.pretty pkg <+>
+                    "is imported but not loaded."
+                Just dep | isNothing (Package.lookup rname dep) ->
+                    tellRenameError source "unknown function" $
+                    "Rule" <+> PP.pretty rname <+>
+                    "is not defined in package" <+> PP.pretty pkg
+                _ -> return ()
+
             ras' <- traverse renameRefArg ras
             return (QualifiedName pkg rname, ras')
 
-        -- Nothing was found.  Should we error here?
+        -- Nothing was found.  We will assume it is a local var.
         _ -> do
             refArgs' <- traverse renameRefArg refArgs
             let name
@@ -135,12 +155,12 @@ resolveRef var refArgs = do
 renameTerm :: Rename Term
 renameTerm = \case
     RefT source varSource var refArgs -> do
-        (name, refArgs') <- resolveRef var refArgs
+        (name, refArgs') <- resolveRef source var refArgs
         case refArgs' of
             [] -> pure $ VarT source name
             _  -> pure $ RefT source varSource name refArgs'
 
-    CallT s ns args -> do
+    CallT source ns args -> do
         builtins <- view reBuiltins
         imports  <- view reImports
         rules    <- view rePackageRules
@@ -148,33 +168,36 @@ renameTerm = \case
         args'    <- traverse renameTerm args
         case first (map unVar) <$> unsnoc ns of
             Nothing -> do
-                tellRenameError s "empty call" "Invalid empty call"
-                -- TODO(jaspervdj): Return ErrorT?
-                pure $ CallT s [] args'
+                -- NOTE(jaspervdj): We can use ErrorT here.
+                tellRenameError source "internal error" "Invalid empty call"
+                pure $ CallT source [] args'
 
             -- A plain builtin name, e.g. "all".
             Just ([], n) | Just _ <- HMS.lookup (NamedFunction (BuiltinName n)) builtins ->
-                pure $ CallT s [BuiltinName n] args'
+                pure $ CallT source [BuiltinName n] args'
 
             -- A qualified builtin name, e.g. "json.unmarshal".
             Just (pkg, n) | Just _ <- HMS.lookup (NamedFunction (QualifiedName (mkPackageName pkg) n)) builtins ->
-                pure $ CallT s [QualifiedName (mkPackageName pkg) n] args'
+                pure $ CallT source [QualifiedName (mkPackageName pkg) n] args'
 
-            -- Calling a rule in the same package.
+            -- Calling a rule in the same package.  Functions cannot be local
+            -- variables.
             Just ([], n)
                 | HS.member n rules ->
-                    pure $ CallT s [QualifiedName thispkg n] args'
+                    pure $ CallT source [QualifiedName thispkg n] args'
                 | otherwise -> do
-                    tellRenameError s "unknown function" $
+                    tellRenameError source "unknown function" $
                         "Function" <+> PP.pretty n <+> "is not defined."
-                    -- TODO(jaspervdj): Return ErrorT?
-                    pure $ CallT s [QualifiedName thispkg n] args'
+                    -- NOTE(jaspervdj): We can use ErrorT here.
+                    pure $ CallT source [QualifiedName thispkg n] args'
 
             -- Calling a rule in another package.
             Just ([imp], n) | Just (_, pkg) <- HMS.lookup (mkVar imp) imports ->
-                pure $ CallT s [QualifiedName pkg n] args'
+                pure $ CallT source [QualifiedName pkg n] args'
 
-            _ -> error "TODO: other calls"
+            _ -> fatal $ Error.mkError "renamer" source "unknown call" $
+                -- NOTE(jaspervdj): We can use ErrorT here.
+                "Unknown call to" <+> PP.pretty (Nested ns)
 
     -- Find out of the variable is a rule in this package.  If so, it's a
     -- QualifiedName, if not it's a LocalName.
@@ -204,10 +227,9 @@ renameObject = traverse renameItem
 renameObjectKey :: Rename ObjectKey
 renameObjectKey = \case
     ScalarK a s -> pure (ScalarK a s)
-    -- TODO(jaspervdj): Can we have a rule name here?
     VarK a uv -> pure (VarK a uv)
     RefK source var refArgs -> do
-        (name, refArgs') <- resolveRef var refArgs
+        (name, refArgs') <- resolveRef source var refArgs
         return $ RefK source name refArgs'
 
 renameWith :: Rename With
