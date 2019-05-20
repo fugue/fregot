@@ -169,14 +169,14 @@ saveBundle h path = liftIO $ do
     _bundleModules <- IORef.readIORef (h ^. modules)
     BL.writeFile path $ GZip.compress $ Binary.encode $ Bundle {..}
 
--- | Get a single package by package name.  If the package does not exist, an
--- empty one is created.
---
 -- TODO(jaspervdj): We should probably crash rather than creating an empty
 -- package.
-readPreparedPackage :: Handle -> PackageName -> InterpreterM PreparedPackage
-readPreparedPackage h pkgname = do
-    modmap <- liftIO $ IORef.readIORef (h ^. modules)
+preparePackage
+    :: HMS.HashMap PackageName ModuleBatch
+    -> HMS.HashMap PackageName CompiledPackage
+    -> PackageName
+    -> InterpreterM PreparedPackage
+preparePackage modmap dependencies pkgname = do
     let mods = maybe [] (map snd) (HMS.lookup pkgname modmap)
         pkg0 = Prepare.empty pkgname
         pkgRules = HS.toHashSetOf
@@ -188,7 +188,7 @@ readPreparedPackage h pkgname = do
         -- Rename module.
         imports <- Prepare.prepareImports (modul0 ^. Sugar.moduleImports)
         let renamerEnv = Renamer.RenamerEnv
-                Builtins.builtins imports pkgname pkgRules
+                Builtins.builtins imports pkgname pkgRules dependencies
         modul1 <- runRenamerT renamerEnv $ Renamer.renameModule modul0
 
         foldM
@@ -200,8 +200,9 @@ readPreparedPackage h pkgname = do
 readCompiledPackage
     :: Handle -> PackageName -> InterpreterM CompiledPackage
 readCompiledPackage h want = do
-    graph <- liftIO (readDependencyGraph h)
-    comp0 <- liftIO $ IORef.readIORef (h ^. compiled)
+    graph  <- liftIO (readDependencyGraph h)
+    modmap <- liftIO $ IORef.readIORef (h ^. modules)
+    comp0  <- liftIO $ IORef.readIORef (h ^. compiled)
     plan  <- case Deps.plan graph (HS.singleton want) of
         Left _  -> fail "todo: dependency planning error"
         Right x -> return x
@@ -212,7 +213,7 @@ readCompiledPackage h want = do
         _ : _ -> do
             comp1 <- foldM
                 (\uni pkgname -> do
-                    prep <- readPreparedPackage h pkgname
+                    prep <- preparePackage modmap comp0 pkgname
                     cp   <- Compile.compilePackage uni prep
                     return $ HMS.insert pkgname cp uni)
                 comp0
@@ -286,7 +287,8 @@ evalExpr
     :: Handle -> Eval.Context -> PackageName -> Sugar.Expr SourceSpan Var
     -> InterpreterM (Eval.Document Eval.Value)
 evalExpr h ctx pkgname expr = do
-    pkg   <- readCompiledPackage h pkgname
+    comp <- liftIO $ IORef.readIORef (h ^. compiled)
+    pkg  <- readCompiledPackage h pkgname
 
     -- Rename expression.
     let renamerEnv = Renamer.RenamerEnv
@@ -294,6 +296,7 @@ evalExpr h ctx pkgname expr = do
             mempty  -- No imports?
             pkgname
             (HS.fromList $ Compile.rules pkg)
+            comp
     rterm <- runRenamerT renamerEnv $ Renamer.renameExpr expr
 
     pterm <- Prepare.prepareExpr rterm
@@ -322,6 +325,7 @@ mkStepState h pkgname expr = do
             mempty  -- No imports?
             pkgname
             (HS.fromList $ Compile.rules pkg)
+            comp
     rexpr <- runRenamerT renamerEnv $ Renamer.renameExpr expr
 
     pterm <- Prepare.prepareExpr rexpr

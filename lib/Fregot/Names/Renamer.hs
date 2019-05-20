@@ -3,6 +3,7 @@
 {-# LANGUAGE TemplateHaskell   #-}
 module Fregot.Names.Renamer
     ( RenamerEnv (..), reBuiltins, reImports, rePackage, rePackageRules
+    , reDependencies
     , RenamerM
     , renameModule
     , renameExpr
@@ -16,6 +17,7 @@ import           Data.Bifunctor            (first)
 import qualified Data.HashMap.Strict       as HMS
 import qualified Data.HashSet              as HS
 import           Data.List.Extended        (unsnoc)
+import           Fregot.Compile.Package    (CompiledPackage)
 import           Fregot.Error              (Error)
 import qualified Fregot.Error              as Error
 import           Fregot.Eval.Builtins      (Builtin)
@@ -31,6 +33,7 @@ data RenamerEnv = RenamerEnv
     , _reImports      :: !(Imports SourceSpan)
     , _rePackage      :: !PackageName
     , _rePackageRules :: !(HS.HashSet Var)
+    , _reDependencies :: !(HMS.HashMap PackageName CompiledPackage)
     }
 
 $(makeLenses ''RenamerEnv)
