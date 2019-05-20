@@ -1,8 +1,14 @@
 -- | Pure, simple dependency management.
-{-# LANGUAGE GADTs               #-}
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE GADTs                 #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
 module Fregot.Interpreter.Dependencies
-    ( Graph (..)
+    ( DependencyError
+
+    , Graph (..)
     , plan
     , evict
     ) where
@@ -10,10 +16,17 @@ module Fregot.Interpreter.Dependencies
 import           Data.Hashable       (Hashable)
 import qualified Data.HashMap.Strict as HMS
 import qualified Data.HashSet        as HS
+import qualified Fregot.PrettyPrint  as PP
 
 data DependencyError k
     = DependencyCycle [k]
     deriving (Show)
+
+instance PP.Pretty PP.Sem k => PP.Pretty PP.Sem (DependencyError k) where
+    pretty (DependencyCycle rev) =
+        let trail = reverse $ zipWith ($)
+                (id : repeat (PP.<+> "depends on")) (map PP.pretty rev) in
+        "Cyclic dependency error:" PP.<$$> PP.ind (PP.vcat trail)
 
 -- | Somewhat abstract graph representation.
 data Graph k where
@@ -49,7 +62,7 @@ plan (Graph gdone gdeps) = go HS.empty []
         -- Look where we should head next.
         case next of
             []                       -> Right current
-            (n : _) | n `elem` trail -> Left $ DependencyCycle (n : trail)
+            (n : _) | n `elem` trail -> Left $ DependencyCycle (n : current : trail)
             n : _                    -> chase done (current : trail) n
 
 -- | If a node is removed from the "done" set, we'll also need to remove all the

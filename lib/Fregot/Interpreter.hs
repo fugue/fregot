@@ -204,9 +204,9 @@ readCompiledPackage h want = do
     modmap <- liftIO $ IORef.readIORef (h ^. modules)
     comp0  <- liftIO $ IORef.readIORef (h ^. compiled)
     plan  <- case Deps.plan graph (HS.singleton want) of
-        -- TODO(jaspervdj): Add golden error for this one.
-        Left _  -> fail "todo: dependency planning error"
         Right x -> return x
+        Left depError -> fatal $
+            Error.mkErrorNoMeta "interpreter" (PP.pretty depError)
 
     -- Execute plan.
     comp1 <- case plan of
@@ -224,8 +224,8 @@ readCompiledPackage h want = do
 
     case HMS.lookup want comp1 of
         Just cp -> return cp
-        -- TODO(jaspervdj): This is clearly an internal error.
-        Nothing -> fail $ "package not found: " ++ show want
+        Nothing -> fatal $ Error.mkErrorNoMeta "interpreter"
+            "Internal error: package not found after compilation"
 
 compilePackages :: Handle -> InterpreterM ()
 compilePackages h = do
