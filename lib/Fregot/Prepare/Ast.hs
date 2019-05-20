@@ -99,7 +99,7 @@ data Statement a
 data Term a
     = RefT        a (Term a) (Term a)
     | CallT       a Function [Term a]
-    | VarT        a Name
+    | NameT       a Name
     | ScalarT     a (Sugar.Scalar a)
     | ArrayT      a [Term a]
     | SetT        a [Term a]
@@ -175,7 +175,7 @@ instance PP.Pretty PP.Sem (Term a) where
         PP.commaSep (map PP.pretty as) <>
         PP.punctuation ")"
 
-    pretty (VarT _ v)        = PP.pretty v
+    pretty (NameT _ v)       = PP.pretty v
     pretty (ScalarT _ s)     = PP.pretty s
 
     pretty (ArrayT _ a)      = PP.array a

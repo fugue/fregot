@@ -79,7 +79,7 @@ orderForClosures arities safe body =
   where
     -- Variables appearing in the body.
     bodyVars = HS.toHashSetOf
-        (ruleBodyTerms . termCosmosNoClosures . termVars . traverse . _LocalName)
+        (ruleBodyTerms . termCosmosNoClosures . termNames . traverse . _LocalName)
         body
 
     -- Order predicate.
@@ -122,7 +122,7 @@ orderForSafety arities safe0 body0
             unsafes = Map.fromList $ do
                 (idx, lit) <- idxBody
                 let inLit = HS.toHashSetOf
-                        (literalTerms . termCosmosNoClosures . termVars . traverse . _LocalName)
+                        (literalTerms . termCosmosNoClosures . termNames . traverse . _LocalName)
                         lit
                 return (idx, inLit `HS.difference` unSafe safe0)
 

@@ -105,6 +105,10 @@ readDependencyGraph h = do
   where
     deps = traverse . _2 . Sugar.moduleImports . traverse . Sugar.importPackage
 
+-- | Auxiliary function for hooking into the renamer.
+runRenamerT :: Renamer.RenamerEnv -> Renamer.RenamerM a -> InterpreterM a
+runRenamerT renv = mapParachuteT (return . flip runReader renv)
+
 insertModule
     :: Handle -> SourcePointer -> Sugar.Module SourceSpan Var -> InterpreterM ()
 insertModule h sourcep modul = do
@@ -181,13 +185,11 @@ readPreparedPackage h pkgname = do
     foldM (addMod pkgRules) pkg0 mods
   where
     addMod pkgRules pkg0 modul0 = do
-        -- TODO(jaspervdj): Clean up this pattern
+        -- Rename module.
         imports <- Prepare.prepareImports (modul0 ^. Sugar.moduleImports)
         let renamerEnv = Renamer.RenamerEnv
                 Builtins.builtins imports pkgname pkgRules
-        modul1 <- mapParachuteT
-            (return . flip runReader renamerEnv)
-            (Renamer.renameModule modul0)
+        modul1 <- runRenamerT renamerEnv $ Renamer.renameModule modul0
 
         foldM
             (\pkg rule -> Prepare.insert imports rule pkg)
@@ -286,14 +288,13 @@ evalExpr
 evalExpr h ctx pkgname expr = do
     pkg   <- readCompiledPackage h pkgname
 
+    -- Rename expression.
     let renamerEnv = Renamer.RenamerEnv
             Builtins.builtins
             mempty  -- No imports?
             pkgname
             (HS.fromList $ Compile.rules pkg)
-    rterm <- mapParachuteT
-        (return . flip runReader renamerEnv)
-        (Renamer.renameExpr expr)
+    rterm <- runRenamerT renamerEnv $ Renamer.renameExpr expr
 
     pterm <- Prepare.prepareExpr rterm
     cterm <- Compile.compileTerm pkg safeLocals pterm
@@ -315,14 +316,13 @@ mkStepState h pkgname expr = do
     comp  <- liftIO $ IORef.readIORef (h ^. compiled)
     pkg   <- readCompiledPackage h pkgname
 
+    -- Rename expression.
     let renamerEnv = Renamer.RenamerEnv
             Builtins.builtins
             mempty  -- No imports?
             pkgname
             (HS.fromList $ Compile.rules pkg)
-    rexpr <- mapParachuteT
-        (return . flip runReader renamerEnv)
-        (Renamer.renameExpr expr)
+    rexpr <- runRenamerT renamerEnv $ Renamer.renameExpr expr
 
     pterm <- Prepare.prepareExpr rexpr
     cterm <- Compile.compileTerm pkg mempty pterm

@@ -68,6 +68,7 @@ runParachuteT p = do
         Fatal -> return (errors, Nothing)
         Ok x  -> return (errors, Just x)
 
+-- | Apply a natural transformation on the underlying Monad.
 mapParachuteT
     :: (Monad m, Monad n)
     => (forall b. m b -> n b)

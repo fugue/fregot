@@ -113,7 +113,7 @@ compilePackage dependencies prep =
 
         safeLocals = Safe $ HS.toHashSetOf
             (ruleArgs . traverse . traverse .
-                termCosmosNoClosures . termVars . traverse . _LocalName)
+                termCosmosNoClosures . termNames . traverse . _LocalName)
             def
 
         orderRuleBody = runOrder . orderForSafety arities safe
@@ -150,7 +150,7 @@ checkTermVars (Safe safe) term =
     [ Error.mkError "var check" source "unsafe variable" $
         "Variable" <+> PP.pretty var <+> "is referenced, but it is never" <$$>
         "assigned a value."
-    | (source, name) <- term ^.. termCosmosNoClosures . termVars
+    | (source, name) <- term ^.. termCosmosNoClosures . termNames
     , var            <- name ^.. _LocalName
     , not $ var `HS.member` safe
     ]

@@ -245,7 +245,7 @@ prepareTerm = \case
         [name] -> CallT source (NamedFunction name) <$> traverse prepareTerm args
         _ -> error "TODO: this doesn't seem right"
 
-    Sugar.VarT source v -> pure $ VarT source v
+    Sugar.VarT source v -> pure $ NameT source v
     Sugar.ScalarT source s -> pure $ ScalarT source s
 
     Sugar.ArrayT source a -> ArrayT source <$> traverse prepareExpr a
@@ -272,7 +272,7 @@ prepareRef source nameSource name0 refs = foldM
         Sugar.RefBrackArg k -> do
             k' <- prepareExpr k
             return $ RefT source acc k')
-    (VarT nameSource name0)
+    (NameT nameSource name0)
     refs
 
 prepareObjectItem
@@ -287,7 +287,7 @@ prepareObjectKey
     -> ParachuteT Error m (Term SourceSpan)
 prepareObjectKey = \case
     Sugar.ScalarK ann s      -> return $! ScalarT ann s
-    Sugar.VarK    ann v      -> return $! VarT ann (LocalName v)
+    Sugar.VarK    ann v      -> return $! NameT ann (LocalName v)
     Sugar.RefK    ann v args -> prepareRef ann ann v args
 
 prepareBinOp

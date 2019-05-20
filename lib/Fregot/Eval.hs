@@ -81,8 +81,8 @@ mkObject source assoc = fmap ObjectV $ foldM
 evalTerm :: Term SourceSpan -> EvalM Value
 evalTerm (RefT source lhs arg) = do
     mbCompiledRule <- case lhs of
-        VarT _ n -> lookupRule n
-        _        -> return Nothing
+        NameT _ n -> lookupRule n
+        _         -> return Nothing
     case mbCompiledRule of
         -- Using a rule with an index.  This only triggers if the rule requires
         -- an argument, i.e. it is not a complete rule.
@@ -112,7 +112,7 @@ evalTerm (CallT source f args)
     | otherwise = raise' source "unknown function" $
         "Unknown function call:" <+> PP.pretty f
 
-evalTerm (VarT source v) = evalName source v
+evalTerm (NameT source v) = evalName source v
 evalTerm (ScalarT _ s) = evalScalar s
 evalTerm (ArrayT _ a) = do
     bs <- mapM evalTerm a

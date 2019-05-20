@@ -12,8 +12,8 @@ instance IsString Name where
 lit :: Statement Int -> Literal Int
 lit = literal 0
 
-var :: Name -> Term Int
-var = VarT 0
+name :: Name -> Term Int
+name = NameT 0
 
 num :: Int -> Term Int
 num = ScalarT 0 . Number . fromIntegral
