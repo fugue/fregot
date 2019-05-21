@@ -144,6 +144,7 @@ evalName :: SourceSpan -> Name -> EvalM Value
 evalName source (LocalName var) = evalVar source var
 evalName _source (BuiltinName "input") = view inputDoc
 evalName _source (BuiltinName "data") = return $! PackageV mempty
+evalName _source WildcardName = return WildcardV
 evalName source name@(BuiltinName _) =
     raise' source "type error" $
     "Builtin" <+> PP.pretty name <+> "can only be used as function"
@@ -159,8 +160,7 @@ evalName source name@(QualifiedName _pkgname _var) = do
         Just crule -> evalCompiledRule source crule Nothing
 
 evalVar :: SourceSpan -> Var -> EvalM Value
-evalVar _source "_"     = return WildcardV
-evalVar _source v       = do
+evalVar _source v = do
     lcls <- use locals
     case HMS.lookup v lcls of
         Just iv -> do

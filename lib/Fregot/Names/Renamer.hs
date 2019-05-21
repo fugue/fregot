@@ -206,7 +206,9 @@ renameTerm = \case
                 "Unknown call to" <+> PP.pretty (Nested ns)
 
     -- Find out of the variable is a rule in this package.  If so, it's a
-    -- QualifiedName, if not it's a LocalName.
+    -- QualifiedName, if not it's a LocalName.  WildcardName and BuiltinName are
+    -- special cases.
+    VarT a "_" -> pure $ VarT a WildcardName
     VarT a v | specialBuiltinVar v -> pure $ VarT a (BuiltinName v)
     VarT a v -> do
         pkg   <- view rePackage

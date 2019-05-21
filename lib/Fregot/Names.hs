@@ -145,7 +145,7 @@ varToText = unVar
 
 varFromText :: Prism' T.Text Var
 varFromText = prism' varToText $ \txt -> do
-    guard $ T.all allowedChar txt
+    guard $ T.all allowedChar txt && txt /= "_"
     return $ mkVar txt
   where
     allowedChar c =
@@ -176,6 +176,8 @@ data Name
     -- Global names, used `data`, `input`, and for builtin functions such as
     -- `all`, `concat`...
     | BuiltinName !Var
+    -- `_`
+    | WildcardName
     deriving (Eq, Generic, Ord, Show)
 
 instance Hashable Name
@@ -185,6 +187,7 @@ instance PP.Pretty PP.Sem Name where
         LocalName       v -> PP.pretty v
         QualifiedName p v -> PP.pretty p <> PP.punctuation "." <> PP.pretty v
         BuiltinName     v -> PP.keyword (PP.pretty v)
+        WildcardName      -> PP.punctuation "_"
 
 $(makePrisms ''Name)
 
@@ -194,10 +197,12 @@ nameToText = \case
     QualifiedName p v ->
         review packageNameFromText p <> "." <> review varFromText v
     BuiltinName v -> review varFromText v
+    WildcardName -> "_"
 
 -- | We cannot define a lawful Prism' because we don't convert to BuiltinName.
 nameFromText :: T.Text -> Maybe Name
 nameFromText txt = case T.breakOnEnd "." txt of
+    ("", "_") -> pure WildcardName
     ("", var) -> LocalName <$> var ^? varFromText
     (pkgName, var) -> QualifiedName
         <$> T.init pkgName ^? packageNameFromText
