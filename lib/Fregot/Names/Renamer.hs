@@ -96,6 +96,11 @@ renameExpr = \case
     BinOpE a x b y -> BinOpE  a <$> renameExpr x <*> pure b <*> renameExpr y
     ParensE a x    -> ParensE a <$> renameExpr x
 
+specialBuiltinVar :: Var -> Bool
+specialBuiltinVar "data"  = True
+specialBuiltinVar "input" = True
+specialBuiltinVar _       = False
+
 -- | Resolves a reference as far as possible.  Returns the new name, and
 -- bits that were not resolved yet.
 --
@@ -137,8 +142,9 @@ resolveRef source var refArgs = do
         _ -> do
             refArgs' <- traverse renameRefArg refArgs
             let name
-                    | HS.member var rules = QualifiedName thispkg var
-                    | otherwise           = LocalName var
+                    | specialBuiltinVar var = BuiltinName var
+                    | HS.member var rules   = QualifiedName thispkg var
+                    | otherwise             = LocalName var
             return (name, refArgs')
 
   where
@@ -201,6 +207,7 @@ renameTerm = \case
 
     -- Find out of the variable is a rule in this package.  If so, it's a
     -- QualifiedName, if not it's a LocalName.
+    VarT a v | specialBuiltinVar v -> pure $ VarT a (BuiltinName v)
     VarT a v -> do
         pkg   <- view rePackage
         rules <- view rePackageRules

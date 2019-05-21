@@ -173,7 +173,8 @@ data Name
     = LocalName !Var
     -- Rules, functions
     | QualifiedName !PackageName !Var
-    -- Global names, used for builtin functions such ass all, concat...
+    -- Global names, used `data`, `input`, and for builtin functions such as
+    -- `all`, `concat`...
     | BuiltinName !Var
     deriving (Eq, Generic, Ord, Show)
 
