@@ -119,6 +119,12 @@ resolveRef source var refArgs = do
     thispkg <- view rePackage
     deps    <- view reDependencies
     case var of
+
+        -- TODO(jaspervdj): If the reference starts with: `data.foo.bar`, we
+        -- should try to resolve the package.  A good test case for this would
+        -- be `data.foo.bar(x)`, since a function call needs to be known -- but
+        -- I'm not sure if OPA allows this.
+
         _       | Just (_, pkg) <- HMS.lookup var imports
                 , (ra1 : ras)   <- refArgs
                 , Just rname    <- refArgToVar ra1 -> do
