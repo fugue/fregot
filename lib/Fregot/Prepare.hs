@@ -243,7 +243,8 @@ prepareTerm = \case
 
     Sugar.CallT source names args -> case names of
         [name] -> CallT source (NamedFunction name) <$> traverse prepareTerm args
-        _ -> error "TODO: this doesn't seem right"
+        vs -> fatal $ Error.mkError "compile" source "unknown function call" $
+            "Unknown function at compile time:" <+> PP.pretty (Nested vs)
 
     Sugar.VarT source v -> pure $ NameT source v
     Sugar.ScalarT source s -> pure $ ScalarT source s
