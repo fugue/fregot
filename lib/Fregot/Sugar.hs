@@ -37,11 +37,14 @@ module Fregot.Sugar
 
     , NestedVar (..)
     , nestedVarToString
+
+    , termFromExpr
     ) where
 
-import           Control.Lens       (Lens', lens, review, (^.), (^?))
+import           Control.Lens       (Lens', lens, preview, review, (^.), (^?),
+                                     _2)
 import           Control.Lens.Prism (Prism', prism')
-import           Control.Lens.TH    (makeLenses)
+import           Control.Lens.TH    (makeLenses, makePrisms)
 import           Control.Monad      (guard)
 import           Data.Binary        (Binary)
 import qualified Data.Binary        as Binary
@@ -205,10 +208,7 @@ instance Binary a => Binary (Expr a)
 
 data Term a
     = RefT      a a Var [RefArg a]
-    -- NOTE(jaspervdj): According to the grammar, a function call should be an
-    -- expression, not a term.  Putting it here is more permissive though, so I
-    -- hope that won't cause any trouble.
-    | CallT     a [Var] [Term a]
+    | CallT     a [Var] [Expr a]
     | VarT      a Var
     | ScalarT   a (Scalar a)
 
@@ -283,6 +283,7 @@ $(makeLenses ''RuleHead)
 $(makeLenses ''RuleElse)
 $(makeLenses ''Literal)
 $(makeLenses ''With)
+$(makePrisms ''Expr)
 
 -- | This type exists solely for pretty-printing.
 newtype NestedVar = NestedVar {unNestedVar :: [Var]}
@@ -485,3 +486,6 @@ termAnn = lens getAnn setAnn
         ArrayCompT  _ x b   -> ArrayCompT  a x b
         SetCompT    _ x b   -> SetCompT    a x b
         ObjectCompT _ k x b -> ObjectCompT a k x b
+
+termFromExpr :: Prism' (Expr a) (Term a)
+termFromExpr = prism' (\t -> TermE (t ^. termAnn) t) (preview (_TermE . _2))

@@ -145,7 +145,8 @@ parseRuleOrExpr h input = do
                     RefT a a
                         (r ^. ruleHead . ruleName) [RefBrackArg (TermE a idx)]
                 (_, Just args) -> Just $ TermE a $
-                    CallT a [r ^. ruleHead . ruleName] args
+                    CallT a [r ^. ruleHead . ruleName]
+                    (map (review termFromExpr) args)
                 _ -> Just $ TermE a $
                     VarT a (r ^. ruleHead . ruleName)
 

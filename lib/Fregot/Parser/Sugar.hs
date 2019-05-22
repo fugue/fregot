@@ -181,7 +181,7 @@ term = withSourceSpan $
         mbCallArgs <- case all isDotArg refArgs of
             False -> return Nothing
             True  -> Parsec.optionMaybe $
-                sepTrailing Tok.TLParen Tok.TRParen Tok.TComma term
+                sepTrailing Tok.TLParen Tok.TRParen Tok.TComma expr
 
         return $ \ss -> case (refArgs, mbCallArgs) of
             ([], Nothing)   -> VarT ss v
