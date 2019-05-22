@@ -236,7 +236,7 @@ prepareTerm = \case
         prepareRef source varSource var0 refs
 
     Sugar.CallT source vars args ->
-        CallT source (NamedFunction vars) <$> traverse prepareTerm args
+        CallT source (NamedFunction vars) <$> traverse prepareExpr args
     Sugar.VarT source v -> pure $ VarT source v
     Sugar.ScalarT source s -> pure $ ScalarT source s
 
