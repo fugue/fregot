@@ -16,13 +16,14 @@ module Fregot.Names.Renamer
 
 import           Control.Lens              (view, (^.))
 import           Control.Lens.TH           (makeLenses)
+import           Control.Monad             (guard)
 import           Control.Monad.Parachute   (ParachuteT, fatal, tellError)
 import           Control.Monad.Reader      (Reader)
 import           Data.Bifunctor            (first)
 import qualified Data.HashMap.Strict       as HMS
 import qualified Data.HashSet              as HS
-import           Data.List.Extended        (unsnoc)
-import           Data.Maybe                (isNothing)
+import           Data.List.Extended        (splits, unsnoc)
+import           Data.Maybe                (isNothing, listToMaybe, maybeToList)
 import           Fregot.Compile.Package    (CompiledPackage)
 import qualified Fregot.Compile.Package    as Package
 import           Fregot.Error              (Error)
@@ -118,29 +119,31 @@ resolveRef source var refArgs = do
     rules   <- view rePackageRules
     thispkg <- view rePackage
     deps    <- view reDependencies
+
+    -- Auxiliary to check if something actually exists in the deps.
+    let checkExists pkg name = case HMS.lookup pkg deps of
+            Nothing ->
+                tellRenameError source "unknown package" $
+                "Package" <+> PP.pretty pkg <+>
+                "is imported but not loaded."
+            Just dep | isNothing (Package.lookup name dep) ->
+                tellRenameError source "unknown function" $
+                "Rule" <+> PP.pretty name <+>
+                "is not defined in package" <+> PP.pretty pkg
+            _ -> return ()
+
     case var of
 
-        -- TODO(jaspervdj): If the reference starts with: `data.foo.bar`, we
-        -- should try to resolve the package.  A good test case for this would
-        -- be `data.foo.bar(x)`, since a function call needs to be known -- but
-        -- I'm not sure if OPA allows this.
+        "data"  | Just (pkg, rname, remainder) <- resolveData deps refArgs -> do
+            checkExists pkg rname
+            remainder' <- traverse renameRefArg remainder
+            return (QualifiedName pkg rname, remainder')
 
         _       | Just (_, pkg) <- HMS.lookup var imports
                 , (ra1 : ras)   <- refArgs
                 , Just rname    <- refArgToVar ra1 -> do
 
-            -- Check that the name actually exists in the package.
-            case HMS.lookup pkg deps of
-                Nothing ->
-                    tellRenameError source "unknown package" $
-                    "Package" <+> PP.pretty pkg <+>
-                    "is imported but not loaded."
-                Just dep | isNothing (Package.lookup rname dep) ->
-                    tellRenameError source "unknown function" $
-                    "Rule" <+> PP.pretty rname <+>
-                    "is not defined in package" <+> PP.pretty pkg
-                _ -> return ()
-
+            checkExists pkg rname
             ras' <- traverse renameRefArg ras
             return (QualifiedName pkg rname, ras')
 
@@ -164,6 +167,15 @@ resolveRef source var refArgs = do
         RefBrackArg e  -> RefBrackArg <$> renameExpr e
         RefDotArg s uv -> pure (RefDotArg s uv)
 
+    resolveData deps args = listToMaybe $ do
+        -- The reverse here is used to try the longest path first.
+        (pre, (name : remainder)) <- reverse $ splits args
+        pkg <- fmap (mkPackageName . map unVar) $ maybeToList $
+            mapM refArgToVar pre
+        name' <- maybeToList $ refArgToVar name
+        guard $ pkg `HMS.member` deps
+        return (pkg, name', remainder)
+
 renameTerm :: Rename Term
 renameTerm = \case
     RefT source varSource var refArgs -> do
@@ -183,6 +195,10 @@ renameTerm = \case
                 -- NOTE(jaspervdj): We can use ErrorT here.
                 tellRenameError source "internal error" "Invalid empty call"
                 pure $ CallT source [] args'
+
+            -- Fully qualified call.
+            Just (("data" : pkg), n) ->
+                pure $ CallT source [QualifiedName (mkPackageName pkg) n] args'
 
             -- A plain builtin name, e.g. "all".
             Just ([], n) | Just _ <- HMS.lookup (NamedFunction (BuiltinName n)) builtins ->
