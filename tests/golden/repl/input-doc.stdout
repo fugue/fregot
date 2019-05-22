@@ -1,0 +1,12 @@
+repl% repl% fregot.tests.repl.input_doc% security_groups
+= [33m{[0m
+  [31m"1"[0m[33m:[0m [33m{[0m
+    [31m"type"[0m[33m:[0m [31m"security_group"[0m[33m,[0m
+    [31m"attributes"[0m[33m:[0m [33m{[0m[33m}[0m
+  [33m}[0m[33m,[0m
+  [31m"2"[0m[33m:[0m [33m{[0m
+    [31m"type"[0m[33m:[0m [31m"security_group"[0m[33m,[0m
+    [31m"attributes"[0m[33m:[0m [33m{[0m[33m}[0m
+  [33m}[0m
+[33m}[0m
+fregot.tests.repl.input_doc% 

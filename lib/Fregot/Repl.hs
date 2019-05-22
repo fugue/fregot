@@ -361,6 +361,14 @@ metaCommands =
             "Shortcuts are supported for commands, e.g. `:l` for `:load`."
         return True
 
+    , MetaCommand ":input" "set the input document" $ \h args -> do
+        case args of
+            _ | [path] <- T.unpack <$> args -> liftIO $ void $
+                runInterpreter h (`Interpreter.setInput` path)
+            _ -> liftIO $ IO.hPutStrLn IO.stderr $
+                ":input takes one path argument"
+        return True
+
     , MetaCommand ":load" "load a rego file, e.g. `:load foo.rego`" $
         \h args -> case args of
             _ | [path] <- T.unpack <$> args -> liftIO $ load h path
