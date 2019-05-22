@@ -25,6 +25,8 @@ module Fregot.Interpreter
     , mkStepState
     , Eval.Step (..)
     , step
+
+    , setInput
     ) where
 
 import qualified Codec.Compression.GZip          as GZip
@@ -34,6 +36,7 @@ import           Control.Lens.TH                 (makeLenses)
 import           Control.Monad                   (foldM)
 import           Control.Monad.Parachute         (ParachuteT, fatal)
 import           Control.Monad.Trans             (liftIO)
+import qualified Data.Aeson                      as Aeson
 import qualified Data.Binary                     as Binary
 import qualified Data.ByteString.Lazy            as BL
 import qualified Data.HashMap.Strict             as HMS
@@ -49,6 +52,7 @@ import qualified Fregot.Error                    as Error
 import qualified Fregot.Error.Stack              as Stack
 import qualified Fregot.Eval                     as Eval
 import qualified Fregot.Eval.Cache               as Cache
+import qualified Fregot.Eval.Json                as Eval.Json
 import           Fregot.Eval.Monad               (EvalCache)
 import           Fregot.Eval.Value               (emptyObject)
 import           Fregot.Interpreter.Bundle
@@ -76,7 +80,8 @@ data Handle = Handle
     -- | Map of compiled packages.  Dynamically generated from the modules.
     , _compiled     :: !(IORef (HMS.HashMap PackageName CompiledPackage))
     , _cache        :: !EvalCache
-    , _cacheVersion :: !Cache.Version
+    , _cacheVersion :: !(IORef Cache.Version)
+    , _inputDoc     :: !(IORef Eval.Value)
     }
 
 $(makeLenses ''Handle)
@@ -88,7 +93,8 @@ newHandle _sources = do
     _modules      <- liftIO $ IORef.newIORef HMS.empty
     _compiled     <- liftIO $ IORef.newIORef HMS.empty
     _cache        <- liftIO $ Cache.new
-    _cacheVersion <- liftIO $ Cache.bump _cache
+    _cacheVersion <- liftIO $ Cache.bump _cache >>= IORef.newIORef
+    _inputDoc     <- liftIO $ IORef.newIORef emptyObject
     return Handle {..}
 
 readDependencyGraph
@@ -256,15 +262,17 @@ eval
     :: Handle -> Eval.Context -> PackageName -> Eval.EvalM a
     -> InterpreterM (Eval.Document a)
 eval h ctx pkgname mx = do
-    comp <- liftIO $ IORef.readIORef (h ^. compiled)
+    comp   <- liftIO $ IORef.readIORef (h ^. compiled)
+    cachev <- liftIO $ IORef.readIORef (h ^. cacheVersion)
+    indoc  <- liftIO $ IORef.readIORef (h ^. inputDoc)
     pkg  <- readCompiledPackage h pkgname
     let env = Eval.Environment
             { Eval._packages     = comp
             , Eval._package      = pkg
-            , Eval._inputDoc     = emptyObject
+            , Eval._inputDoc     = indoc
             , Eval._imports      = mempty
             , Eval._cache        = h ^. cache
-            , Eval._cacheVersion = h ^. cacheVersion
+            , Eval._cacheVersion = cachev
             , Eval._stack        = Stack.empty
             }
 
@@ -291,17 +299,19 @@ mkStepState
     :: Handle -> PackageName -> Sugar.Expr SourceSpan
     -> InterpreterM (Eval.StepState Eval.Value)
 mkStepState h pkgname expr = do
-    comp  <- liftIO $ IORef.readIORef (h ^. compiled)
-    pkg   <- readCompiledPackage h pkgname
-    pterm <- Prepare.prepareExpr expr
-    cterm <- Compile.compileTerm pkg mempty pterm
+    comp   <- liftIO $ IORef.readIORef (h ^. compiled)
+    cachev <- liftIO $ IORef.readIORef (h ^. cacheVersion)
+    indoc  <- liftIO $ IORef.readIORef (h ^. inputDoc)
+    pkg    <- readCompiledPackage h pkgname
+    pterm  <- Prepare.prepareExpr expr
+    cterm  <- Compile.compileTerm pkg mempty pterm
     let env = Eval.Environment
             { Eval._packages     = comp
             , Eval._package      = pkg
-            , Eval._inputDoc     = emptyObject
+            , Eval._inputDoc     = indoc
             , Eval._imports      = mempty
             , Eval._cache        = h ^. cache
-            , Eval._cacheVersion = h ^. cacheVersion
+            , Eval._cacheVersion = cachev
             , Eval._stack        = Stack.empty
             }
     return $ Eval.mkStepState env (Eval.evalTerm cterm)
@@ -310,3 +320,17 @@ step
     :: Handle -> Eval.StepState Eval.Value
     -> InterpreterM (Eval.Step Eval.Value)
 step _ = liftIO . Eval.stepEvalM
+
+setInput :: Handle -> FilePath -> InterpreterM ()
+setInput h path = do
+    errOrVal <- liftIO $ Aeson.eitherDecodeFileStrict' path
+    val      <- case errOrVal of
+        Right v  -> pure (v :: Aeson.Value)
+        Left err -> fatal $ Error.mkErrorNoMeta "interpreter" $
+            "Loading input file" <+> PP.pretty path <+> "failed:" <$$>
+            PP.ind (PP.pretty err)
+
+    liftIO $ do
+        newCacheVersion <- Cache.bump (h ^. cache)
+        IORef.writeIORef (h ^. cacheVersion) newCacheVersion
+        IORef.writeIORef (h ^. inputDoc)     (Eval.Json.toValue val)
