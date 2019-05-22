@@ -10,7 +10,7 @@ fregot ([34meval error[0m):
   Expected number but got string
 
   Stack trace:
-    rule [33mrule1[0m at stack-trace-01.rego:9:3
-    rule [33mrule2[0m at stack-trace-01.rego:13:3
-    rule [33mrule3[0m at stack-trace-01.rego:17:3
-    rule [33mtest_stack_trace[0m at tests:1:1
+    rule [33mfregot.tests.invalid.stack_trace_01[33m.[0mrule1[0m at stack-trace-01.rego:9:3
+    rule [33mfregot.tests.invalid.stack_trace_01[33m.[0mrule2[0m at stack-trace-01.rego:13:3
+    rule [33mfregot.tests.invalid.stack_trace_01[33m.[0mrule3[0m at stack-trace-01.rego:17:3
+    rule [33mfregot.tests.invalid.stack_trace_01[33m.[0mtest_stack_trace[0m at tests:1:1

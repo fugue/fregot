@@ -21,14 +21,11 @@ jobs:
         key: 'v1-fregot-{{ arch }}-{{ .Branch }}'
     - run:
         name: 'Install'
-        command: 'stack --no-terminal --skip-ghc-check --copy-bins --test build'
+        command: 'make install'
         no_output_timeout: 50m
     - run:
-        name: 'Run Rego tests'
-        command: 'fregot test tests/rego'
-    - run:
-        name: 'Run Golden tests'
-        command: 'fspec -j2 --pretty-diff tests/golden'
+        name: 'Run tests'
+        command: 'make test'
     - save_cache:
         key: 'v1-fregot-{{ arch }}-{{ .Branch }}-{{ .Revision }}'
         paths:

@@ -22,6 +22,7 @@ import           Data.List.NonEmpty.Extended (NonEmpty)
 import qualified Data.List.NonEmpty.Extended as NonEmpty
 import qualified Data.Map                    as Map
 import           Data.Maybe                  (fromMaybe)
+import           Fregot.Names
 import           Fregot.Prepare.Ast
 import           Fregot.Prepare.Lens
 import           Fregot.Prepare.Vars
@@ -78,14 +79,14 @@ orderForClosures arities safe body =
   where
     -- Variables appearing in the body.
     bodyVars = HS.toHashSetOf
-        (ruleBodyTerms . termCosmosNoClosures . termVars . traverse)
+        (ruleBodyTerms . termCosmosNoClosures . termNames . traverse . _LocalName)
         body
 
     -- Order predicate.
     step () reordered lit =
         -- Variables appearing in closures in this statement.
         let inClosureVars = HS.toHashSetOf
-                (literalTerms . termCosmosClosures . termCosmosVars . traverse)
+                (literalTerms . termCosmosClosures . termCosmosVars . traverse . _LocalName)
                 lit
 
             -- Variabels that are both in the body as well as in the closures
@@ -121,7 +122,7 @@ orderForSafety arities safe0 body0
             unsafes = Map.fromList $ do
                 (idx, lit) <- idxBody
                 let inLit = HS.toHashSetOf
-                        (literalTerms . termCosmosNoClosures . termVars . traverse)
+                        (literalTerms . termCosmosNoClosures . termNames . traverse . _LocalName)
                         lit
                 return (idx, inLit `HS.difference` unSafe safe0)
 

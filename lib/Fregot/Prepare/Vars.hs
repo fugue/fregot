@@ -1,3 +1,6 @@
+-- | NOTE(jaspervdj): Even though the code is scope checked at this point, we'll
+-- mostly talk about `Save Var` rather than `Save Name`, since non-local names
+-- are always by now.
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
@@ -15,6 +18,7 @@ import           Data.Hashable         (Hashable)
 import qualified Data.HashSet.Extended as HS
 import           Data.List             (foldl')
 import           Data.Maybe            (fromMaybe)
+import           Fregot.Names
 import           Fregot.Prepare.Ast
 import           Fregot.Prepare.Lens
 
@@ -25,8 +29,8 @@ markSafe :: (Eq v, Hashable v) => v -> Safe v
 markSafe = Safe . HS.singleton
 
 markTermSafe :: Term a -> Safe Var
-markTermSafe t =
-    Safe (HS.toHashSetOf (termCosmosNoClosures . termVars . traverse) t)
+markTermSafe t = Safe $
+    HS.toHashSetOf (termCosmosNoClosures . termNames . traverse . _LocalName) t
 
 isSafe :: (Eq v, Hashable v) => v -> Safe v -> Bool
 isSafe v (Safe s) = HS.member v s
@@ -64,7 +68,7 @@ ovTerm arities safe (CallT _ function args) =
     foldMap (ovTerm arities safe) (take arity args) <>
     foldMap markTermSafe (drop arity args)
 
-ovTerm _arities _safe (VarT _ _) = mempty
+ovTerm _arities _safe (NameT _ _) = mempty
 
 ovTerm _arities _safe (ScalarT _ _) = mempty
 
@@ -80,13 +84,13 @@ ovTerm _arities _safe (SetCompT _ _ _) = mempty
 ovTerm _arities _safe (ObjectCompT _ _ _ _) = mempty
 
 ovUnify :: Arities -> Safe Var -> Term a -> Term a -> Safe Var
-ovUnify _arities safe (VarT _ alpha) (VarT _ beta)
+ovUnify _arities safe (NameT _ (LocalName alpha)) (NameT _ (LocalName beta))
     | isSafe alpha safe = markSafe beta
     | isSafe beta  safe = markSafe alpha
     | otherwise         = mempty  -- TODO(jaspervdj): Mark as unknown.
 
-ovUnify arities safe (VarT _ alpha) y = markSafe alpha <> ovTerm arities safe y
-ovUnify arities safe x (VarT _ beta)  = markSafe beta <> ovTerm arities safe x
+ovUnify arities safe (NameT _ (LocalName alpha)) y = markSafe alpha <> ovTerm arities safe y
+ovUnify arities safe x (NameT _ (LocalName beta))  = markSafe beta <> ovTerm arities safe x
 
 ovUnify arities safe x y =
     ovTerm arities safe x <> ovTerm arities safe y

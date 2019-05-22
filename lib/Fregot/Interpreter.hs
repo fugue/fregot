@@ -34,7 +34,9 @@ import           Control.Lens                    (forOf_, ifor_, to, (^.),
                                                   (^..), _2)
 import           Control.Lens.TH                 (makeLenses)
 import           Control.Monad                   (foldM)
-import           Control.Monad.Parachute         (ParachuteT, fatal)
+import           Control.Monad.Parachute         (ParachuteT, fatal,
+                                                  mapParachuteT)
+import           Control.Monad.Reader            (runReader)
 import           Control.Monad.Trans             (liftIO)
 import qualified Data.Aeson                      as Aeson
 import qualified Data.Binary                     as Binary
@@ -51,12 +53,15 @@ import           Fregot.Error                    (Error, catchIO)
 import qualified Fregot.Error                    as Error
 import qualified Fregot.Error.Stack              as Stack
 import qualified Fregot.Eval                     as Eval
+import qualified Fregot.Eval.Builtins            as Builtins
 import qualified Fregot.Eval.Cache               as Cache
 import qualified Fregot.Eval.Json                as Eval.Json
 import           Fregot.Eval.Monad               (EvalCache)
 import           Fregot.Eval.Value               (emptyObject)
 import           Fregot.Interpreter.Bundle
 import qualified Fregot.Interpreter.Dependencies as Deps
+import           Fregot.Names
+import qualified Fregot.Names.Renamer            as Renamer
 import qualified Fregot.Parser                   as Parser
 import qualified Fregot.Prepare                  as Prepare
 import           Fregot.Prepare.Package          (PreparedPackage)
@@ -66,7 +71,6 @@ import qualified Fregot.PrettyPrint              as PP
 import           Fregot.Sources                  (SourcePointer)
 import qualified Fregot.Sources                  as Sources
 import           Fregot.Sources.SourceSpan       (SourceSpan)
-import           Fregot.Sugar                    (PackageName, Var)
 import qualified Fregot.Sugar                    as Sugar
 import           System.FilePath.Extended        (listExtensions)
 
@@ -107,8 +111,12 @@ readDependencyGraph h = do
   where
     deps = traverse . _2 . Sugar.moduleImports . traverse . Sugar.importPackage
 
+-- | Auxiliary function for hooking into the renamer.
+runRenamerT :: Renamer.RenamerEnv -> Renamer.RenamerM a -> InterpreterM a
+runRenamerT renv = mapParachuteT (return . flip runReader renv)
+
 insertModule
-    :: Handle -> SourcePointer -> Sugar.Module SourceSpan -> InterpreterM ()
+    :: Handle -> SourcePointer -> Sugar.Module SourceSpan Var -> InterpreterM ()
 insertModule h sourcep modul = do
     -- Insert or replace the module.
     let pkgname = modul ^. Sugar.modulePackage
@@ -167,35 +175,44 @@ saveBundle h path = liftIO $ do
     _bundleModules <- IORef.readIORef (h ^. modules)
     BL.writeFile path $ GZip.compress $ Binary.encode $ Bundle {..}
 
--- | Get a single package by package name.  If the package does not exist, an
--- empty one is created.
---
 -- TODO(jaspervdj): We should probably crash rather than creating an empty
 -- package.
-readPreparedPackage :: Handle -> PackageName -> InterpreterM PreparedPackage
-readPreparedPackage h pkgname = do
-    modmap <- liftIO $ IORef.readIORef (h ^. modules)
+preparePackage
+    :: HMS.HashMap PackageName ModuleBatch
+    -> HMS.HashMap PackageName CompiledPackage
+    -> PackageName
+    -> InterpreterM PreparedPackage
+preparePackage modmap dependencies pkgname = do
     let mods = maybe [] (map snd) (HMS.lookup pkgname modmap)
         pkg0 = Prepare.empty pkgname
-    foldM addMod pkg0 mods
-
+        pkgRules = HS.toHashSetOf
+            (traverse . Sugar.modulePolicy . traverse . Sugar.ruleHead . Sugar.ruleName)
+            mods
+    foldM (addMod pkgRules) pkg0 mods
   where
-    addMod pkg0 modul = do
-        imports <- Prepare.prepareImports (modul ^. Sugar.moduleImports)
+    addMod pkgRules pkg0 modul0 = do
+        -- Rename module.
+        imports <- Prepare.prepareImports (modul0 ^. Sugar.moduleImports)
+        let renamerEnv = Renamer.RenamerEnv
+                Builtins.builtins imports pkgname pkgRules dependencies
+        modul1 <- runRenamerT renamerEnv $ Renamer.renameModule modul0
+
         foldM
             (\pkg rule -> Prepare.insert imports rule pkg)
             pkg0
-            (modul ^. Sugar.modulePolicy)
+            (modul1 ^. Sugar.modulePolicy)
 
 -- | Compile a specific package.  This will compile its dependencies first.
 readCompiledPackage
     :: Handle -> PackageName -> InterpreterM CompiledPackage
 readCompiledPackage h want = do
-    graph <- liftIO (readDependencyGraph h)
-    comp0 <- liftIO $ IORef.readIORef (h ^. compiled)
+    graph  <- liftIO (readDependencyGraph h)
+    modmap <- liftIO $ IORef.readIORef (h ^. modules)
+    comp0  <- liftIO $ IORef.readIORef (h ^. compiled)
     plan  <- case Deps.plan graph (HS.singleton want) of
-        Left _  -> fail "todo: dependency planning error"
         Right x -> return x
+        Left depError -> fatal $
+            Error.mkErrorNoMeta "interpreter" (PP.pretty depError)
 
     -- Execute plan.
     comp1 <- case plan of
@@ -203,7 +220,7 @@ readCompiledPackage h want = do
         _ : _ -> do
             comp1 <- foldM
                 (\uni pkgname -> do
-                    prep <- readPreparedPackage h pkgname
+                    prep <- preparePackage modmap uni pkgname
                     cp   <- Compile.compilePackage uni prep
                     return $ HMS.insert pkgname cp uni)
                 comp0
@@ -213,7 +230,8 @@ readCompiledPackage h want = do
 
     case HMS.lookup want comp1 of
         Just cp -> return cp
-        Nothing -> fail $ "package not found: " ++ show want
+        Nothing -> fatal $ Error.mkErrorNoMeta "interpreter"
+            "Internal error: package not found after compilation"
 
 compilePackages :: Handle -> InterpreterM ()
 compilePackages h = do
@@ -247,7 +265,7 @@ readAllRules h = do
         return (pkgname, rule)
 
 insertRule
-    :: Handle -> PackageName -> SourcePointer -> Sugar.Rule SourceSpan
+    :: Handle -> PackageName -> SourcePointer -> Sugar.Rule SourceSpan Var
     -> InterpreterM ()
 insertRule h pkgname sourcep rule =
     insertModule h sourcep modul
@@ -261,16 +279,13 @@ insertRule h pkgname sourcep rule =
 eval
     :: Handle -> Eval.Context -> PackageName -> Eval.EvalM a
     -> InterpreterM (Eval.Document a)
-eval h ctx pkgname mx = do
+eval h ctx _pkgname mx = do
     comp   <- liftIO $ IORef.readIORef (h ^. compiled)
     cachev <- liftIO $ IORef.readIORef (h ^. cacheVersion)
     indoc  <- liftIO $ IORef.readIORef (h ^. inputDoc)
-    pkg  <- readCompiledPackage h pkgname
     let env = Eval.Environment
             { Eval._packages     = comp
-            , Eval._package      = pkg
             , Eval._inputDoc     = indoc
-            , Eval._imports      = mempty
             , Eval._cache        = h ^. cache
             , Eval._cacheVersion = cachev
             , Eval._stack        = Stack.empty
@@ -279,11 +294,22 @@ eval h ctx pkgname mx = do
     either fatal return =<< liftIO (Eval.runEvalM env ctx mx)
 
 evalExpr
-    :: Handle -> Eval.Context -> PackageName -> Sugar.Expr SourceSpan
+    :: Handle -> Eval.Context -> PackageName -> Sugar.Expr SourceSpan Var
     -> InterpreterM (Eval.Document Eval.Value)
 evalExpr h ctx pkgname expr = do
-    pkg   <- readCompiledPackage h pkgname
-    pterm <- Prepare.prepareExpr expr
+    comp <- liftIO $ IORef.readIORef (h ^. compiled)
+    pkg  <- readCompiledPackage h pkgname
+
+    -- Rename expression.
+    let renamerEnv = Renamer.RenamerEnv
+            Builtins.builtins
+            mempty  -- No imports?
+            pkgname
+            (HS.fromList $ Compile.rules pkg)
+            comp
+    rterm <- runRenamerT renamerEnv $ Renamer.renameExpr expr
+
+    pterm <- Prepare.prepareExpr rterm
     cterm <- Compile.compileTerm pkg safeLocals pterm
     eval h ctx pkgname (Eval.evalTerm cterm)
   where
@@ -292,24 +318,33 @@ evalExpr h ctx pkgname expr = do
 evalVar
     :: Handle -> SourceSpan -> PackageName -> Var
     -> InterpreterM (Eval.Document Eval.Value)
-evalVar h source pkgname =
-    eval h Eval.emptyContext pkgname . Eval.evalVar source
+evalVar h source pkgname var =
+    let expr = Sugar.TermE source (Sugar.VarT source var) in
+    evalExpr h Eval.emptyContext pkgname expr
 
 mkStepState
-    :: Handle -> PackageName -> Sugar.Expr SourceSpan
+    :: Handle -> PackageName -> Sugar.Expr SourceSpan Var
     -> InterpreterM (Eval.StepState Eval.Value)
 mkStepState h pkgname expr = do
     comp   <- liftIO $ IORef.readIORef (h ^. compiled)
+    pkg    <- readCompiledPackage h pkgname
     cachev <- liftIO $ IORef.readIORef (h ^. cacheVersion)
     indoc  <- liftIO $ IORef.readIORef (h ^. inputDoc)
-    pkg    <- readCompiledPackage h pkgname
-    pterm  <- Prepare.prepareExpr expr
-    cterm  <- Compile.compileTerm pkg mempty pterm
+
+    -- Rename expression.
+    let renamerEnv = Renamer.RenamerEnv
+            Builtins.builtins
+            mempty  -- No imports?
+            pkgname
+            (HS.fromList $ Compile.rules pkg)
+            comp
+    rexpr <- runRenamerT renamerEnv $ Renamer.renameExpr expr
+
+    pterm <- Prepare.prepareExpr rexpr
+    cterm <- Compile.compileTerm pkg mempty pterm
     let env = Eval.Environment
             { Eval._packages     = comp
-            , Eval._package      = pkg
             , Eval._inputDoc     = indoc
-            , Eval._imports      = mempty
             , Eval._cache        = h ^. cache
             , Eval._cacheVersion = cachev
             , Eval._stack        = Stack.empty

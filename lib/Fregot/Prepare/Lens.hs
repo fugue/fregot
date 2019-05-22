@@ -5,7 +5,7 @@ module Fregot.Prepare.Lens
     ( ruleBodyTerms
     , literalTerms
     , termAnn
-    , termVars
+    , termNames
     , termCosmosVars
     , termCosmosNoClosures
     , termCosmosClosures
@@ -17,6 +17,7 @@ import           Control.Lens        (Fold, Lens', Traversal', lens, to,
                                       traverseOf, (^.))
 import           Control.Lens.Plated (Plated (..), cosmos, cosmosOnOf)
 import           Control.Lens.TH     (makePrisms)
+import           Fregot.Names
 import           Fregot.Prepare.Ast
 
 $(makePrisms ''Term)
@@ -27,7 +28,7 @@ termAnn = lens getAnn setAnn
     getAnn = \case
         RefT        a _ _   -> a
         CallT       a _ _   -> a
-        VarT        a _     -> a
+        NameT       a _     -> a
         ScalarT     a _     -> a
         ArrayT      a _     -> a
         SetT        a _     -> a
@@ -39,7 +40,7 @@ termAnn = lens getAnn setAnn
     setAnn t a = case t of
         RefT        _ x k   -> RefT        a x k
         CallT       _ f as  -> CallT       a f as
-        VarT        _ v     -> VarT        a v
+        NameT       _ v     -> NameT       a v
         ScalarT     _ s     -> ScalarT     a s
         ArrayT      _ l     -> ArrayT      a l
         SetT        _ s     -> SetT        a s
@@ -66,7 +67,7 @@ instance Plated (Term a) where
     plate f = \case
         RefT        a x k   -> RefT a <$> f x <*> f k
         CallT       a g xs  -> CallT a g <$> traverse f xs
-        VarT        a v     -> pure (VarT a v)
+        NameT       a v     -> pure (NameT a v)
         ScalarT     a s     -> pure (ScalarT a s)
         ArrayT      a xs    -> ArrayT a <$> traverse f xs
         SetT        a xs    -> SetT a <$> traverse f xs
@@ -77,12 +78,12 @@ instance Plated (Term a) where
         ObjectCompT a k v b -> ObjectCompT a <$>
                                 f k <*> f v <*> ruleBodyTerms f b
 
--- | Fold over the direct vars of a term.
-termVars :: Traversal' (Term a) (a, Var)
-termVars = _VarT
+-- | Fold over the direct names of a term.
+termNames :: Traversal' (Term a) (a, Name)
+termNames = _NameT
 
-termCosmosVars :: Fold (Term a) (a, Var)
-termCosmosVars = cosmos . termVars
+termCosmosVars :: Fold (Term a) (a, Name)
+termCosmosVars = cosmos . termNames
 
 -- | Fold over all closures in a term recursively.
 termCosmosClosures :: Fold (Term a) (Term a)

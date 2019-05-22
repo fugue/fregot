@@ -15,7 +15,7 @@ module Fregot.Eval.Monad
 
     , EvalCache
 
-    , Environment (..), packages, package, inputDoc, imports
+    , Environment (..), packages, inputDoc
     , cache, cacheVersion, stack
 
     , EvalException (..)
@@ -42,10 +42,8 @@ module Fregot.Eval.Monad
     , toInstVar
     , lookupRule
     , clearLocals
-    , withImports
 
     , lookupPackage
-    , withPackage
 
     , pushStackFrame
     , pushRuleStackFrame
@@ -76,6 +74,7 @@ import qualified Fregot.Error.Stack        as Stack
 import           Fregot.Eval.Cache         (Cache)
 import qualified Fregot.Eval.Cache         as Cache
 import           Fregot.Eval.Value
+import           Fregot.Names
 import           Fregot.Prepare.Ast
 import           Fregot.PrettyPrint        ((<$$>))
 import qualified Fregot.PrettyPrint        as PP
@@ -114,9 +113,7 @@ type EvalCache = Cache (PackageName, Var) Value
 
 data Environment = Environment
     { _packages     :: !(HMS.HashMap PackageName CompiledPackage)
-    , _package      :: !CompiledPackage
     , _inputDoc     :: !Value
-    , _imports      :: !(Imports SourceSpan)
     , _cache        :: !EvalCache
     , _cacheVersion :: !Cache.Version
     , _stack        :: !Stack.StackTrace
@@ -293,18 +290,11 @@ toInstVar v = state $ \ctx -> case HMS.lookup v (ctx ^. locals) of
             !lcls = HMS.insert v iv (ctx ^. locals) in
         (iv, ctx {_nextInstVar = _nextInstVar ctx + 1, _locals = lcls})
 
-lookupRule :: [Var] -> EvalM (Maybe (Rule SourceSpan))
-lookupRule [root] = do
-    env0 <- ask
-    return $ Package.lookup root (env0 ^. package)
-lookupRule [imp, name] = do
-    -- NOTE(jaspervdj): Note that this path is only taken for simple calls,
-    -- because they translate to a `CallT [Var] ...`.  This will change when we
-    -- have proper scopechecking.
-    imps <- view imports
+lookupRule :: Name -> EvalM (Maybe (Rule SourceSpan))
+lookupRule (LocalName _) = pure Nothing
+lookupRule (QualifiedName pkgname name) = do
     env0 <- ask
     pure $ do
-        (_ann, pkgname) <- HMS.lookup imp imps
         pkg <- HMS.lookup pkgname (env0 ^. packages)
         Package.lookup name pkg
 lookupRule _ = pure Nothing
@@ -316,32 +306,22 @@ clearLocals mx = do
     modify $ \ctx -> ctx {_locals = oldLocals}
     return x
 
-withImports :: Imports SourceSpan -> EvalM a -> EvalM a
-withImports imps = local (imports .~ imps)
-
 lookupPackage :: PackageName -> EvalM (Maybe CompiledPackage)
 lookupPackage pkgname = do
     pkgs <- view packages
     return $! HMS.lookup pkgname pkgs
 
-withPackage :: CompiledPackage -> EvalM a -> EvalM a
-withPackage pkg = local (package .~ pkg)
-
 pushStackFrame :: Stack.StackFrame -> EvalM a -> EvalM a
 pushStackFrame frame = local (stack %~ Stack.push frame)
 
-pushRuleStackFrame :: SourceSpan -> Var -> EvalM a -> EvalM a
-pushRuleStackFrame source var = local $ \env -> env
-    { _stack = Stack.push
-        (Stack.RuleStackFrame (env ^. package . Package.packageName) var source)
-        (env ^. stack)
+pushRuleStackFrame :: SourceSpan -> Name -> EvalM a -> EvalM a
+pushRuleStackFrame source n = local $ \env -> env
+    { _stack = Stack.push (Stack.RuleStackFrame n source) (env ^. stack)
     }
 
-pushFunctionStackFrame :: SourceSpan -> Var -> EvalM a -> EvalM a
-pushFunctionStackFrame src v = local $ \env -> env
-    { _stack = Stack.push
-        (Stack.FunctionStackFrame (env ^. package . Package.packageName) v src)
-        (env ^. stack)
+pushFunctionStackFrame :: SourceSpan -> Name -> EvalM a -> EvalM a
+pushFunctionStackFrame src n = local $ \env -> env
+    { _stack = Stack.push (Stack.FunctionStackFrame n src) (env ^. stack)
     }
 
 -- | Raise an error.  We currently don't allow catching exceptions, but they are

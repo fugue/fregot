@@ -71,14 +71,14 @@ newStableUniqueGen :: (Eq a, Hashable a) => IO (StableUniqueGen a)
 newStableUniqueGen = IORef.newIORef (UniqueGenSt 0 HMS.empty)
 
 getStableUnique
-    :: (Eq a, Hashable a) => StableUniqueGen a -> a -> Unique
-getStableUnique ref k = unsafePerformIO $ IORef.atomicModifyIORef' ref $ \st ->
+    :: (Eq a, Hashable a) => StableUniqueGen a -> a -> (Unique -> b) -> b
+getStableUnique ref k f = unsafePerformIO $ IORef.atomicModifyIORef' ref $ \st ->
     let tbl = uniqueTable st in
     case HMS.lookup k tbl of
-      Just i  -> (st, i)
+      Just i  -> (st, f i)
       Nothing ->
         let !i = unique st in
-        (st{ unique = succ i, uniqueTable = HMS.insert k i tbl }, i)
+        (st{ unique = succ i, uniqueTable = HMS.insert k i tbl }, f i)
 {-# NOINLINE getStableUnique #-}
 
 -- | Get a fresh ID without the value being stable and stored in the hash map.

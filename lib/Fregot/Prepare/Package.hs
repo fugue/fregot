@@ -15,6 +15,7 @@ import           Control.Lens.TH           (makeLenses)
 import           Control.Monad.Parachute
 import qualified Data.HashMap.Strict       as HMS
 import           Fregot.Error              (Error)
+import           Fregot.Names
 import           Fregot.Prepare
 import           Fregot.Prepare.Ast
 import           Fregot.Sources.SourceSpan (SourceSpan)
@@ -40,11 +41,11 @@ empty name = Package
 insert
     :: Monad m
     => Imports SourceSpan
-    -> Sugar.Rule SourceSpan
+    -> Sugar.Rule SourceSpan Name
     -> Package ty
     -> ParachuteT Error m (Package ty)
 insert imports rule package = do
-    new <- prepareRule imports rule
+    new <- prepareRule (package ^. packageName) imports rule
     merged <- case HMS.lookup rname (package ^. packageRules) of
         Nothing  -> return new
         Just old -> mergeRules old new

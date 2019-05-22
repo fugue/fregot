@@ -7,7 +7,7 @@
 {-# LANGUAGE TemplateHaskell            #-}
 module Fregot.Prepare.Ast
     ( RuleKind (..), _CompleteRule, _GenSetRule, _GenObjectRule, _FunctionRule
-    , Rule (..), ruleName, ruleAnn, ruleDefault, ruleKind, ruleDefs
+    , Rule (..), rulePackage, ruleName, ruleAnn, ruleDefault, ruleKind, ruleDefs
     , RuleDefinition (..), ruleDefName, ruleDefImports, ruleDefAnn, ruleArgs
     , ruleIndex, ruleValue, ruleBodies, ruleElses
     , RuleElse (..), ruleElseAnn, ruleElseValue, ruleElseBody
@@ -33,8 +33,6 @@ module Fregot.Prepare.Ast
 
     , Sugar.Scalar (..)
 
-    , Sugar.NestedVar (..)
-
       -- * Constructors
     , literal
     ) where
@@ -42,12 +40,11 @@ module Fregot.Prepare.Ast
 import           Control.Lens              ((^.))
 import           Control.Lens.TH           (makeLenses, makePrisms)
 import           Data.Hashable             (Hashable)
-import qualified Data.HashMap.Strict       as HMS
 import qualified Data.List                 as L
+import           Fregot.Names
 import           Fregot.PrettyPrint        ((<+>), (<+>?), (?<+>))
 import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources.SourceSpan (SourceSpan)
-import           Fregot.Sugar              (Var)
 import qualified Fregot.Sugar              as Sugar
 import           GHC.Generics              (Generic)
 
@@ -59,7 +56,8 @@ data RuleKind
     deriving (Eq, Show)
 
 data Rule a = Rule
-    { _ruleName    :: !Var
+    { _rulePackage :: !PackageName
+    , _ruleName    :: !Var
     , _ruleAnn     :: !SourceSpan
     , _ruleDefault :: !(Maybe (Term a))
     , _ruleKind    :: !RuleKind
@@ -76,8 +74,6 @@ data RuleDefinition a = RuleDefinition
     , _ruleBodies     :: ![RuleBody a]
     , _ruleElses      :: ![RuleElse a]
     } deriving (Show)
-
-type Imports a = HMS.HashMap Var (a, Sugar.PackageName)
 
 type RuleBody a = [Literal a]
 
@@ -96,14 +92,14 @@ data Literal a = Literal
 
 data Statement a
     = UnifyS  a (Term a) (Term a)
-    | AssignS a Var (Term a)
+    | AssignS a UnqualifiedVar (Term a)
     | TermS     (Term a)
     deriving (Eq, Show)
 
 data Term a
     = RefT        a (Term a) (Term a)
     | CallT       a Function [Term a]
-    | VarT        a Var
+    | NameT       a Name
     | ScalarT     a (Sugar.Scalar a)
     | ArrayT      a [Term a]
     | SetT        a [Term a]
@@ -114,7 +110,7 @@ data Term a
     deriving (Eq, Show)
 
 data Function
-    = NamedFunction [Var]
+    = NamedFunction Name
     | OperatorFunction BinOp
     deriving (Eq, Generic, Show)
 
@@ -141,7 +137,7 @@ instance Hashable BinOp
 
 data With a = With
     { _withAnn  :: !a
-    , _withPath :: [Var]
+    , _withPath :: [UnqualifiedVar]
     , _withAs   :: !(Term a)
     } deriving (Eq, Show)
 
@@ -179,7 +175,7 @@ instance PP.Pretty PP.Sem (Term a) where
         PP.commaSep (map PP.pretty as) <>
         PP.punctuation ")"
 
-    pretty (VarT _ v)        = PP.pretty v
+    pretty (NameT _ v)       = PP.pretty v
     pretty (ScalarT _ s)     = PP.pretty s
 
     pretty (ArrayT _ a)      = PP.array a
@@ -206,8 +202,8 @@ prettyComprehensionBody lits = mconcat $ L.intersperse
     (map PP.pretty lits)
 
 instance PP.Pretty PP.Sem Function where
-    pretty (NamedFunction    vs) = PP.pretty (Sugar.NestedVar vs)
-    pretty (OperatorFunction o)  = PP.pretty o
+    pretty (NamedFunction    v) = PP.pretty v
+    pretty (OperatorFunction o) = PP.pretty o
 
 instance PP.Pretty PP.Sem BinOp where
     pretty = PP.punctuation . \case

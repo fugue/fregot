@@ -1,4 +1,4 @@
-fregot ([34mvar check error[0m):
+fregot ([34mrenamer error[0m):
   "unknown-var-04.rego" (line 4, column 3):
   unknown function:
 

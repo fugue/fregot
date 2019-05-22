@@ -17,7 +17,7 @@ import           Control.Monad.Extended            (foldMapM, forM_, guard,
                                                     void, when)
 import           Control.Monad.Parachute
 import           Control.Monad.Trans               (liftIO)
-import           Data.Bifunctor                    (bimap, first)
+import           Data.Bifunctor                    (bimap)
 import           Data.Functor                      (($>))
 import qualified Data.HashMap.Strict.Extended      as HMS
 import qualified Data.HashSet                      as HS
@@ -33,6 +33,7 @@ import qualified Fregot.Error.Stack                as Stack
 import qualified Fregot.Eval                       as Eval
 import qualified Fregot.Eval.Builtins              as Builtins
 import qualified Fregot.Interpreter                as Interpreter
+import           Fregot.Names
 import qualified Fregot.Parser.Internal            as Parser
 import qualified Fregot.Parser.Sugar               as Parser
 import qualified Fregot.Prepare.Ast                as Prepare
@@ -53,7 +54,7 @@ import qualified System.IO.Extended                as IO
 
 type Suspension = (SourceSpan, Stack.StackTrace)
 
-type Breakpoint = (PackageName, Var)
+type Breakpoint = Name
 
 data Mode
     = RegularMode
@@ -113,7 +114,7 @@ runInterpreter h f = do
 
 parseRuleOrExpr
     :: Handle -> T.Text
-    -> IO (SourcePointer, Maybe (Either (Rule SourceSpan) (Expr SourceSpan)))
+    -> IO (SourcePointer, Maybe (Either (Rule SourceSpan Var) (Expr SourceSpan Var)))
 parseRuleOrExpr h input = do
     replNum <- IORef.atomicModifyIORef (h ^. replCount) $ \x -> (x + 1, x)
     let sourcep = Sources.ReplInput replNum input
@@ -224,8 +225,8 @@ processStep h stepTo state = do
             bkpnts <- IORef.readIORef (h ^. breakpoints)
             let shouldBreak = case Stack.peek stack of
                     Nothing                           -> False
-                    Just (Stack.RuleStackFrame pkg v _) -> (pkg, v) `HS.member` bkpnts
-                    Just (Stack.FunctionStackFrame pkg v _) -> (pkg, v) `HS.member` bkpnts
+                    Just (Stack.RuleStackFrame name _) -> name `HS.member` bkpnts
+                    Just (Stack.FunctionStackFrame name _) -> name `HS.member` bkpnts
             return $ if shouldBreak then Nothing else Just $ StepToBreak mbOldStack
 
     continueStepping StepInto _ = return Nothing
@@ -327,9 +328,11 @@ metaShortcuts =
 metaCommands :: [MetaCommand]
 metaCommands =
     [ MetaCommand ":break" "Set a breakpoint" $ \h args -> case args of
-        [point] | Just qualify <- point ^? qualifiedVarFromText -> do
+        [point] | Just qualify <- nameFromText point -> do
             openPkg <- liftIO $ IORef.readIORef (h ^. openPackage)
-            let bpt = first (fromMaybe openPkg) qualify
+            let bpt = case qualify of
+                    LocalName v -> QualifiedName openPkg v
+                    _           -> qualify
             liftIO $ IORef.atomicModifyIORef_ (h ^. breakpoints) $ HS.insert bpt
             return True
 
@@ -337,9 +340,7 @@ metaCommands =
             bpts  <- liftIO $ IORef.readIORef (h ^. breakpoints)
             liftIO $ if HS.null bpts
                 then IO.hPutStrLn IO.stderr "no breakpoints set"
-                else forM_ bpts $
-                        T.hPutStrLn IO.stdout . review qualifiedVarFromText .
-                        first Just
+                else forM_ bpts $ T.hPutStrLn IO.stdout . nameToText
 
             return True
 
@@ -452,8 +453,8 @@ metaCommands =
 
 completeBuiltins :: Handle -> Hl.CompletionFunc IO
 completeBuiltins _h = Hl.completeDictionary completeWhitespace $ return
-    [ nestedVarToString (NestedVar vs)
-    | (Prepare.NamedFunction vs, _) <- HMS.toList Builtins.builtins
+    [ T.unpack (nameToText fname)
+    | (Prepare.NamedFunction fname, _) <- HMS.toList Builtins.builtins
     ]
 
 completeRules :: Handle -> Hl.CompletionFunc IO

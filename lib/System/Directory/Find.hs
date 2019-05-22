@@ -8,6 +8,7 @@ module System.Directory.Find
 import           Control.Monad        (forM_, when)
 import           Control.Monad.Trans  (liftIO)
 import           Control.Monad.Writer (WriterT, execWriterT, tell)
+import           Data.List            (sort)
 import           System.Directory
 import           System.FilePath
 import qualified System.FilePath.Glob as Glob
@@ -51,7 +52,8 @@ recursivelyFindPaths predicate dir0 = do
 
         isDir <- liftIO $ doesDirectoryExist path
         when isDir $ do
-            contents <- liftIO $ filter search <$> getDirectoryContents path
+            contents <- liftIO $
+                sort . filter search <$> getDirectoryContents path
             forM_ contents $ \c -> go (path </> c) (pretty </> c)
 
     search ('.' : _) = False
