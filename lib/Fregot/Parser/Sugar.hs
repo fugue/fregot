@@ -181,7 +181,7 @@ term = withSourceSpan $
         mbCallArgs <- case all isDotArg refArgs of
             False -> return Nothing
             True  -> Parsec.optionMaybe $
-                sepTrailing Tok.TLParen Tok.TRParen Tok.TComma term
+                sepTrailing Tok.TLParen Tok.TRParen Tok.TComma expr
 
         return $ \ss -> case (refArgs, mbCallArgs) of
             ([], Nothing)   -> VarT ss v
@@ -230,10 +230,12 @@ scalar :: FregotParser (Scalar SourceSpan)
 scalar =
     (String <$> Tok.string) <|>
     (do
+        negation   <- Parsec.option False (True <$ Tok.symbol Tok.TMinus)
         intOrFloat <- Tok.intOrFloat
-        case intOrFloat of
-            Left  x -> return $! Number $! fromIntegral x
-            Right x -> return $! Number $! Scientific.fromFloatDigits x) <|>
+        return $! Number $! (if negation then negate else id) $
+            case intOrFloat of
+                Left  x -> fromIntegral x
+                Right x -> Scientific.fromFloatDigits x) <|>
     (pure (Bool True) <* Tok.symbol Tok.TTrue) <|>
     (pure (Bool False) <* Tok.symbol Tok.TFalse) <|>
     (pure Null <* Tok.symbol Tok.TNull)

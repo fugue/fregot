@@ -181,6 +181,7 @@ builtins = HMS.fromList
     , (NamedFunction (BuiltinName "replace"),            builtin_replace)
     , (NamedFunction (BuiltinName "sort"),               builtin_sort)
     , (NamedFunction (BuiltinName "split"),              builtin_split)
+    , (NamedFunction (BuiltinName "substring"),          builtin_substring)
     , (NamedFunction (BuiltinName "sum"),                builtin_sum)
     , (NamedFunction (BuiltinName "startswith"),         builtin_startswith)
     , (NamedFunction (BuiltinName "to_number"),          builtin_to_number)
@@ -301,6 +302,13 @@ builtin_sort = Builtin (In Out) $
 builtin_split :: Builtin
 builtin_split = Builtin (In (In Out))
     (\(Cons str (Cons delim Nil)) -> return $! T.splitOn delim str)
+
+builtin_substring :: Builtin
+builtin_substring = Builtin (In (In (In Out)))
+    (\(Cons str (Cons start (Cons len Nil))) ->
+        return $!
+        (if len < 0 then id else T.take len) $!
+        T.drop start str)
 
 builtin_sum :: Builtin
 builtin_sum = Builtin (In Out) $

@@ -177,7 +177,7 @@ renameTerm = \case
         imports  <- view reImports
         rules    <- view rePackageRules
         thispkg  <- view rePackage
-        args'    <- traverse renameTerm args
+        args'    <- traverse renameExpr args
         case first (map unVar) <$> unsnoc ns of
             Nothing -> do
                 -- NOTE(jaspervdj): We can use ErrorT here.

@@ -6,6 +6,7 @@ Enter a rule to add it to the current package.
 Other commands:
   :break  Set a breakpoint
   :help  show this info
+  :input  set the input document
   :load  load a rego file, e.g. `:load foo.rego`
   :open  open a different package, e.g. `:open foo`
   :quit  exit the repl

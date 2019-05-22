@@ -1,0 +1,16 @@
+{
+    "resources": {
+        "1": {
+            "type": "security_group",
+            "attributes": {}
+        },
+        "2": {
+            "type": "security_group",
+            "attributes": {}
+        },
+        "3": {
+            "type": "vpc",
+            "attributes": {}
+        }
+    }
+}

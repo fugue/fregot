@@ -146,7 +146,8 @@ parseRuleOrExpr h input = do
                     RefT a a
                         (r ^. ruleHead . ruleName) [RefBrackArg (TermE a idx)]
                 (_, Just args) -> Just $ TermE a $
-                    CallT a [r ^. ruleHead . ruleName] args
+                    CallT a [r ^. ruleHead . ruleName]
+                    (map (review termFromExpr) args)
                 _ -> Just $ TermE a $
                     VarT a (r ^. ruleHead . ruleName)
 
@@ -360,6 +361,14 @@ metaCommands =
                     PP.pretty _metaDescription) <$$>
             mempty <$$>
             "Shortcuts are supported for commands, e.g. `:l` for `:load`."
+        return True
+
+    , MetaCommand ":input" "set the input document" $ \h args -> do
+        case args of
+            _ | [path] <- T.unpack <$> args -> liftIO $ void $
+                runInterpreter h (`Interpreter.setInput` path)
+            _ -> liftIO $ IO.hPutStrLn IO.stderr $
+                ":input takes one path argument"
         return True
 
     , MetaCommand ":load" "load a rego file, e.g. `:load foo.rego`" $

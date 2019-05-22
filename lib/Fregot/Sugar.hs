@@ -37,10 +37,13 @@ module Fregot.Sugar
 
     , Nested (..)
     , nestedToString
+
+    , termFromExpr
     ) where
 
-import           Control.Lens       (Lens', lens, (^.))
-import           Control.Lens.TH    (makeLenses)
+import           Control.Lens       (Lens', lens, preview, (^.), _2)
+import           Control.Lens.Prism (Prism', prism')
+import           Control.Lens.TH    (makeLenses, makePrisms)
 import           Data.Binary        (Binary)
 import qualified Data.List          as L
 import           Data.Scientific    (Scientific)
@@ -116,10 +119,7 @@ instance (Binary a, Binary n) => Binary (Expr a n)
 
 data Term a n
     = RefT      a a n [RefArg a n]
-    -- NOTE(jaspervdj): According to the grammar, a function call should be an
-    -- expression, not a term.  Putting it here is more permissive though, so I
-    -- hope that won't cause any trouble.
-    | CallT     a [n] [Term a n]
+    | CallT     a [n] [Expr a n]
     | VarT      a n
     | ScalarT   a (Scalar a)
 
@@ -194,6 +194,7 @@ $(makeLenses ''RuleHead)
 $(makeLenses ''RuleElse)
 $(makeLenses ''Literal)
 $(makeLenses ''With)
+$(makePrisms ''Expr)
 
 instance PP.Pretty PP.Sem (Import a) where
     pretty imp =
@@ -380,3 +381,6 @@ termAnn = lens getAnn setAnn
         ArrayCompT  _ x b   -> ArrayCompT  a x b
         SetCompT    _ x b   -> SetCompT    a x b
         ObjectCompT _ k x b -> ObjectCompT a k x b
+
+termFromExpr :: Prism' (Expr a n) (Term a n)
+termFromExpr = prism' (\t -> TermE (t ^. termAnn) t) (preview (_TermE . _2))
