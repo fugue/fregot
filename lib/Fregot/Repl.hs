@@ -13,7 +13,6 @@ module Fregot.Repl
     ) where
 
 import           Control.Lens                      (preview, review, (^.), (^?))
-import           Control.Lens.Prism                (Prism', prism')
 import           Control.Lens.TH                   (makeLenses)
 import           Control.Monad.Extended            (foldMapM, forM_, guard,
                                                     void, when)
@@ -21,7 +20,6 @@ import           Control.Monad.Parachute
 import           Control.Monad.Trans               (liftIO)
 import           Data.Bifunctor                    (bimap)
 import           Data.Functor                      (($>))
-import           Data.Hashable                     (Hashable)
 import qualified Data.HashMap.Strict.Extended      as HMS
 import qualified Data.HashSet                      as HS
 import           Data.IORef.Extended               (IORef)
@@ -42,6 +40,7 @@ import qualified Fregot.Parser.Sugar               as Parser
 import qualified Fregot.Prepare.Ast                as Prepare
 import           Fregot.PrettyPrint                ((<$$>), (<+>))
 import qualified Fregot.PrettyPrint                as PP
+import           Fregot.Repl.Breakpoint
 import qualified Fregot.Repl.Multiline             as Multiline
 import           Fregot.Sources                    (SourcePointer)
 import qualified Fregot.Sources                    as Sources
@@ -50,54 +49,10 @@ import qualified Fregot.Sources.SourceSpan         as SourceSpan
 import           Fregot.Sugar
 import qualified Fregot.Test                       as Test
 import           Fregot.Version                    (version)
-import           GHC.Generics                      (Generic)
 import qualified System.Console.Haskeline.Extended as Hl
 import qualified System.Directory                  as Directory
-import           System.FilePath                   (normalise, (</>))
+import           System.FilePath                   ((</>))
 import qualified System.IO.Extended                as IO
-import           Text.Read                         (readMaybe)
-
-type Suspension = (SourceSpan, Stack.StackTrace)
-
-data Breakpoint
-    = NameBreakpoint   Name
-    | SourceBreakpoint FilePath Int  -- Make sure to 'normalise' the file path!
-    deriving (Eq, Generic)
-
-instance Hashable Breakpoint
-
-breakpointFromText :: Prism' T.Text Breakpoint
-breakpointFromText = prism'
-    (\case
-        NameBreakpoint  n     -> nameToText n
-        SourceBreakpoint fp l -> T.pack $ fp ++ ":" ++ show l)
-    (\txt -> case T.split (== ':') txt of
-        [path, line] -> SourceBreakpoint
-            <$> pure (normalise $ T.unpack path)
-            <*> readMaybe (T.unpack line)
-        _ -> NameBreakpoint <$> nameFromText txt)
-
-isBreakpoint :: Suspension -> HS.HashSet Breakpoint -> Bool
-isBreakpoint (sourcespan, stack) bkpnts = nameBreak || sourceBreak
-  where
-    nameBreak = case Stack.peek stack of
-        Nothing                                -> False
-        Just (Stack.RuleStackFrame name _)     ->
-            NameBreakpoint name `HS.member` bkpnts
-        Just (Stack.FunctionStackFrame name _) ->
-            NameBreakpoint name `HS.member` bkpnts
-
-    sourceBreak = fromMaybe False $ do
-        let line = sourcespan ^. SourceSpan.start . SourceSpan.line
-        path <- sourcespan ^? SourceSpan.sourcePointer . Sources._FileInput
-        return $ SourceBreakpoint (normalise path) line `HS.member` bkpnts
-
--- | We can only break on fully qualified names.  If the user entered a local
--- variable, we want to qualify it using the currently open package.
-qualifyBreakpoint :: PackageName -> Breakpoint -> Breakpoint
-qualifyBreakpoint pkg = \case
-    NameBreakpoint (LocalName v) -> NameBreakpoint (QualifiedName pkg v)
-    bpt                          -> bpt
 
 data Mode
     = RegularMode

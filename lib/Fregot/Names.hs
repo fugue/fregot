@@ -145,15 +145,19 @@ varToText = unVar
 
 varFromText :: Prism' T.Text Var
 varFromText = prism' varToText $ \txt -> do
-    guard $ T.all allowedChar txt && txt /= "_"
-    -- TODO(jaspervdj): Name should not start with number.
+    guard $ txt /= "_"
+    (h, t) <- T.uncons txt
+    guard $ allowedStartChar h && T.all allowedChar t
     return $ mkVar txt
   where
-    allowedChar c =
+    allowedStartChar c =
         (c >= 'a' && c <= 'z') ||
         (c >= 'A' && c <= 'Z') ||
-        (c >= '0' && c <= '9') ||
         c == '_'
+
+    allowedChar c =
+        allowedStartChar c ||
+        (c >= '0' && c <= '9')
 
 -- | This type exists solely for pretty-printing.
 newtype Nested a = Nested {unNested :: [a]}
