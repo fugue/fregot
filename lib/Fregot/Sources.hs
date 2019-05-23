@@ -1,8 +1,9 @@
 -- | Source code and source code locations.
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE TemplateHaskell            #-}
 module Fregot.Sources
-    ( SourcePointer (..)
+    ( SourcePointer (..), _ReplInput, _FileInput, _TestInput
     , describeSourcePointer
 
     , Sources
@@ -15,6 +16,7 @@ module Fregot.Sources
     , newHandle
     ) where
 
+import           Control.Lens.TH              (makePrisms)
 import           Data.Binary                  (Binary)
 import           Data.Hashable                (Hashable)
 import qualified Data.HashMap.Strict.Extended as HMS
@@ -32,6 +34,8 @@ data SourcePointer
 
 instance Binary SourcePointer
 instance Hashable SourcePointer
+
+$(makePrisms ''SourcePointer)
 
 describeSourcePointer :: SourcePointer -> String
 describeSourcePointer (ReplInput _ txt) = T.unpack txt

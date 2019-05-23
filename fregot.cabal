@@ -55,6 +55,7 @@ Library
     Fregot.PrettyPrint.Internal
     Fregot.PrettyPrint.Sem
     Fregot.Repl
+    Fregot.Repl.Breakpoint
     Fregot.Repl.Multiline
     Fregot.Sources
     Fregot.Sources.SourceSpan

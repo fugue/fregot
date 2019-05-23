@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
@@ -39,6 +40,7 @@ import qualified Fregot.Parser.Sugar               as Parser
 import qualified Fregot.Prepare.Ast                as Prepare
 import           Fregot.PrettyPrint                ((<$$>), (<+>))
 import qualified Fregot.PrettyPrint                as PP
+import           Fregot.Repl.Breakpoint
 import qualified Fregot.Repl.Multiline             as Multiline
 import           Fregot.Sources                    (SourcePointer)
 import qualified Fregot.Sources                    as Sources
@@ -51,10 +53,6 @@ import qualified System.Console.Haskeline.Extended as Hl
 import qualified System.Directory                  as Directory
 import           System.FilePath                   ((</>))
 import qualified System.IO.Extended                as IO
-
-type Suspension = (SourceSpan, Stack.StackTrace)
-
-type Breakpoint = Name
 
 data Mode
     = RegularMode
@@ -219,14 +217,11 @@ processStep h stepTo state = do
     prefix = (PP.hint "(debug)" <+>)
 
     continueStepping :: StepTo -> Suspension -> IO (Maybe StepTo)
-    continueStepping (StepToBreak mbOldStack) (_, stack)
+    continueStepping (StepToBreak mbOldStack) suspension@(_, stack)
         | Just stack == mbOldStack = return $ Just (StepToBreak mbOldStack)
         | otherwise                = do
             bkpnts <- IORef.readIORef (h ^. breakpoints)
-            let shouldBreak = case Stack.peek stack of
-                    Nothing                           -> False
-                    Just (Stack.RuleStackFrame name _) -> name `HS.member` bkpnts
-                    Just (Stack.FunctionStackFrame name _) -> name `HS.member` bkpnts
+            let shouldBreak = isBreakpoint suspension bkpnts
             return $ if shouldBreak then Nothing else Just $ StepToBreak mbOldStack
 
     continueStepping StepInto _ = return Nothing
@@ -330,25 +325,24 @@ metaShortcuts =
 metaCommands :: [MetaCommand]
 metaCommands =
     [ MetaCommand ":break" "Set a breakpoint" $ \h args -> case args of
-        [point] | Just qualify <- nameFromText point -> do
+        [point] | Just qualify <- point ^? breakpointFromText -> do
             openPkg <- liftIO $ IORef.readIORef (h ^. openPackage)
-            let bpt = case qualify of
-                    LocalName v -> QualifiedName openPkg v
-                    _           -> qualify
+            let bpt = qualifyBreakpoint openPkg qualify
             liftIO $ IORef.atomicModifyIORef_ (h ^. breakpoints) $ HS.insert bpt
             return True
 
-        [] -> do
-            bpts  <- liftIO $ IORef.readIORef (h ^. breakpoints)
-            liftIO $ if HS.null bpts
-                then IO.hPutStrLn IO.stderr "no breakpoints set"
-                else forM_ bpts $ T.hPutStrLn IO.stdout . nameToText
+        [] -> liftIO $ do
+            bpts  <- IORef.readIORef (h ^. breakpoints)
+            case HS.null bpts of
+                False -> forM_ bpts $
+                    T.hPutStrLn IO.stdout . review breakpointFromText
+                True  -> IO.hPutStrLn IO.stderr $ unlines $
+                    "no breakpoints set" : "" : breakHelp
 
             return True
 
         _ -> do
-            liftIO $ IO.hPutStrLn IO.stderr $
-                ":break takes a qualified rule name as an argument"
+            liftIO $ IO.hPutStrLn IO.stderr $ unlines breakHelp
             return True
 
     , MetaCommand ":help" "show this info" $ \_ _ -> do
@@ -452,6 +446,17 @@ metaCommands =
             Suspended suspension nstep ->
                 processStep h (f suspension) nstep
         return True
+
+    breakHelp =
+        [ "You can set a breakpoint at a rule by using its full "
+        , "name, e.g.:"
+        , ""
+        , "    :break pkg.foo.bar"
+        , ""
+        , "Or a source file and line number, e.g.:"
+        , ""
+        , "    :break foo/bar.rego:9"
+        ]
 
 completeBuiltins :: Handle -> Hl.CompletionFunc IO
 completeBuiltins _h = Hl.completeDictionary completeWhitespace $ return
