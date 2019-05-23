@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
@@ -12,6 +13,7 @@ module Fregot.Repl
     ) where
 
 import           Control.Lens                      (preview, review, (^.), (^?))
+import           Control.Lens.Prism                (Prism', prism')
 import           Control.Lens.TH                   (makeLenses)
 import           Control.Monad.Extended            (foldMapM, forM_, guard,
                                                     void, when)
@@ -19,6 +21,7 @@ import           Control.Monad.Parachute
 import           Control.Monad.Trans               (liftIO)
 import           Data.Bifunctor                    (bimap)
 import           Data.Functor                      (($>))
+import           Data.Hashable                     (Hashable)
 import qualified Data.HashMap.Strict.Extended      as HMS
 import qualified Data.HashSet                      as HS
 import           Data.IORef.Extended               (IORef)
@@ -47,14 +50,54 @@ import qualified Fregot.Sources.SourceSpan         as SourceSpan
 import           Fregot.Sugar
 import qualified Fregot.Test                       as Test
 import           Fregot.Version                    (version)
+import           GHC.Generics                      (Generic)
 import qualified System.Console.Haskeline.Extended as Hl
 import qualified System.Directory                  as Directory
-import           System.FilePath                   ((</>))
+import           System.FilePath                   (normalise, (</>))
 import qualified System.IO.Extended                as IO
+import           Text.Read                         (readMaybe)
 
 type Suspension = (SourceSpan, Stack.StackTrace)
 
-type Breakpoint = Name
+data Breakpoint
+    = NameBreakpoint   Name
+    | SourceBreakpoint FilePath Int  -- Make sure to 'normalise' the file path!
+    deriving (Eq, Generic)
+
+instance Hashable Breakpoint
+
+breakpointFromText :: Prism' T.Text Breakpoint
+breakpointFromText = prism'
+    (\case
+        NameBreakpoint  n     -> nameToText n
+        SourceBreakpoint fp l -> T.pack $ fp ++ ":" ++ show l)
+    (\txt -> case T.split (== ':') txt of
+        [path, line] -> SourceBreakpoint
+            <$> pure (normalise $ T.unpack path)
+            <*> readMaybe (T.unpack line)
+        _ -> NameBreakpoint <$> nameFromText txt)
+
+isBreakpoint :: Suspension -> HS.HashSet Breakpoint -> Bool
+isBreakpoint (sourcespan, stack) bkpnts = nameBreak || sourceBreak
+  where
+    nameBreak = case Stack.peek stack of
+        Nothing                                -> False
+        Just (Stack.RuleStackFrame name _)     ->
+            NameBreakpoint name `HS.member` bkpnts
+        Just (Stack.FunctionStackFrame name _) ->
+            NameBreakpoint name `HS.member` bkpnts
+
+    sourceBreak = fromMaybe False $ do
+        let line = sourcespan ^. SourceSpan.start . SourceSpan.line
+        path <- sourcespan ^? SourceSpan.sourcePointer . Sources._FileInput
+        return $ SourceBreakpoint (normalise path) line `HS.member` bkpnts
+
+-- | We can only break on fully qualified names.  If the user entered a local
+-- variable, we want to qualify it using the currently open package.
+qualifyBreakpoint :: PackageName -> Breakpoint -> Breakpoint
+qualifyBreakpoint pkg = \case
+    NameBreakpoint (LocalName v) -> NameBreakpoint (QualifiedName pkg v)
+    bpt                          -> bpt
 
 data Mode
     = RegularMode
@@ -219,14 +262,11 @@ processStep h stepTo state = do
     prefix = (PP.hint "(debug)" <+>)
 
     continueStepping :: StepTo -> Suspension -> IO (Maybe StepTo)
-    continueStepping (StepToBreak mbOldStack) (_, stack)
+    continueStepping (StepToBreak mbOldStack) suspension@(_, stack)
         | Just stack == mbOldStack = return $ Just (StepToBreak mbOldStack)
         | otherwise                = do
             bkpnts <- IORef.readIORef (h ^. breakpoints)
-            let shouldBreak = case Stack.peek stack of
-                    Nothing                           -> False
-                    Just (Stack.RuleStackFrame name _) -> name `HS.member` bkpnts
-                    Just (Stack.FunctionStackFrame name _) -> name `HS.member` bkpnts
+            let shouldBreak = isBreakpoint suspension bkpnts
             return $ if shouldBreak then Nothing else Just $ StepToBreak mbOldStack
 
     continueStepping StepInto _ = return Nothing
@@ -330,25 +370,24 @@ metaShortcuts =
 metaCommands :: [MetaCommand]
 metaCommands =
     [ MetaCommand ":break" "Set a breakpoint" $ \h args -> case args of
-        [point] | Just qualify <- nameFromText point -> do
+        [point] | Just qualify <- point ^? breakpointFromText -> do
             openPkg <- liftIO $ IORef.readIORef (h ^. openPackage)
-            let bpt = case qualify of
-                    LocalName v -> QualifiedName openPkg v
-                    _           -> qualify
+            let bpt = qualifyBreakpoint openPkg qualify
             liftIO $ IORef.atomicModifyIORef_ (h ^. breakpoints) $ HS.insert bpt
             return True
 
-        [] -> do
-            bpts  <- liftIO $ IORef.readIORef (h ^. breakpoints)
-            liftIO $ if HS.null bpts
-                then IO.hPutStrLn IO.stderr "no breakpoints set"
-                else forM_ bpts $ T.hPutStrLn IO.stdout . nameToText
+        [] -> liftIO $ do
+            bpts  <- IORef.readIORef (h ^. breakpoints)
+            case HS.null bpts of
+                False -> forM_ bpts $
+                    T.hPutStrLn IO.stdout . review breakpointFromText
+                True  -> IO.hPutStrLn IO.stderr $ unlines $
+                    "no breakpoints set" : "" : breakHelp
 
             return True
 
         _ -> do
-            liftIO $ IO.hPutStrLn IO.stderr $
-                ":break takes a qualified rule name as an argument"
+            liftIO $ IO.hPutStrLn IO.stderr $ unlines breakHelp
             return True
 
     , MetaCommand ":help" "show this info" $ \_ _ -> do
@@ -452,6 +491,17 @@ metaCommands =
             Suspended suspension nstep ->
                 processStep h (f suspension) nstep
         return True
+
+    breakHelp =
+        [ "You can set a breakpoint at a rule by using its full "
+        , "name, e.g.:"
+        , ""
+        , "    :break pkg.foo.bar"
+        , ""
+        , "Or a source file and line number, e.g.:"
+        , ""
+        , "    :break foo/bar.rego:9"
+        ]
 
 completeBuiltins :: Handle -> Hl.CompletionFunc IO
 completeBuiltins _h = Hl.completeDictionary completeWhitespace $ return

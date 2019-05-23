@@ -146,6 +146,7 @@ varToText = unVar
 varFromText :: Prism' T.Text Var
 varFromText = prism' varToText $ \txt -> do
     guard $ T.all allowedChar txt && txt /= "_"
+    -- TODO(jaspervdj): Name should not start with number.
     return $ mkVar txt
   where
     allowedChar c =
