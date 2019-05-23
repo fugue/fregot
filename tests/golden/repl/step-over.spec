@@ -9,7 +9,7 @@
     "stdin": [
         ":break step.test_step",
         "data.step.test_step",
-        ":stepover",
-        ":stepover"
+        ":next",
+        ":next"
     ]
 }

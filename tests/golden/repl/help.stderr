@@ -12,8 +12,8 @@ Other commands:
   :quit  exit the repl
   :reload  reload the file from the last `:load`
   :run  continue running the debugged program
-  :stepover  continue running the debugged program
-  :stepinto  continue running the debugged program
+  :step  step (into) the next rule in the debugged program
+  :next  step (over) the next rule in the debugged program
   :test  run tests in the current package
   :where  print your location
 

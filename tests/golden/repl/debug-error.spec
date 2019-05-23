@@ -9,8 +9,8 @@
     "stdin": [
         ":break debug_error.test_crash",
         "data.debug_error.test_crash",
-        ":stepover",
-        ":stepover",
+        ":next",
+        ":next",
         ":where",
         "x",
         ":quit",
