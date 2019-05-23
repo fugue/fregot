@@ -319,9 +319,11 @@ metaShortcuts =
     shortcuts = HMS.fromList
         [ (":h", ":help")
         , (":l", ":load")
+        , (":n", ":next")
         , (":o", ":open")
         , (":q", ":quit")
         , (":r", ":reload")
+        , (":s", ":step")
         , (":t", ":test")
         ]
 
@@ -405,11 +407,11 @@ metaCommands =
     , MetaCommand ":run" "continue running the debugged program" $
         stepWith (StepToBreak . Just . snd)
 
-    , MetaCommand ":stepover" "continue running the debugged program" $
-        stepWith (StepOver . snd)
-
-    , MetaCommand ":stepinto" "continue running the debugged program" $
+    , MetaCommand ":step" "step (into) the next rule in the debugged program" $
         stepWith (const StepInto)
+
+    , MetaCommand ":next" "step (over) the next rule in the debugged program" $
+        stepWith (StepOver . snd)
 
     , MetaCommand ":test" "run tests in the current package" $
         \h _ -> liftIO $ do

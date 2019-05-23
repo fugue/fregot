@@ -9,11 +9,11 @@
     "stdin": [
         ":break step.test_step",
         "data.step.test_step",
-        ":stepinto",
-        ":stepinto",
-        ":stepinto",
-        ":stepinto",
-        ":stepinto",
-        ":stepinto"
+        ":step",
+        ":step",
+        ":step",
+        ":step",
+        ":step",
+        ":step"
     ]
 }
