@@ -12,7 +12,8 @@ module Fregot.Repl
     , metaCommands
     ) where
 
-import           Control.Lens                      (preview, review, (^.), (^?))
+import           Control.Lens                      (preview, review, view, (&),
+                                                    (.~), (^.), (^?))
 import           Control.Lens.TH                   (makeLenses)
 import           Control.Monad.Extended            (foldMapM, forM_, guard,
                                                     void, when)
@@ -56,7 +57,7 @@ import qualified System.IO.Extended                as IO
 
 data Mode
     = RegularMode
-    | Suspended   Suspension (Eval.StepState Eval.Value)
+    | Suspended   SourceSpan (Eval.StepState Eval.Value)
     | Errored     Eval.Environment Eval.Context Error.Error
 
 data StepTo
@@ -176,12 +177,19 @@ processInput h input = do
 
         Just (Right expr) -> do
             PP.hPutSemDoc IO.stdout $ PP.pretty expr
-            let ctx = case emode of
-                    Suspended _ state -> state ^. Eval.ssContext
-                    Errored _ ctx' _  -> ctx'
-                    _                 -> Eval.emptyContext
-            mbRows <- runInterpreter h $ \i ->
-                Interpreter.evalExpr i ctx pkgname expr
+            mbRows <- runInterpreter h $ \i -> do
+                -- Read and patch the options.
+                eopts <- Interpreter.readEvalOptions i
+                let eopts' = case emode of
+                        Suspended _ state -> eopts
+                            & Interpreter.eoContext  .~ (state ^. Eval.ssContext)
+                            & Interpreter.eoInputDoc .~ (state ^. Eval.ssEnvironment . Eval.inputDoc)
+                        Errored env ctx _  -> eopts
+                            & Interpreter.eoContext  .~ ctx
+                            & Interpreter.eoInputDoc .~ (env ^. Eval.inputDoc)
+                        _                 -> eopts
+
+                Interpreter.evalExpr i eopts' pkgname expr
             forM_ mbRows $ \rows -> forM_ rows $ \row ->
                 PP.hPutSemDoc IO.stdout $ "=" <+> PP.pretty row
 
@@ -200,14 +208,15 @@ processStep h stepTo state = do
         Just (Interpreter.Yield x nstate)   -> do
             PP.hPutSemDoc IO.stdout $ prefix "=" <+> PP.pretty x
             processStep h stepTo nstate
-        Just (Interpreter.Suspend suspension nstate) -> do
-            maybeCont <- continueStepping stepTo suspension
+        Just (Interpreter.Suspend source nstate) -> do
+            maybeCont <- continueStepping stepTo
+                (source, nstate ^. Eval.ssEnvironment . Eval.stack)
             case maybeCont of
                 Just cont -> processStep h cont nstate
                 Nothing -> do
                     sauce <- IORef.readIORef (h ^. sources)
-                    PP.hPutSemDoc IO.stdout $ prettySnippet sauce (fst suspension)
-                    IORef.writeIORef (h ^. mode) (Suspended suspension nstate)
+                    PP.hPutSemDoc IO.stdout $ prettySnippet sauce source
+                    IORef.writeIORef (h ^. mode) (Suspended source nstate)
         Just (Interpreter.Error env ctx e)   -> do
             PP.hPutSemDoc IO.stdout $ prefix "error"
             sauce <- IORef.readIORef (h ^. sources)
@@ -399,13 +408,13 @@ metaCommands =
                 Nothing -> IO.hPutStrLn IO.stderr "No files loaded" $> True
 
     , MetaCommand ":run" "continue running the debugged program" $
-        stepWith (StepToBreak . Just . snd)
+        stepWith (StepToBreak . Just . view (Eval.ssEnvironment . Eval.stack))
 
     , MetaCommand ":step" "step (into) the next rule in the debugged program" $
         stepWith (const StepInto)
 
     , MetaCommand ":next" "step (over) the next rule in the debugged program" $
-        stepWith (StepOver . snd)
+        stepWith (StepOver . view (Eval.ssEnvironment . Eval.stack))
 
     , MetaCommand ":test" "run tests in the current package" $
         \h _ -> liftIO $ do
@@ -420,9 +429,10 @@ metaCommands =
     , MetaCommand ":where" "print your location" $ \h _ -> liftIO $ do
         emode <- IORef.readIORef (h ^. mode)
         case emode of
-            Suspended suspension _ -> do
+            Suspended source nstep -> do
                 sauce <- IORef.readIORef (h ^. sources)
-                PP.hPutSemDoc IO.stdout $ prettySuspension sauce suspension
+                PP.hPutSemDoc IO.stdout $ prettySuspension sauce
+                    (source, nstep ^. Eval.ssEnvironment . Eval.stack)
             Errored _ _ err -> do
                 sauce <- IORef.readIORef (h ^. sources)
                 Error.hPutErrors IO.stderr sauce Error.TextFmt [err]
@@ -441,10 +451,9 @@ metaCommands =
     stepWith f = \h _ -> liftIO $ do
         emode <- IORef.readIORef (h ^. mode)
         case emode of
-            RegularMode                -> IO.hPutStrLn IO.stderr "Not paused"
-            Errored _ _ _              -> IO.hPutStrLn IO.stderr "Not paused"
-            Suspended suspension nstep ->
-                processStep h (f suspension) nstep
+            RegularMode        -> IO.hPutStrLn IO.stderr "Not paused"
+            Errored _ _ _      -> IO.hPutStrLn IO.stderr "Not paused"
+            Suspended _  nstep -> processStep h (f nstep) nstep
         return True
 
     breakHelp =

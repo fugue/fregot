@@ -18,6 +18,8 @@ module Fregot.Interpreter
 
     , compilePackages
 
+    , EvalOptions (..), eoContext, eoInputDoc
+    , readEvalOptions
     , evalExpr
     , evalVar
 
@@ -276,16 +278,30 @@ insertRule h pkgname sourcep rule =
         , _modulePolicy  = [rule]
         }
 
+-- | We can override a few things in the evaluation.  This is particularly
+-- useful when evaluating things from within the paused debugger.
+data EvalOptions = EvalOptions
+    { _eoContext  :: !Eval.Context
+    , _eoInputDoc :: !Eval.Value
+    }
+
+$(makeLenses ''EvalOptions)
+
+readEvalOptions :: Handle -> InterpreterM EvalOptions
+readEvalOptions h = do
+    indoc <- liftIO $ IORef.readIORef (h ^. inputDoc)
+    return $! EvalOptions Eval.emptyContext indoc
+
 eval
-    :: Handle -> Eval.Context -> PackageName -> Eval.EvalM a
+    :: Handle -> EvalOptions -> PackageName -> Eval.EvalM a
     -> InterpreterM (Eval.Document a)
-eval h ctx _pkgname mx = do
+eval h eoptions  _pkgname mx = do
     comp   <- liftIO $ IORef.readIORef (h ^. compiled)
     cachev <- liftIO $ IORef.readIORef (h ^. cacheVersion)
-    indoc  <- liftIO $ IORef.readIORef (h ^. inputDoc)
-    let env = Eval.Environment
+    let ctx = eoptions ^. eoContext
+        env = Eval.Environment
             { Eval._packages     = comp
-            , Eval._inputDoc     = indoc
+            , Eval._inputDoc     = eoptions ^. eoInputDoc
             , Eval._cache        = h ^. cache
             , Eval._cacheVersion = cachev
             , Eval._stack        = Stack.empty
@@ -294,9 +310,9 @@ eval h ctx _pkgname mx = do
     either fatal return =<< liftIO (Eval.runEvalM env ctx mx)
 
 evalExpr
-    :: Handle -> Eval.Context -> PackageName -> Sugar.Expr SourceSpan Var
+    :: Handle -> EvalOptions -> PackageName -> Sugar.Expr SourceSpan Var
     -> InterpreterM (Eval.Document Eval.Value)
-evalExpr h ctx pkgname expr = do
+evalExpr h eoptions pkgname expr = do
     comp <- liftIO $ IORef.readIORef (h ^. compiled)
     pkg  <- readCompiledPackage h pkgname
 
@@ -311,16 +327,18 @@ evalExpr h ctx pkgname expr = do
 
     pterm <- Prepare.prepareExpr rterm
     cterm <- Compile.compileTerm pkg safeLocals pterm
-    eval h ctx pkgname (Eval.evalTerm cterm)
+    eval h eoptions pkgname (Eval.evalTerm cterm)
   where
-    safeLocals = Compile.Safe $ HS.fromList $ ctx ^. Eval.locals . to HMS.keys
+    safeLocals = Compile.Safe $ HS.fromList $
+        eoptions ^. eoContext . Eval.locals . to HMS.keys
 
 evalVar
     :: Handle -> SourceSpan -> PackageName -> Var
     -> InterpreterM (Eval.Document Eval.Value)
-evalVar h source pkgname var =
-    let expr = Sugar.TermE source (Sugar.VarT source var) in
-    evalExpr h Eval.emptyContext pkgname expr
+evalVar h source pkgname var = do
+    let expr = Sugar.TermE source (Sugar.VarT source var)
+    eoptions <- readEvalOptions h
+    evalExpr h eoptions pkgname expr
 
 mkStepState
     :: Handle -> PackageName -> Sugar.Expr SourceSpan Var
