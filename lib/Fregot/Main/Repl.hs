@@ -12,6 +12,7 @@ import           Control.Monad           (forM_)
 import           Control.Monad.Parachute (runParachuteT)
 import qualified Data.IORef              as IORef
 import qualified Fregot.Error            as Error
+import qualified Fregot.Find             as Find
 import qualified Fregot.Interpreter      as Interpreter
 import qualified Fregot.Repl             as Repl
 import qualified Fregot.Sources          as Sources
@@ -35,9 +36,10 @@ main :: Options -> IO ExitCode
 main opts = do
     sources <- Sources.newHandle
     interpreter <- Interpreter.newHandle sources
+    regoPaths <- Find.findRegoFiles (opts ^. paths)
     Repl.withHandle sources interpreter $ \repl -> do
         (lerrs, _) <- runParachuteT $ do
-            forM_ (opts ^. paths) $ \p -> Interpreter.loadModule interpreter p
+            forM_ regoPaths $ Interpreter.loadModuleOrBundle interpreter
             Interpreter.compilePackages interpreter
         sauce <- IORef.readIORef sources
         Error.hPutErrors IO.stderr sauce Error.TextFmt lerrs
