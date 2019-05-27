@@ -1,6 +1,7 @@
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE TemplateHaskell       #-}
 module Fregot.Error.Stack
     ( StackTrace
     , StackFrame (..)
@@ -9,8 +10,10 @@ module Fregot.Error.Stack
     , push
     , peek
     , isStepOver
+    , package
     ) where
 
+import           Control.Lens              ((^?), _1)
 import qualified Data.List                 as L
 import           Data.Maybe                (listToMaybe)
 import           Fregot.Names
@@ -26,7 +29,7 @@ instance PP.Pretty PP.Sem StackTrace where
     pretty (StackTrace frames) = PP.vcat $ map PP.pretty frames
 
 data StackFrame
-    = RuleStackFrame Name SourceSpan
+    = RuleStackFrame     Name SourceSpan
     | FunctionStackFrame Name SourceSpan
     deriving (Eq, Show)
 
@@ -36,6 +39,11 @@ instance PP.Pretty PP.Sem StackFrame where
             "rule" <+> PP.code (PP.pretty rule) <+> "at" <+> PP.pretty source
         FunctionStackFrame fun source ->
             "function" <+> PP.code (PP.pretty fun) <+> "at" <+> PP.pretty source
+
+-- | NOTE(jaspervdj): The 'Maybe' is mainly a future-compatible thing.
+name :: StackFrame -> Maybe Name
+name (RuleStackFrame     n _) = Just n
+name (FunctionStackFrame n _) = Just n
 
 empty :: StackTrace
 empty = StackTrace mempty
@@ -57,3 +65,7 @@ isStepOver (StackTrace newFrames) (StackTrace oldFrames) =
         Just (_ : _) -> False
         Just []      -> True
         Nothing      -> True
+
+-- | Determine what package we are in depending on the stack trace.
+package :: StackTrace -> Maybe PackageName
+package stack = peek stack >>= name >>= (^? _QualifiedName . _1)

@@ -111,6 +111,20 @@ runInterpreter h f = do
     Error.hPutErrors IO.stderr sauce Error.TextFmt errors
     return mbX
 
+-- | Retrieve the "currently focused package".  This is usually the
+-- `_openPackage` IORef, but if we are currently debugging/paused, we use that
+-- package.
+readFocusedPackage
+    :: Handle -> IO PackageName
+readFocusedPackage h = do
+    open  <- IORef.readIORef (h ^. openPackage)
+    emode <- IORef.readIORef (h ^. mode)
+    let stack = case emode of
+            RegularMode    -> Nothing
+            Suspended _ ss -> Just $ ss ^. Eval.ssEnvironment . Eval.stack
+            Errored e _ _  -> Just $ e ^. Eval.stack
+    return $ fromMaybe open (stack >>= Stack.package)
+
 parseRuleOrExpr
     :: Handle -> T.Text
     -> IO (SourcePointer, Maybe (Either (Rule SourceSpan Var) (Expr SourceSpan Var)))
@@ -157,15 +171,20 @@ parseRuleOrExpr h input = do
 processInput :: Handle -> T.Text -> IO ()
 processInput h input = do
     (sourcep, mbRuleOrTerm) <- parseRuleOrExpr h input
-    pkgname <- IORef.readIORef (h ^. openPackage)
     emode   <- IORef.readIORef (h ^. mode)
     bkpts   <- IORef.readIORef (h ^. breakpoints)
+    pkgname <- readFocusedPackage h
     case mbRuleOrTerm of
-        Just (Left rule) -> do
+        Just (Left rule) | RegularMode <- emode -> do
             PP.hPutSemDoc IO.stdout $ PP.pretty rule
             void $ runInterpreter h $ \i -> do
                 Interpreter.insertRule i pkgname sourcep rule
                 Interpreter.compilePackages i
+
+        Just (Left _rule) ->
+            -- NOTE(jaspervdj): I think it shouldn't be /too/ hard to allow
+            -- this, but I'm not sure if it's worth it.
+            IO.hPutStrLn IO.stderr $ "Cannot add rules while debugging"
 
         Just (Right expr) | not (HS.null bkpts), RegularMode <- emode -> do
             mbStepState <- runInterpreter h $ \i ->
@@ -305,7 +324,7 @@ run h = do
 
     getPrompt :: IO String
     getPrompt = do
-        pkg   <- IORef.readIORef (h ^. openPackage)
+        pkg   <- readFocusedPackage h
         emode <- IORef.readIORef (h ^. mode)
         return $
             review packageNameFromString pkg <>
@@ -335,7 +354,7 @@ metaCommands :: [MetaCommand]
 metaCommands =
     [ MetaCommand ":break" "Set a breakpoint" $ \h args -> case args of
         [point] | Just qualify <- point ^? breakpointFromText -> do
-            openPkg <- liftIO $ IORef.readIORef (h ^. openPackage)
+            openPkg <- liftIO $ readFocusedPackage h
             let bpt = qualifyBreakpoint openPkg qualify
             liftIO $ IORef.atomicModifyIORef_ (h ^. breakpoints) $ HS.insert bpt
             return True
@@ -475,7 +494,7 @@ completeBuiltins _h = Hl.completeDictionary completeWhitespace $ return
 
 completeRules :: Handle -> Hl.CompletionFunc IO
 completeRules h = Hl.completeDictionary completeWhitespace $ do
-    pkg     <- IORef.readIORef (h ^. openPackage)
+    pkg     <- readFocusedPackage h
     results <- runInterpreter h $ \i -> Interpreter.readPackageRules i pkg
     return $ map varToString $ fromMaybe [] results
 
