@@ -9,6 +9,6 @@
     "stdin": [
         ":break step.rego:5",
         "data.step.test_step",
-        ":run"
+        ":continue"
     ]
 }

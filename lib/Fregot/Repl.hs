@@ -426,7 +426,7 @@ metaCommands =
                 Just ll -> load h ll
                 Nothing -> IO.hPutStrLn IO.stderr "No files loaded" $> True
 
-    , MetaCommand ":run" "continue running the debugged program" $
+    , MetaCommand ":continue" "continue running the debugged program" $
         stepWith (StepToBreak . Just . view (Eval.ssEnvironment . Eval.stack))
 
     , MetaCommand ":step" "step (into) the next rule in the debugged program" $
