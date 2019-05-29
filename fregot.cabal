@@ -57,6 +57,8 @@ Library
     Fregot.Repl
     Fregot.Repl.Breakpoint
     Fregot.Repl.Multiline
+    Fregot.TypeCheck.Infer
+    Fregot.TypeCheck.Types
     Fregot.Sources
     Fregot.Sources.SourceSpan
     Fregot.Sugar
