@@ -174,6 +174,7 @@ builtins = HMS.fromList
     , (NamedFunction (BuiltinName "is_object"),          builtin_is_object)
     , (NamedFunction (BuiltinName "is_string"),          builtin_is_string)
     , (NamedFunction (QualifiedName "json" "unmarshal"), builtin_json_unmarshal)
+    , (NamedFunction (BuiltinName "lower"),              builtin_lower)
     , (NamedFunction (BuiltinName "max"),                builtin_max)
     , (NamedFunction (BuiltinName "min"),                builtin_min)
     , (NamedFunction (BuiltinName "product"),            builtin_product)
@@ -186,6 +187,7 @@ builtins = HMS.fromList
     , (NamedFunction (BuiltinName "startswith"),         builtin_startswith)
     , (NamedFunction (BuiltinName "to_number"),          builtin_to_number)
     , (NamedFunction (BuiltinName "trim"),               builtin_trim)
+    , (NamedFunction (BuiltinName "upper"),              builtin_upper)
     , (OperatorFunction EqualO,              builtin_equal)
     , (OperatorFunction NotEqualO,           builtin_not_equal)
     , (OperatorFunction LessThanO,           builtin_less_than)
@@ -263,6 +265,9 @@ builtin_json_unmarshal = Builtin (In Out) $ \(Cons str Nil) -> do
     val <- A.eitherDecodeStrict' (T.encodeUtf8 str)
     return $! Json.toValue val
 
+builtin_lower :: Builtin
+builtin_lower = Builtin (In Out) (\(Cons str Nil) -> return $! T.toLower str)
+
 builtin_max :: Builtin
 builtin_max = Builtin (In Out) $
     \(Cons (Collection vals) Nil) -> return $! case vals of
@@ -294,6 +299,9 @@ builtin_trim :: Builtin
 builtin_trim = Builtin (In (In Out))
     (\(Cons str (Cons cutset Nil)) ->
         return $! T.dropAround (\c -> T.any (== c) cutset) str)
+
+builtin_upper :: Builtin
+builtin_upper = Builtin (In Out) (\(Cons str Nil) -> return $! T.toUpper str)
 
 builtin_sort :: Builtin
 builtin_sort = Builtin (In Out) $
