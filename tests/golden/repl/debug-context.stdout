@@ -1,7 +1,6 @@
 repl% repl% 11|   security_group = security_groups[id]
       [32m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
-debug_context(debug)% security_groups
-= [33m{[0m
+debug_context(debug)% = [33m{[0m
   [31m1[0m[33m:[0m [33m{[0m
     [31m"id"[0m[33m:[0m [31m"2"[0m[33m,[0m
     [31m"good_boy"[0m[33m:[0m [31mfalse[0m[33m,[0m
