@@ -34,6 +34,7 @@ import qualified Fregot.Error                      as Error
 import qualified Fregot.Error.Stack                as Stack
 import qualified Fregot.Eval                       as Eval
 import qualified Fregot.Eval.Builtins              as Builtins
+import qualified Fregot.Eval.Value                 as Eval
 import qualified Fregot.Interpreter                as Interpreter
 import           Fregot.Names
 import qualified Fregot.Parser.Internal            as Parser
@@ -176,10 +177,13 @@ processInput h input = do
     pkgname <- readFocusedPackage h
     case mbRuleOrTerm of
         Just (Left rule) | RegularMode <- emode -> do
-            PP.hPutSemDoc IO.stdout $ PP.pretty rule
             void $ runInterpreter h $ \i -> do
                 Interpreter.insertRule i pkgname sourcep rule
                 Interpreter.compilePackages i
+            PP.hPutSemDoc IO.stderr $
+                "Rule" <+>
+                PP.code (PP.pretty (rule ^. ruleHead . ruleName)) <+>
+                "added"
 
         Just (Left _rule) ->
             -- NOTE(jaspervdj): I think it shouldn't be /too/ hard to allow
@@ -195,7 +199,6 @@ processInput h input = do
                 Just sstate -> processStep h (StepToBreak Nothing) sstate
 
         Just (Right expr) -> do
-            PP.hPutSemDoc IO.stdout $ PP.pretty expr
             mbRows <- runInterpreter h $ \i -> do
                 -- Read and patch the options.
                 eopts <- Interpreter.readEvalOptions i
@@ -209,8 +212,10 @@ processInput h input = do
                         _                 -> eopts
 
                 Interpreter.evalExpr i eopts' pkgname expr
-            forM_ mbRows $ \rows -> forM_ rows $ \row ->
-                PP.hPutSemDoc IO.stdout $ "=" <+> PP.pretty row
+            forM_ mbRows $ \rows -> case rows of
+                [] -> PP.hPutSemDoc IO.stderr $ PP.pretty Eval.emptyObject
+                _  -> forM_ rows $ \row ->
+                    PP.hPutSemDoc IO.stdout $ "=" <+> PP.pretty row
 
         Nothing -> return ()
 

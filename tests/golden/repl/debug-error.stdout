@@ -3,6 +3,5 @@ repl% repl% 4|   x = 1
 debug_error(debug)% 5|   x + "crash"
      [32m^^^^^^^^^^^[0m
 debug_error(debug)% [32m(debug)[0m error
-debug_error(error)% debug_error(error)% x
-= [31m1[0m
+debug_error(error)% debug_error(error)% = [31m1[0m
 debug_error(error)% repl% 
