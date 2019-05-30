@@ -182,7 +182,7 @@ processInput h input = do
                 Interpreter.compilePackages i
             PP.hPutSemDoc IO.stderr $
                 "Rule" <+>
-                PP.keyword (PP.pretty (rule ^. ruleHead . ruleName)) <+>
+                PP.code (PP.pretty (rule ^. ruleHead . ruleName)) <+>
                 "added"
 
         Just (Left _rule) ->
