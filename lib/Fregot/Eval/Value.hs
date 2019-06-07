@@ -23,9 +23,9 @@ import           Data.Hashable        (Hashable (..))
 import qualified Data.HashMap.Strict  as HMS
 import qualified Data.HashSet         as HS
 import qualified Data.Text            as T
-import qualified Data.Unique          as Unique
 import qualified Data.Vector.Extended as V
 import           Fregot.Eval.Number   (Number)
+import           Fregot.Names         (InstVar (..))
 import           Fregot.PrettyPrint   ((<+>))
 import qualified Fregot.PrettyPrint   as PP
 import           Fregot.Sugar         (PackageName, Var)
