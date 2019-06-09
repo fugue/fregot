@@ -84,8 +84,8 @@ fatals xs = ParachuteT $ \errors -> return (xs ++ errors, Fatal)
 
 -- | If any errors have been registered, die at this point.
 dieIfErrors :: Monad m => ParachuteT e m ()
-dieIfErrors = ParachuteT $ \errors -> return $!
-    if null errors then (errors, Ok ()) else (errors, Fatal)
+dieIfErrors = ParachuteT $ \errors -> return
+    (errors, if null errors then Ok () else Fatal)
 
 tellErrors :: Monad m => [e] -> ParachuteT e m ()
 tellErrors es = ParachuteT $ \errors -> return (es ++ errors, Ok ())
