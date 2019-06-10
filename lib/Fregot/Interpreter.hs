@@ -212,7 +212,7 @@ readCompiledPackage h want = do
     graph  <- liftIO (readDependencyGraph h)
     modmap <- liftIO $ IORef.readIORef (h ^. modules)
     comp0  <- liftIO $ IORef.readIORef (h ^. compiled)
-    plan  <- case Deps.plan graph (HS.singleton want) of
+    plan   <- case Deps.plan graph (HS.singleton want) of
         Right x -> return x
         Left depError -> fatal $
             Error.mkErrorNoMeta "interpreter" (PP.pretty depError)

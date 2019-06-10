@@ -16,7 +16,7 @@ module Fregot.Compile.Package
 import           Control.Applicative         ((<|>))
 import           Control.Lens                (forOf_, iforM_, traverseOf, (^.),
                                               (^..))
-import           Control.Monad               (guard)
+import           Control.Monad               (guard, when)
 import           Control.Monad.Parachute     (ParachuteT, tellError, tellErrors)
 import qualified Data.HashMap.Strict         as HMS
 import qualified Data.HashSet.Extended       as HS
@@ -69,7 +69,7 @@ compilePackage
     => Dependencies
     -> PreparedPackage
     -> ParachuteT Error m CompiledPackage
-compilePackage dependencies prep =
+compilePackage dependencies prep = do
     traverseOf (packageRules . traverse) compileRule prep
   where
     selfArities = aritiesFromPackage prep
@@ -97,6 +97,11 @@ compilePackage dependencies prep =
                 tellErrors $ checkTerm arities safe1 v
             forOf_ (ruleValue . traverse) def $ \v ->
                 tellErrors $ checkTerm arities safe1 v
+
+        -- If there is no body; we still need the index and value to be defined.
+        when (null (ordered ^. ruleBodies)) $
+            forOf_ (ruleValue . traverse) def $ \v ->
+            tellErrors $ checkTerm arities safe v
 
         -- General check the elses (index and else value).
         forOf_ (ruleElses . traverse) ordered $ \els -> do
@@ -138,8 +143,7 @@ compileTerm pkg safeLocals term0 = do
 
 -- | Various checks on terms.
 checkTerm :: Arities -> Safe Var -> Term SourceSpan -> [Error]
-checkTerm _arities safe term =
-    checkTermVars safe term
+checkTerm _arities safe term = checkTermVars safe term
 
 -- | Check that all variables in the term occurr in the safe set.
 checkTermVars
