@@ -15,6 +15,7 @@ module Fregot.Repl
 import           Control.Lens                      (preview, review, view, (&),
                                                     (.~), (^.), (^?))
 import           Control.Lens.TH                   (makeLenses)
+import           Control.Monad                     (unless)
 import           Control.Monad.Extended            (foldMapM, forM_, guard,
                                                     void, when)
 import           Control.Monad.Parachute
@@ -177,10 +178,10 @@ processInput h input = do
     pkgname <- readFocusedPackage h
     case mbRuleOrTerm of
         Just (Left rule) | RegularMode <- emode -> do
-            void $ runInterpreter h $ \i -> do
+            mbResult <- runInterpreter h $ \i -> do
                 Interpreter.insertRule i pkgname sourcep rule
                 Interpreter.compilePackages i
-            PP.hPutSemDoc IO.stderr $
+            unless (isNothing mbResult) $ PP.hPutSemDoc IO.stderr $
                 "Rule" <+>
                 PP.code (PP.pretty (rule ^. ruleHead . ruleName)) <+>
                 "added"
@@ -195,7 +196,7 @@ processInput h input = do
                 Interpreter.mkStepState i pkgname expr
 
             case mbStepState of
-                Nothing     -> return()
+                Nothing     -> return ()
                 Just sstate -> processStep h (StepToBreak Nothing) sstate
 
         Just (Right expr) -> do

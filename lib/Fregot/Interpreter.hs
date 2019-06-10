@@ -36,8 +36,7 @@ import           Control.Lens                    (forOf_, ifor_, to, (^.),
                                                   (^..), _2)
 import           Control.Lens.TH                 (makeLenses)
 import           Control.Monad                   (foldM)
-import           Control.Monad.Parachute         (ParachuteT, fatal,
-                                                  mapParachuteT)
+import           Control.Monad.Parachute
 import           Control.Monad.Reader            (runReader)
 import           Control.Monad.Trans             (liftIO)
 import qualified Data.Aeson                      as Aeson
@@ -136,6 +135,8 @@ insertModule h sourcep modul = do
     liftIO $ IORef.atomicModifyIORef_ (h ^. compiled) $
         HMS.filterWithKey (\k _ -> not (k `HS.member` evict))
 
+    dieIfErrors
+
 loadModule :: Handle -> FilePath -> InterpreterM ()
 loadModule h path = do
     -- Read the source code and parse the module.
@@ -211,7 +212,7 @@ readCompiledPackage h want = do
     graph  <- liftIO (readDependencyGraph h)
     modmap <- liftIO $ IORef.readIORef (h ^. modules)
     comp0  <- liftIO $ IORef.readIORef (h ^. compiled)
-    plan  <- case Deps.plan graph (HS.singleton want) of
+    plan   <- case Deps.plan graph (HS.singleton want) of
         Right x -> return x
         Left depError -> fatal $
             Error.mkErrorNoMeta "interpreter" (PP.pretty depError)
@@ -224,6 +225,7 @@ readCompiledPackage h want = do
                 (\uni pkgname -> do
                     prep <- preparePackage modmap uni pkgname
                     cp   <- Compile.compilePackage uni prep
+                    dieIfErrors
                     return $ HMS.insert pkgname cp uni)
                 comp0
                 plan
@@ -327,6 +329,7 @@ evalExpr h eoptions pkgname expr = do
 
     pterm <- Prepare.prepareExpr rterm
     cterm <- Compile.compileTerm pkg safeLocals pterm
+    dieIfErrors
     eval h eoptions pkgname (Eval.evalTerm cterm)
   where
     safeLocals = Compile.Safe $ HS.fromList $
@@ -367,6 +370,8 @@ mkStepState h pkgname expr = do
             , Eval._cacheVersion = cachev
             , Eval._stack        = Stack.empty
             }
+
+    dieIfErrors
     return $ Eval.mkStepState env (Eval.evalTerm cterm)
 
 step
