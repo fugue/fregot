@@ -6,5 +6,6 @@ ghc-options:
 
 packages:
 - '.'
-- location: 'packages/pcre-simple'
-  extra-dep: True
+
+extra-deps:
+- './packages/pcre-simple'
