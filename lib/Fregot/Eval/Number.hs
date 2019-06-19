@@ -6,6 +6,7 @@ module Fregot.Eval.Number
     , double
     , fromScientific
     , mod
+    , floor
     ) where
 
 import           Control.Lens       ((^.))
@@ -13,20 +14,22 @@ import           Control.Lens.Iso   (Iso', iso)
 import           Control.Lens.Prism (Prism', prism')
 import qualified Data.Fixed         as Fixed
 import           Data.Hashable      (Hashable (..))
+import           Data.Int           (Int64)
 import           Data.Scientific    (Scientific)
 import qualified Data.Scientific    as Scientific
 import qualified Fregot.PrettyPrint as PP
-import           Prelude            hiding (mod)
+import           Prelude            hiding (floor, mod)
 import qualified Prelude            as Prelude
 
-data Number = I {-# UNPACK #-} !Int | D {-# UNPACK #-} !Double
+data Number = I {-# UNPACK #-} !Int64 | D {-# UNPACK #-} !Double
 
-int :: Prism' Number Int
+int :: Prism' Number Int64
 int = prism' I toInt
   where
     toInt (I i) = Just i
     toInt (D d) =
-        let i = floor d in if fromIntegral i == d then Just i else Nothing
+        let i = Prelude.floor d in
+        if fromIntegral i == d then Just i else Nothing
 
 double :: Iso' Number Double
 double = iso (\n -> case n of I x -> fromIntegral x; D x -> x) D
@@ -66,7 +69,7 @@ instance PP.Pretty a Number where
     pretty (D d) = PP.pretty d
 
 numBinOp
-    :: (Int -> Int -> Int)
+    :: (Int64 -> Int64 -> Int64)
     -> (Double -> Double -> Double)
     -> Number -> Number -> Number
 numBinOp f _ (I x) (I y) = I (f x y)
@@ -76,7 +79,7 @@ numBinOp _ g (D x) (D y) = D (g x y)
 {-# INLINE numBinOp #-}
 
 homoBinOp
-    :: (Int -> Int -> a)
+    :: (Int64 -> Int64 -> a)
     -> (Double -> Double -> a)
     -> Number -> Number -> a
 homoBinOp f _ (I x) (I y) = f x y
@@ -90,3 +93,7 @@ fromScientific = either D I . Scientific.floatingOrInteger
 
 mod :: Number -> Number -> Number
 mod = numBinOp Prelude.mod Fixed.mod'
+
+floor :: Number -> Int64
+floor (I x) = x
+floor (D x) = Prelude.floor x

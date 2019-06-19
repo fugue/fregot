@@ -29,13 +29,15 @@ module Fregot.Eval
     , evalTerm
     ) where
 
-import           Control.Lens              (review, use, view, (%=), (.=), (.~),
-                                            (^.), (^?))
+import           Control.Exception         (try)
+import           Control.Lens              (review, to, use, view, (%=), (.=),
+                                            (.~), (^.), (^?))
 import           Control.Monad.Extended    (foldM, forM, zipWithM_)
 import           Control.Monad.Reader      (local)
 import           Control.Monad.Trans       (liftIO)
 import qualified Data.HashMap.Strict       as HMS
 import qualified Data.HashSet              as HS
+import           Data.Int                  (Int64)
 import           Data.Maybe                (fromMaybe, isNothing)
 import qualified Data.Unification          as Unification
 import qualified Data.Vector.Extended      as V
@@ -183,11 +185,14 @@ evalBuiltin source (Builtin sig impl) args0 = do
         Left err -> raise' source "builtin type error" $ PP.pretty err
         Right x  -> return x
 
-    -- Call the function.  This is currently pure business but it will
-    -- definitely involve IO at some point.
-    result <- case impl args1 of
-        Left err -> raise' source "builtin error" $ PP.pretty err
-        Right x  -> return $ toVal x
+    -- Call the function.  Note that we can probably make 'try' here at the
+    -- builtin a bit faster by moving it to the top-level, but we'll get less
+    -- nice error messages.
+    errOrResult <- liftIO $ try (impl args1)
+    result      <- case errOrResult of
+        Right x                     -> return $ toVal x
+        Left (BuiltinException err) ->
+            raise' source "builtin error" $ PP.pretty err
 
     -- Return value depends on supplied arguments.
     case mbFinalArg of
@@ -229,7 +234,7 @@ evalRefArg source indexee refArg = do
         FreeV unbound -> case indexee of
             ArrayV a -> branch
                 [ Unification.bindTerm unbound (NumberV $ review Number.int i) >> return val
-                | (i, val) <- zip [0 :: Int ..] (V.toList a)
+                | (i, val) <- zip [0 :: Int64 ..] (V.toList a)
                 ]
             SetV s -> branch
                 [ Unification.bindTerm unbound val >> return val
@@ -247,7 +252,7 @@ evalRefArg source indexee refArg = do
             -- NOTE(jaspervdj): We can omit some warning here.
             maybe cut return $! HMS.lookup k o
 
-        _   | Just i <- idx ^? _NumberV . Number.int
+        _   | Just i <- idx ^? _NumberV . Number.int . to fromIntegral
             , ArrayV a <- indexee ->
             if i >= 0 && i < V.length a then return (a V.! i) else cut
 

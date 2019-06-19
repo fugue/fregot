@@ -13,7 +13,7 @@ module Fregot.Prepare.Vars
     , ovTerm
     ) where
 
-import           Control.Lens          ((^.))
+import           Control.Lens          (allOf, (^.))
 import           Data.Hashable         (Hashable)
 import qualified Data.HashSet.Extended as HS
 import           Data.List             (foldl')
@@ -34,6 +34,10 @@ markTermSafe t = Safe $
 
 isSafe :: (Eq v, Hashable v) => v -> Safe v -> Bool
 isSafe v (Safe s) = HS.member v s
+
+isTermSafe :: Term a -> Safe Var -> Bool
+isTermSafe t s = allOf
+    (termCosmosNoClosures . termNames . traverse . _LocalName) (`isSafe` s) t
 
 type Arities = Function -> Maybe Int
 
@@ -84,10 +88,9 @@ ovTerm _arities _safe (SetCompT _ _ _) = mempty
 ovTerm _arities _safe (ObjectCompT _ _ _ _) = mempty
 
 ovUnify :: Arities -> Safe Var -> Term a -> Term a -> Safe Var
-ovUnify _arities safe (NameT _ (LocalName alpha)) (NameT _ (LocalName beta))
-    | isSafe alpha safe = markSafe beta
-    | isSafe beta  safe = markSafe alpha
-    | otherwise         = mempty  -- TODO(jaspervdj): Mark as unknown.
+ovUnify _arities safe x y
+    | isTermSafe x safe = markTermSafe y
+    | isTermSafe y safe = markTermSafe x
 
 ovUnify arities safe (NameT _ (LocalName alpha)) y = markSafe alpha <> ovTerm arities safe y
 ovUnify arities safe x (NameT _ (LocalName beta))  = markSafe beta <> ovTerm arities safe x

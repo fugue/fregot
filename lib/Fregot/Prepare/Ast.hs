@@ -35,6 +35,9 @@ module Fregot.Prepare.Ast
 
       -- * Constructors
     , literal
+
+
+    , prettyComprehensionBody
     ) where
 
 import           Control.Lens              ((^.))

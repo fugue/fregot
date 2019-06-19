@@ -42,6 +42,7 @@ module Fregot.PrettyPrint.Internal
     ) where
 
 import qualified Data.Aeson                        as Aeson
+import           Data.Int                          (Int64)
 import qualified Data.Scientific                   as Scientific
 import           Data.Semigroup                    (Semigroup, (<>))
 import qualified Data.Text                         as T
@@ -157,6 +158,9 @@ instance Pretty a String where
 
 instance Pretty a Int where
     pretty = int
+
+instance Pretty a Int64 where
+    pretty = integer . fromIntegral
 
 instance Pretty a Integer where
     pretty = integer
