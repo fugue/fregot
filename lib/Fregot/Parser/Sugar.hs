@@ -6,19 +6,20 @@ module Fregot.Parser.Sugar
     , expr
     ) where
 
-import           Control.Applicative       ((<|>))
-import           Control.Lens              ((^.))
-import           Data.Either               (partitionEithers)
-import           Data.Functor              (($>))
-import qualified Data.Scientific           as Scientific
+import           Control.Applicative         ((<|>))
+import           Control.Lens                ((^.))
+import           Data.Either                 (partitionEithers)
+import           Data.Functor                (($>))
+import qualified Data.Scientific             as Scientific
 import           Fregot.Parser.Internal
-import qualified Fregot.Parser.Token       as Tok
-import qualified Fregot.PrettyPrint        as PP
+import qualified Fregot.Parser.Token         as Tok
+import qualified Fregot.PrettyPrint          as PP
 import           Fregot.Sources.SourceSpan
 import           Fregot.Sugar
-import           Prelude                   hiding (head)
-import qualified Text.Parsec.Expr          as Parsec
-import qualified Text.Parsec.Extended      as Parsec
+import           Prelude                     hiding (head)
+import qualified Text.Parsec.Expr            as Parsec
+import qualified Text.Parsec.Extended        as Parsec
+import qualified Text.Parsec.Indent.Explicit as Indent
 
 parsePackageName :: FregotParser PackageName
 parsePackageName =
@@ -172,8 +173,9 @@ expr = Parsec.buildExpressionParser
 term :: FregotParser (Term SourceSpan Var)
 term = withSourceSpan $
     (do
+        startI   <- Indent.indentation
         (v, vss) <- withSourceSpan $ var >>= \v -> return $ \vss -> (v, vss)
-        refArgs  <- Parsec.many refArg
+        refArgs  <- Parsec.option [] $ Indent.same startI >> Parsec.many refArg
 
         let isDotArg (RefDotArg _ _) = True
             isDotArg (RefBrackArg _) = False
