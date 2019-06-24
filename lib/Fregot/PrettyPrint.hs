@@ -10,16 +10,17 @@ module Fregot.PrettyPrint
     , object
     ) where
 
+import           Data.Foldable               (toList)
 import           Fregot.PrettyPrint.Internal
 import           Fregot.PrettyPrint.Sem
 
 pretty' :: Pretty Sem a => a -> SemDoc
 pretty' = pretty
 
-array :: Pretty Sem a => [a] -> SemDoc
-array a = parensSepVert
-    (punctuation "[") (punctuation "]") (punctuation ",")
-    (map pretty a)
+array :: (Foldable f, Pretty Sem a) => f a -> SemDoc
+array = parensSepVert
+    (punctuation "[") (punctuation "]") (punctuation ",") .
+    map pretty . toList
 
 set :: Pretty Sem a => [a] -> SemDoc
 set a = parensSepVert

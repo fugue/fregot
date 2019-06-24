@@ -13,7 +13,6 @@ module Fregot.Compile.Order
     ) where
 
 import           Control.Lens                (traverseOf, (^.))
-import           Control.Lens.Plated         (transformMOn)
 import           Control.Monad.Extended      (mapAccumM)
 import           Control.Monad.Writer        (Writer, runWriter, writer)
 import qualified Data.HashMap.Strict         as HMS
@@ -164,9 +163,9 @@ orderForSafety arities safe0 body0
     -- Recursively rewrite all closures in a literal using the given safe list.
     recurse :: Safe Var -> Literal a -> Writer (Unsafe Var a) (Literal a)
     recurse rsafe =
-        transformMOn literalTerms (writer . orderTermForSafety arities rsafe)
+        traverseOf literalTerms (writer . orderTermForSafety arities rsafe)
 
 orderTermForSafety
     :: Arities -> Safe Var -> Term a -> (Term a, Unsafe Var a)
-orderTermForSafety arities safe = runWriter .
-    traverseOf termRuleBodies (writer . orderForSafety arities safe)
+orderTermForSafety arities safe =
+    runWriter . traverseOf termRuleBodies (writer . orderForSafety arities safe)

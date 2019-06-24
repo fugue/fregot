@@ -8,3 +8,7 @@ nested = ret {
     }
   ]
 }
+
+test_nested {
+  nested == [{"key": 1}]
+}

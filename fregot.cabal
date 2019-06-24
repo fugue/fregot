@@ -82,6 +82,7 @@ Library
     Data.List.NonEmpty.Extended
     Data.Text.Extended
     Data.Vector.Extended
+    Debug.Trace.Extended
     System.Console.Haskeline.Extended
     System.Directory.Find
     System.IO.Extended
