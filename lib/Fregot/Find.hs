@@ -12,6 +12,6 @@ import           System.FilePath        ((</>))
 -- all found files.
 findRegoFiles :: [FilePath] -> IO [FilePath]
 findRegoFiles paths = fmap concat $ forM paths $ \path -> ifM
-    (Directory.doesFileExist path)
-    (return [path])
+    (Directory.doesDirectoryExist path)
     (map (path </>) <$> Find.recursivelyFindFilesWithExtension ".rego" path)
+    (return [path])

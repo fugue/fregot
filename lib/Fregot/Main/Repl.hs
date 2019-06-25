@@ -38,10 +38,13 @@ main opts = do
     interpreter <- Interpreter.newHandle sources
     regoPaths <- Find.findRegoFiles (opts ^. paths)
     Repl.withHandle sources interpreter $ \repl -> do
-        (lerrs, _) <- runParachuteT $ do
+        (lerrs, mbResult) <- runParachuteT $ do
             forM_ regoPaths $ Interpreter.loadModuleOrBundle interpreter
             Interpreter.compilePackages interpreter
         sauce <- IORef.readIORef sources
         Error.hPutErrors IO.stderr sauce Error.TextFmt lerrs
-        Repl.run repl
-        return ExitSuccess
+        case mbResult of
+            Nothing -> return (ExitFailure 1)
+            Just _  -> do
+                Repl.run repl
+                return ExitSuccess
