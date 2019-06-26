@@ -38,14 +38,12 @@ import qualified Fregot.Eval.Builtins              as Builtins
 import qualified Fregot.Eval.Value                 as Eval
 import qualified Fregot.Interpreter                as Interpreter
 import           Fregot.Names
-import qualified Fregot.Parser.Internal            as Parser
-import qualified Fregot.Parser.Sugar               as Parser
 import qualified Fregot.Prepare.Ast                as Prepare
 import           Fregot.PrettyPrint                ((<$$>), (<+>))
 import qualified Fregot.PrettyPrint                as PP
 import           Fregot.Repl.Breakpoint
 import qualified Fregot.Repl.Multiline             as Multiline
-import           Fregot.Sources                    (SourcePointer)
+import           Fregot.Repl.Parse
 import qualified Fregot.Sources                    as Sources
 import           Fregot.Sources.SourceSpan         (SourceSpan)
 import qualified Fregot.Sources.SourceSpan         as SourceSpan
@@ -127,52 +125,16 @@ readFocusedPackage h = do
             Errored e _ _  -> Just $ e ^. Eval.stack
     return $ fromMaybe open (stack >>= Stack.package)
 
-parseRuleOrExpr
-    :: Handle -> T.Text
-    -> IO (SourcePointer, Maybe (Either (Rule SourceSpan Var) (Expr SourceSpan Var)))
-parseRuleOrExpr h input = do
+processInput :: Handle -> T.Text -> IO ()
+processInput h input = do
     replNum <- IORef.atomicModifyIORef (h ^. replCount) $ \x -> (x + 1, x)
     let sourcep = Sources.ReplInput replNum input
     IORef.atomicModifyIORef_ (h ^. sources) $ Sources.insert sourcep input
 
-    (ruleErrors, mbRule) <- runParachuteT $
-        Parser.lexAndParse Parser.rule sourcep input
+    (parseErrs, mbRuleOrTerm) <- runParachuteT $ parseRuleOrExpr sourcep input
     sauce <- IORef.readIORef (h ^. sources)
-    case mbRule of
-        Just r | Just e <- ruleToExpr r -> do
-            Error.hPutErrors IO.stderr sauce Error.TextFmt ruleErrors
-            return (sourcep, Just $ Right e)
+    Error.hPutErrors IO.stderr sauce Error.TextFmt parseErrs
 
-        Just r -> do
-            Error.hPutErrors IO.stderr sauce Error.TextFmt ruleErrors
-            return (sourcep, Just $ Left r)
-
-        Nothing -> do
-            (exprErrors, mbExpr) <- runParachuteT $
-                Parser.lexAndParse Parser.expr sourcep input
-            Error.hPutErrors IO.stderr sauce Error.TextFmt exprErrors
-            return (sourcep, fmap Right mbExpr)
-  where
-    ruleToExpr r
-        | null (r ^. ruleBodies)
-        , isNothing (r ^. ruleHead . ruleValue) =
-            case (r ^. ruleHead . ruleIndex, r ^. ruleHead . ruleArgs) of
-                (Just idx, _) -> Just $ TermE a $
-                    RefT a a
-                        (r ^. ruleHead . ruleName) [RefBrackArg (TermE a idx)]
-                (_, Just args) -> Just $ TermE a $
-                    CallT a [r ^. ruleHead . ruleName]
-                    (map (review termFromExpr) args)
-                _ -> Just $ TermE a $
-                    VarT a (r ^. ruleHead . ruleName)
-
-        | otherwise = Nothing
-      where
-        a = r ^. ruleHead . ruleAnn
-
-processInput :: Handle -> T.Text -> IO ()
-processInput h input = do
-    (sourcep, mbRuleOrTerm) <- parseRuleOrExpr h input
     emode   <- IORef.readIORef (h ^. mode)
     bkpts   <- IORef.readIORef (h ^. breakpoints)
     pkgname <- readFocusedPackage h
