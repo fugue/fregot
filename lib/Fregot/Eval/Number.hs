@@ -5,6 +5,7 @@ module Fregot.Eval.Number
     , int
     , double
     , fromScientific
+    , toScientific
     , mod
     , floor
     ) where
@@ -90,6 +91,10 @@ homoBinOp _ g (D x) (D y) = g x y
 
 fromScientific :: Scientific -> Number
 fromScientific = either D I . Scientific.floatingOrInteger
+
+toScientific :: Number -> Scientific
+toScientific (I x) = fromIntegral x
+toScientific (D x) = Scientific.fromFloatDigits x
 
 mod :: Number -> Number -> Number
 mod = numBinOp Prelude.mod Fixed.mod'

@@ -3,7 +3,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE TemplateHaskell            #-}
 module Fregot.Sources
-    ( SourcePointer (..), _ReplInput, _FileInput, _TestInput
+    ( SourcePointer (..), _ReplInput, _FileInput, _CliInput, _TestInput
     , describeSourcePointer
 
     , Sources
@@ -29,6 +29,7 @@ import           Prelude                      hiding (lookup)
 data SourcePointer
     = ReplInput Int T.Text
     | FileInput FilePath
+    | CliInput
     | TestInput
     deriving (Eq, Generic, Ord, Show)
 
@@ -40,6 +41,7 @@ $(makePrisms ''SourcePointer)
 describeSourcePointer :: SourcePointer -> String
 describeSourcePointer (ReplInput _ txt) = T.unpack txt
 describeSourcePointer (FileInput p)     = p
+describeSourcePointer CliInput          = "cli"
 describeSourcePointer TestInput         = "tests"
 
 newtype Sources = Sources

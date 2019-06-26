@@ -40,6 +40,7 @@ Library
     Fregot.Names.Renamer
     Fregot.Main
     Fregot.Main.Bundle
+    Fregot.Main.Eval
     Fregot.Main.Repl
     Fregot.Main.Test
     Fregot.Parser
@@ -57,6 +58,7 @@ Library
     Fregot.Repl
     Fregot.Repl.Breakpoint
     Fregot.Repl.Multiline
+    Fregot.Repl.Parse
     Fregot.Sources
     Fregot.Sources.SourceSpan
     Fregot.Sugar
