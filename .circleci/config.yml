@@ -13,7 +13,7 @@ jobs:
   build:
     # This image has most Haskell stuff preinstalled.
     docker:
-    - image: 'fpco/stack-build:latest'
+    - image: 'fugue2/aws-haskell:latest'
 
     steps:
     - checkout
