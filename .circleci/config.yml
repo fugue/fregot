@@ -24,6 +24,9 @@ jobs:
         command: 'make install'
         no_output_timeout: 50m
     - run:
+        name: 'Set up path'
+        command: echo 'export PATH="$HOME/.local/bin:$PATH"' >> $BASH_ENV
+    - run:
         name: 'Run tests'
         command: 'make test'
     - save_cache:
