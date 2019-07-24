@@ -1,19 +1,16 @@
-{-# LANGUAGE TemplateHaskell #-}
 module Fregot.Main
-    ( Options, verbosity, command
-    , main
+    ( main
     ) where
 
-import           Control.Lens        ((^.))
-import           Control.Lens.TH     (makeLenses)
-import           Data.Version        (showVersion)
-import qualified Fregot.Main.Bundle  as Main.Bundle
-import qualified Fregot.Main.Repl    as Main.Repl
-import qualified Fregot.Main.Test    as Main.Test
-import qualified Fregot.Main.Eval    as Main.Eval
-import           Fregot.Version      (version)
-import qualified Options.Applicative as OA
-import           System.Exit         (exitWith)
+import           Data.Version                 (showVersion)
+import qualified Fregot.Main.Bundle           as Main.Bundle
+import qualified Fregot.Main.Eval             as Main.Eval
+import           Fregot.Main.GlobalOptions
+import qualified Fregot.Main.Repl             as Main.Repl
+import qualified Fregot.Main.Test             as Main.Test
+import           Fregot.Version               (version)
+import qualified Options.Applicative.Extended as OA
+import           System.Exit                  (exitWith)
 
 data Command
     = Test Main.Test.Options
@@ -22,12 +19,7 @@ data Command
     | Eval Main.Eval.Options
     deriving (Show)
 
-data Options = Options
-    { _verbosity :: ()  -- Placeholder
-    , _command   :: Command
-    } deriving (Show)
-
-$(makeLenses ''Options)
+type Options = (GlobalOptions, Command)
 
 parseCommand :: OA.Parser Command
 parseCommand = OA.subparser $ mconcat
@@ -41,9 +33,7 @@ parseCommand = OA.subparser $ mconcat
         OA.command name (OA.info (con <$> p) (OA.progDesc descr))
 
 parseOptions :: OA.Parser Options
-parseOptions = Options
-    <$> pure ()
-    <*> parseCommand
+parseOptions = (,) <$> parseGlobalOptions <*> parseCommand
 
 parseOptionsInfo :: OA.ParserInfo Options
 parseOptionsInfo = OA.info (OA.helper <*> parseOptions) $
@@ -54,9 +44,9 @@ parseOptionsPrefs = OA.prefs OA.showHelpOnError
 
 main :: IO ()
 main = do
-    options <- OA.customExecParser parseOptionsPrefs parseOptionsInfo
-    exitWith =<< case options ^. command of
-        Repl   o -> Main.Repl.main   o
-        Test   o -> Main.Test.main   o
-        Bundle o -> Main.Bundle.main o
-        Eval   o -> Main.Eval.main   o
+    (goptions, cmd) <- OA.customExecParser parseOptionsPrefs parseOptionsInfo
+    exitWith =<< case cmd of
+        Repl   o -> Main.Repl.main   goptions o
+        Test   o -> Main.Test.main   goptions o
+        Bundle o -> Main.Bundle.main goptions o
+        Eval   o -> Main.Eval.main   goptions o

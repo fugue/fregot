@@ -1,6 +1,7 @@
 -- | Source code and source code locations.
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE TemplateHaskell            #-}
 module Fregot.Sources
     ( SourcePointer (..), _ReplInput, _FileInput, _CliInput, _TestInput
@@ -17,6 +18,7 @@ module Fregot.Sources
     ) where
 
 import           Control.Lens.TH              (makePrisms)
+import qualified Data.Aeson                   as Aeson
 import           Data.Binary                  (Binary)
 import           Data.Hashable                (Hashable)
 import qualified Data.HashMap.Strict.Extended as HMS
@@ -35,6 +37,13 @@ data SourcePointer
 
 instance Binary SourcePointer
 instance Hashable SourcePointer
+
+instance Aeson.ToJSON SourcePointer where
+    toJSON = Aeson.toJSON . \case
+        ReplInput _ txt -> T.unpack txt
+        FileInput p     -> p
+        CliInput        -> "cli"
+        TestInput       -> "tests"
 
 $(makePrisms ''SourcePointer)
 

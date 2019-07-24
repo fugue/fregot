@@ -1,7 +1,8 @@
-{-# LANGUAGE LambdaCase            #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE OverloadedStrings     #-}
-{-# LANGUAGE TemplateHaskell       #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE TemplateHaskell            #-}
 module Fregot.Error.Stack
     ( StackTrace
     , StackFrame (..)
@@ -14,6 +15,7 @@ module Fregot.Error.Stack
     ) where
 
 import           Control.Lens              ((^?), _1)
+import qualified Data.Aeson                as Aeson
 import qualified Data.List                 as L
 import           Data.Maybe                (listToMaybe)
 import           Fregot.Names
@@ -23,7 +25,7 @@ import           Fregot.Sources.SourceSpan (SourceSpan)
 import           Prelude                   hiding (null)
 
 newtype StackTrace = StackTrace [StackFrame]
-    deriving (Eq, Show)
+    deriving (Eq, Show, Aeson.ToJSON)
 
 instance PP.Pretty PP.Sem StackTrace where
     pretty (StackTrace frames) = PP.vcat $ map PP.pretty frames
@@ -39,6 +41,19 @@ instance PP.Pretty PP.Sem StackFrame where
             "rule" <+> PP.code (PP.pretty rule) <+> "at" <+> PP.pretty source
         FunctionStackFrame fun source ->
             "function" <+> PP.code (PP.pretty fun) <+> "at" <+> PP.pretty source
+
+instance Aeson.ToJSON StackFrame where
+    toJSON = \case
+        RuleStackFrame rule source -> Aeson.object
+            [ "type"   Aeson..= ("rule" :: String)
+            , "name"   Aeson..= rule
+            , "source" Aeson..= source
+            ]
+        FunctionStackFrame fun source -> Aeson.object
+            [ "type"   Aeson..= ("function" :: String)
+            , "name"   Aeson..= fun
+            , "source" Aeson..= source
+            ]
 
 -- | NOTE(jaspervdj): The 'Maybe' is mainly a future-compatible thing.
 name :: StackFrame -> Maybe Name

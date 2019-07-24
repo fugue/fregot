@@ -18,7 +18,7 @@ module Fregot.Error
     , Errors
     , severe
 
-    , ErrorFmt (..)
+    , Format (..)
     , hPutErrors
 
     , fromParsecError
@@ -31,26 +31,30 @@ module Fregot.Error
     , catchIO
     ) where
 
-import           Control.Exception         (try)
-import           Control.Lens              (anyOf, preview, (^.), _head)
-import           Control.Lens.TH           (makeLenses)
-import           Control.Monad.Except      (MonadError, throwError)
-import           Control.Monad.Trans       (MonadIO (..))
-import           Data.Data                 (Data)
-import           Data.List                 (sortBy)
-import           Data.List.NonEmpty        (NonEmpty)
-import           Data.Monoid               ((<>))
-import           Data.Ord                  (comparing)
-import qualified Data.Text                 as T
-import qualified Fregot.Error.Stack        as Stack
-import           Fregot.PrettyPrint        ((<$$>), (<+>), (?<+>))
-import qualified Fregot.PrettyPrint        as PP
-import qualified Fregot.Sources            as Sources
+import           Control.Exception          (try)
+import           Control.Lens               (anyOf, preview, (^.), _head)
+import           Control.Lens.TH            (makeLenses)
+import           Control.Monad.Except       (MonadError, throwError)
+import           Control.Monad.Trans        (MonadIO (..))
+import qualified Data.Aeson                 as Aeson
+import qualified Data.ByteString.Lazy       as BL
+import qualified Data.ByteString.Lazy.Char8 as BL8
+import           Data.Data                  (Data)
+import           Data.List                  (sortBy)
+import           Data.List.NonEmpty         (NonEmpty)
+import           Data.Monoid                ((<>))
+import           Data.Ord                   (comparing)
+import qualified Data.Text                  as T
+import qualified Fregot.Error.Stack         as Stack
+import           Fregot.Main.GlobalOptions  (Format (..))
+import           Fregot.PrettyPrint         ((<$$>), (<+>), (?<+>))
+import qualified Fregot.PrettyPrint         as PP
+import qualified Fregot.Sources             as Sources
 import           Fregot.Sources.SourceSpan
-import           GHC.Generics              (Generic)
-import qualified System.IO                 as IO
-import qualified System.IO.Error           as IO
-import qualified Text.Parsec               as Parsec
+import           GHC.Generics               (Generic)
+import qualified System.IO                  as IO
+import qualified System.IO.Error            as IO
+import qualified Text.Parsec                as Parsec
 
 -- | Part of a message that belongs to a specific location.
 data SourceSpanMessage = SourceSpanMessage
@@ -70,6 +74,11 @@ instance PP.Pretty e Severity where
     pretty ErrorSeverity   = "error"
     pretty WarningSeverity = "warning"
 
+instance Aeson.ToJSON Severity where
+    toJSON FatalSeverity   = "error"
+    toJSON ErrorSeverity   = "error"
+    toJSON WarningSeverity = "warning"
+
 type Subsystem = T.Text
 
 data Error = Error
@@ -84,6 +93,23 @@ data Error = Error
 $(makeLenses ''SourceSpanMessage)
 $(makeLenses ''Error)
 
+instance Aeson.ToJSON SourceSpanMessage where
+    toJSON e = Aeson.object
+        [ "sourceSpan" Aeson..= (e ^. sourceSpan)
+        , "title"      Aeson..= (e ^. title)
+        , "body"       Aeson..= (e ^. body)
+        ]
+
+instance Aeson.ToJSON Error where
+    toJSON e = Aeson.object
+        [ "severity"    Aeson..= (e ^. severity)
+        , "subsystem"   Aeson..= (e ^. subsystem)
+        , "sourceSpans" Aeson..= (e ^. sourceSpans)
+        , "details"     Aeson..= (e ^. details)
+        , "hints"       Aeson..= (e ^. hints)
+        , "stack"       Aeson..= (e ^. stack)
+        ]
+
 -- | It's fine, it's only a warning...
 severe :: Traversable f => f Error -> Bool
 severe = anyOf (traverse . severity) (/= WarningSeverity)
@@ -92,19 +118,20 @@ severe = anyOf (traverse . severity) (/= WarningSeverity)
 -- shouldn't allow these functions to throw the empty list though.
 type Errors = NonEmpty Error
 
-data ErrorFmt = TextFmt deriving (Show, Eq)
-
 hPutErrors
-    :: IO.Handle -> Sources.Sources -> ErrorFmt -> [Error] -> IO ()
+    :: IO.Handle -> Sources.Sources -> Format -> [Error] -> IO ()
 hPutErrors handle sources fmt messages0 = case fmt of
     -- NOTE (jaspervdj): If we do not have any messages, we don not want to
     -- print anything in case we have text output (`hPutSemDoc` introduces a
     -- newline character).  This is different from the JSON format, where we
     -- need to print `[]` regardless of whether or not we have any messages.
-    TextFmt
+    Text
         | null messages0 -> return ()
         | otherwise      -> PP.hPutSemDoc handle $
             prettyErrors sources messages1
+    Json -> do
+        BL.hPutStr handle $ Aeson.encode messages1
+        BL8.hPutStrLn handle ""
   where
     sortKey   = preview (sourceSpans . _head . sourceSpan)
     messages1 = sortBy (comparing sortKey) messages0

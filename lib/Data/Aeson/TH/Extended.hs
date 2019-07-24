@@ -14,9 +14,11 @@ fregotOptions = defaultOptions
     }
 
 dropPrefix :: String -> String
-dropPrefix str = case break isUpper str of
+dropPrefix str = case break isUpper (dropUnderscore str) of
     (_, (y : ys)) -> toLower y : ys
-    _             -> str
+    (lowers, [])  -> lowers
+  where
+    dropUnderscore = dropWhile (== '_')
 
 -- | Converts 'IOSystem' to 'ioSystem', 'FooBar' into 'fooBar', 'HTTPCall' into
 -- 'httpCall' and so on.

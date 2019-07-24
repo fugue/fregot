@@ -41,6 +41,7 @@ Library
     Fregot.Main
     Fregot.Main.Bundle
     Fregot.Main.Eval
+    Fregot.Main.GlobalOptions
     Fregot.Main.Repl
     Fregot.Main.Test
     Fregot.Parser
@@ -85,6 +86,7 @@ Library
     Data.Text.Extended
     Data.Vector.Extended
     Debug.Trace.Extended
+    Options.Applicative.Extended
     System.Console.Haskeline.Extended
     System.Directory.Find
     System.IO.Extended
