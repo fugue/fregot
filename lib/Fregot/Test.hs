@@ -77,7 +77,7 @@ printTestResults h sources tr = do
     forM_ (tr ^. errored) $ \((pkg, rule), terrs) -> do
         IO.hPutStrLn h $ review Sugar.packageNameFromString pkg <>
             "." <> Sugar.varToString rule <> ":"
-        Error.hPutErrors h sources Error.TextFmt terrs
+        Error.hPutErrors h sources Error.Text terrs
 
     unless (null (tr ^. failed)) $ do
         IO.hPutStrLn h "Failed tests:"

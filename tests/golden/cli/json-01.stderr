@@ -1,0 +1,65 @@
+[
+  {
+    "details": [],
+    "hints": [],
+    "severity": "error",
+    "sourceSpans": [
+      {
+        "body": "is a complete rule",
+        "sourceSpan": {
+          "end": {
+            "column": 16,
+            "line": 3
+          },
+          "sourcePointer": "invalid.rego",
+          "start": {
+            "column": 1,
+            "line": 3
+          }
+        },
+        "title": "complete definition mismatch"
+      },
+      {
+        "body": "generates an object",
+        "sourceSpan": {
+          "end": {
+            "column": 13,
+            "line": 5
+          },
+          "sourcePointer": "invalid.rego",
+          "start": {
+            "column": 1,
+            "line": 5
+          }
+        },
+        "title": "complete definition mismatch"
+      }
+    ],
+    "stack": [],
+    "subsystem": "compile"
+  },
+  {
+    "details": [],
+    "hints": [],
+    "severity": "error",
+    "sourceSpans": [
+      {
+        "body": "Variable idx is referenced, but it is never\nassigned a value.",
+        "sourceSpan": {
+          "end": {
+            "column": 8,
+            "line": 5
+          },
+          "sourcePointer": "invalid.rego",
+          "start": {
+            "column": 6,
+            "line": 5
+          }
+        },
+        "title": "unsafe variable"
+      }
+    ],
+    "stack": [],
+    "subsystem": "var check"
+  }
+]

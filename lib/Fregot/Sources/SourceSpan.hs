@@ -27,6 +27,7 @@ module Fregot.Sources.SourceSpan
 
 import           Control.Lens          ((&), (.~), (^.))
 import           Control.Lens.TH       (makeLenses)
+import qualified Data.Aeson            as Aeson
 import           Data.Binary           (Binary)
 import           Data.Maybe            (fromMaybe, isNothing)
 import qualified Data.Text             as T
@@ -54,6 +55,13 @@ instance PP.Pretty a SourceSpan where
         PP.pretty (describeSourcePointer $ ss ^. sourcePointer) <> ":" <>
         PP.pretty (ss ^. start . line) <> ":" <>
         PP.pretty (ss ^. start . column)
+
+instance Aeson.ToJSON SourceSpan where
+    toJSON e = Aeson.object
+        [ "sourcePointer" Aeson..= (e ^. sourcePointer)
+        , "start"         Aeson..= (e ^. start)
+        , "end"           Aeson..= (e ^. end)
+        ]
 
 -- | (line 42, column 10)
 prettyPos :: SourceSpan -> PP.Doc a

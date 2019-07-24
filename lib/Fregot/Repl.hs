@@ -108,7 +108,7 @@ runInterpreter
 runInterpreter h f = do
     (errors, mbX) <- runParachuteT $ f (h ^. interpreter)
     sauce <- IORef.readIORef (h ^. sources)
-    Error.hPutErrors IO.stderr sauce Error.TextFmt errors
+    Error.hPutErrors IO.stderr sauce Error.Text errors
     return mbX
 
 -- | Retrieve the "currently focused package".  This is usually the
@@ -133,7 +133,7 @@ processInput h input = do
 
     (parseErrs, mbRuleOrTerm) <- runParachuteT $ parseRuleOrExpr sourcep input
     sauce <- IORef.readIORef (h ^. sources)
-    Error.hPutErrors IO.stderr sauce Error.TextFmt parseErrs
+    Error.hPutErrors IO.stderr sauce Error.Text parseErrs
 
     emode   <- IORef.readIORef (h ^. mode)
     bkpts   <- IORef.readIORef (h ^. breakpoints)
@@ -207,7 +207,7 @@ processStep h stepTo state = do
         Just (Interpreter.Error env ctx e)   -> do
             PP.hPutSemDoc IO.stdout $ prefix "error"
             sauce <- IORef.readIORef (h ^. sources)
-            Error.hPutErrors IO.stderr sauce Error.TextFmt [e]
+            Error.hPutErrors IO.stderr sauce Error.Text [e]
             IORef.writeIORef (h ^. mode) (Errored env ctx e)
   where
     prefix = (PP.hint "(debug)" <+>)
@@ -422,7 +422,7 @@ metaCommands =
                     (source, nstep ^. Eval.ssEnvironment . Eval.stack)
             Errored _ _ err -> do
                 sauce <- IORef.readIORef (h ^. sources)
-                Error.hPutErrors IO.stderr sauce Error.TextFmt [err]
+                Error.hPutErrors IO.stderr sauce Error.Text [err]
             _ -> PP.hPutSemDoc IO.stderr "only available when in debugging"
         return True
     ]
