@@ -51,6 +51,7 @@ import           Fregot.Sugar
 import qualified Fregot.Test                       as Test
 import           Fregot.Version                    (version)
 import qualified System.Console.Haskeline.Extended as Hl
+import qualified System.Console.Haskeline.History  as Hl
 import qualified System.Directory                  as Directory
 import           System.FilePath                   ((</>))
 import qualified System.IO.Extended                as IO
@@ -247,7 +248,7 @@ run h = do
     home <- Directory.getHomeDirectory
     let settings = Hl.Settings
             { Hl.historyFile    = Just (home </> ".fregot.repl")
-            , Hl.autoAddHistory = True
+            , Hl.autoAddHistory = False
             , Hl.complete       = Hl.concatCompletion
                 [ Hl.completeFilename
                 , completeBuiltins h
@@ -259,6 +260,12 @@ run h = do
 
     Hl.runInputT settings loop
   where
+    -- Unfortunately we don't have good multiline history editing, so we're
+    -- stuck with adding the lines one by one.
+    addHistory :: T.Text -> Hl.InputT IO ()
+    addHistory txt = forM_ (filter (not . T.null) $ T.lines txt) $ \l ->
+        Hl.modifyHistory $ Hl.addHistoryRemovingAllDupes $ T.unpack l
+
     loop :: Hl.InputT IO ()
     loop = do
         mbInput <- getMultilineInput
@@ -268,9 +275,11 @@ run h = do
                     | (meta : args) <- T.words input
                     , ":" `T.isPrefixOf` meta
                     , Just cmd <- HMS.lookup meta metaShortcuts -> do
+                addHistory input
                 cont <- (cmd ^. metaRun) h args
                 when cont loop
             Just input   -> do
+                addHistory input
                 liftIO $ processInput h input
                 loop
 
