@@ -5,4 +5,4 @@ fregot ([34mrecursion check error[0m):
     3| foo {
        [31m^^^[0m
 
-  This rule is recursive
+  This rule is recursive.
