@@ -1,0 +1,8 @@
+fregot ([34mrecursion check error[0m):
+  "recursive-01.rego" (line 3, column 1):
+  rule is recursive:
+
+    3| foo {
+       [31m^^^[0m
+
+  This rule is recursive
