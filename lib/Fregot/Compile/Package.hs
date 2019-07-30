@@ -16,11 +16,13 @@ module Fregot.Compile.Package
 import           Control.Applicative         ((<|>))
 import           Control.Lens                (forOf_, iforM_, traverseOf, (^.),
                                               (^..))
-import           Control.Monad               (guard, when)
+import           Control.Monad               (forM, guard, when)
 import           Control.Monad.Parachute     (ParachuteT, tellError, tellErrors)
+import qualified Data.Graph                  as Graph
 import qualified Data.HashMap.Strict         as HMS
 import qualified Data.HashSet.Extended       as HS
 import           Data.List.NonEmpty.Extended (NonEmpty (..))
+import           Fregot.Compile.Graph
 import           Fregot.Compile.Order
 import           Fregot.Error                (Error)
 import qualified Fregot.Error                as Error
@@ -70,6 +72,24 @@ compilePackage
     -> PreparedPackage
     -> ParachuteT Error m CompiledPackage
 compilePackage dependencies prep = do
+    -- Build dependency graph.
+    let graph = do
+            rule <- fmap snd $ HMS.toList $ prep ^. packageRules
+            let key = (rule ^. rulePackage, rule ^. ruleName)
+            return (rule, key, HS.toList $ ruleDependencies rule)
+
+    -- Order rules according to dependency graph.
+    _ordering <- fmap concat $ forM (Graph.stronglyConnComp graph) $ \case
+        Graph.AcyclicSCC rule -> return [rule]
+        Graph.CyclicSCC  cycl -> do
+            tellError $ Error.mkMultiError
+                "recursion check"
+                "rules are recursive"
+                [ (r ^. ruleAnn, "This rule is recursive.")
+                | r <- cycl
+                ]
+            return cycl
+
     traverseOf (packageRules . traverse) compileRule prep
   where
     selfArities = aritiesFromPackage prep

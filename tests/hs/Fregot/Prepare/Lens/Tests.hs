@@ -14,7 +14,7 @@ import qualified Test.Tasty.HUnit      as Tasty
 tests :: Tasty.TestTree
 tests = Tasty.testGroup "Fregot.Prepare.Lens.Tests"
     [ Tasty.testCase "vars in closures" $ HS.toHashSetOf
-        (ruleBodyTerms . termCosmosClosures . termCosmosVars . traverse . _LocalName)
+        (ruleBodyTerms . termCosmosClosures . termCosmosNames . traverse . _LocalName)
         [ l $ UnifyS () (v "a") (v "b")
         , l $ TermS (ArrayCompT () (v "c") [l $ TermS (v "c")])
         , l $ TermS $ ArrayT ()

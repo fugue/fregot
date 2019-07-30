@@ -16,6 +16,7 @@ Library
   Hs-source-dirs:   lib
 
   Exposed-modules:
+    Fregot.Compile.Graph
     Fregot.Compile.Order
     Fregot.Compile.Package
     Fregot.Error
@@ -64,7 +65,6 @@ Library
     Fregot.Sources.SourceSpan
     Fregot.Sugar
     Fregot.Test
-    Fregot.TypeCheck.Infer
     Fregot.TypeCheck.Types
     Fregot.Version
 
