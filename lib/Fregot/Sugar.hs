@@ -121,7 +121,7 @@ data Term a n
     = RefT      a a n [RefArg a n]
     | CallT     a [n] [Expr a n]
     | VarT      a n
-    | ScalarT   a (Scalar a)
+    | ScalarT   a Scalar
 
     | ArrayT    a [Expr a n]
     | SetT      a [Expr a n]
@@ -141,19 +141,19 @@ data RefArg a n
 
 instance (Binary a, Binary n) => Binary (RefArg a n)
 
-data Scalar a
+data Scalar
     = String T.Text
     | Number Scientific
     | Bool   Bool
     | Null
     deriving (Eq, Generic, Show)
 
-instance Binary a => Binary (Scalar a)
+instance Binary Scalar
 
 type Object a n = [(ObjectKey a n, Expr a n)]
 
 data ObjectKey a n
-    = ScalarK a (Scalar a)
+    = ScalarK a Scalar
     | VarK    a UnqualifiedVar
     | RefK    a n [RefArg a n]
     deriving (Generic, Show)
@@ -307,7 +307,7 @@ instance PP.Pretty PP.Sem n => PP.Pretty PP.Sem (RefArg a n) where
     pretty (RefDotArg _ k) =
         PP.punctuation "." <> PP.pretty k
 
-instance PP.Pretty PP.Sem (Scalar a) where
+instance PP.Pretty PP.Sem Scalar where
     pretty (String s) = PP.literal $ PP.pretty $ show $ T.unpack s
     pretty (Number s) = PP.literal $ PP.pretty s
     pretty (Bool   b) = PP.literal $ if b then "true" else "false"

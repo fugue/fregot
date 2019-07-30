@@ -228,7 +228,7 @@ refArg =
         v <- var
         return $ \ss -> RefDotArg ss v)
 
-scalar :: FregotParser (Scalar SourceSpan)
+scalar :: FregotParser Scalar
 scalar =
     (String <$> Tok.string) <|>
     (do

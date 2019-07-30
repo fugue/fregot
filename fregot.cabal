@@ -36,14 +36,14 @@ Library
     Fregot.Lexer.Internal
     Fregot.Lexer.Position
     Fregot.Lexer.String
-    Fregot.Names
-    Fregot.Names.Renamer
     Fregot.Main
     Fregot.Main.Bundle
     Fregot.Main.Eval
     Fregot.Main.GlobalOptions
     Fregot.Main.Repl
     Fregot.Main.Test
+    Fregot.Names
+    Fregot.Names.Renamer
     Fregot.Parser
     Fregot.Parser.Internal
     Fregot.Parser.Sugar
@@ -64,6 +64,8 @@ Library
     Fregot.Sources.SourceSpan
     Fregot.Sugar
     Fregot.Test
+    Fregot.TypeCheck.Infer
+    Fregot.TypeCheck.Types
     Fregot.Version
 
     Control.Monad.Parachute

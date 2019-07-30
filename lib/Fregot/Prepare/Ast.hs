@@ -103,7 +103,7 @@ data Term a
     = RefT        a (Term a) (Term a)
     | CallT       a Function [Term a]
     | NameT       a Name
-    | ScalarT     a (Sugar.Scalar a)
+    | ScalarT     a Sugar.Scalar
     | ArrayT      a [Term a]
     | SetT        a [Term a]
     | ObjectT     a (Object a)
