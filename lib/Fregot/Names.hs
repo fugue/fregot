@@ -27,6 +27,8 @@ module Fregot.Names
     , nameFromText
 
     , Imports
+
+    , InstVar (..)
     ) where
 
 import           Control.Lens        (review, (^?))
@@ -218,3 +220,20 @@ nameFromText txt = case T.breakOnEnd "." txt of
         <*> var ^? varFromText
 
 type Imports a = HMS.HashMap Var (a, PackageName)
+
+-- | An instantiated variable.  These have a unique (within the evaluation
+-- context) number identifying them.  The var is just there for debugging
+-- purposes.
+data InstVar = InstVar {-# UNPACK #-} !Unique.Unique {-# UNPACK #-} !Var
+    deriving Eq via Unique.Uniquely InstVar
+    deriving Ord via Unique.Uniquely InstVar
+    deriving Hashable via Unique.Uniquely InstVar
+
+instance Unique.HasUnique InstVar where
+    getUnique (InstVar u _) = u
+
+instance Show InstVar where
+    show (InstVar n v) = T.unpack (unVar v) ++ "_" ++ show n
+
+instance PP.Pretty a InstVar where
+    pretty = PP.pretty . show

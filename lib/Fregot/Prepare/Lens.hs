@@ -2,11 +2,14 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 module Fregot.Prepare.Lens
-    ( ruleBodyTerms
+    ( ruleTerms
+    , ruleDefinitionTerms
+
+    , ruleBodyTerms
     , literalTerms
     , termAnn
     , termNames
-    , termCosmosVars
+    , termCosmosNames
     , termCosmosNoClosures
     , termCosmosClosures
     , termRuleBodies
@@ -21,6 +24,37 @@ import           Fregot.Names
 import           Fregot.Prepare.Ast
 
 $(makePrisms ''Term)
+
+-- All direct terms of the rule, combine with 'cosmos' to traverse deeper.
+ruleTerms :: Traversal' (Rule a) (Term a)
+ruleTerms f rule = Rule
+    <$> pure (rule ^. rulePackage)
+    <*> pure (rule ^. ruleName)
+    <*> pure (rule ^. ruleAnn)
+    <*> traverse f (rule ^. ruleDefault)
+    <*> pure (rule ^. ruleKind)
+    <*> traverseOf (traverse . ruleDefinitionTerms) f (rule ^. ruleDefs)
+
+-- | All direct terms of a rule definition, combine with 'cosmos' to traverse
+-- deeper.
+ruleDefinitionTerms :: Traversal' (RuleDefinition a) (Term a)
+ruleDefinitionTerms f rdef = RuleDefinition
+    <$> pure (rdef ^. ruleDefName)
+    <*> pure (rdef ^. ruleDefImports)
+    <*> pure (rdef ^. ruleDefAnn)
+    <*> traverseOf (traverse . traverse) f (rdef ^. ruleArgs)
+    <*> traverse f (rdef ^. ruleIndex)
+    <*> traverse f (rdef ^. ruleValue)
+    <*> traverseOf (traverse . ruleBodyTerms) f (rdef ^. ruleBodies)
+    <*> traverseOf (traverse . ruleElseTerms) f (rdef ^. ruleElses)
+
+-- | All direct terms of a rule else construct, combine with 'cosmos' to
+-- traverse deeper.
+ruleElseTerms :: Traversal' (RuleElse a) (Term a)
+ruleElseTerms f relse = RuleElse
+    <$> pure (relse ^. ruleElseAnn)
+    <*> traverse f (relse ^. ruleElseValue)
+    <*> traverseOf ruleBodyTerms f (relse ^. ruleElseBody)
 
 termAnn :: Lens' (Term a) a
 termAnn = lens getAnn setAnn
@@ -82,8 +116,8 @@ instance Plated (Term a) where
 termNames :: Traversal' (Term a) (a, Name)
 termNames = _NameT
 
-termCosmosVars :: Fold (Term a) (a, Name)
-termCosmosVars = cosmos . termNames
+termCosmosNames :: Fold (Term a) (a, Name)
+termCosmosNames = cosmos . termNames
 
 -- | Fold over all closures in a term recursively.
 termCosmosClosures :: Fold (Term a) (Term a)

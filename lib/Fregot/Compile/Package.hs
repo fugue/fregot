@@ -14,13 +14,16 @@ module Fregot.Compile.Package
     ) where
 
 import           Control.Applicative         ((<|>))
-import           Control.Lens                (forOf_, iforM_, traverseOf, (^.),
-                                              (^..))
-import           Control.Monad               (guard, when)
+import           Control.Lens                (forOf_, iforM_, traverseOf, view,
+                                              (^.), (^..))
+import           Control.Monad               (forM, guard, when)
 import           Control.Monad.Parachute     (ParachuteT, tellError, tellErrors)
+import           Data.Functor                (($>))
+import qualified Data.Graph                  as Graph
 import qualified Data.HashMap.Strict         as HMS
 import qualified Data.HashSet.Extended       as HS
 import           Data.List.NonEmpty.Extended (NonEmpty (..))
+import           Fregot.Compile.Graph
 import           Fregot.Compile.Order
 import           Fregot.Error                (Error)
 import qualified Fregot.Error                as Error
@@ -70,6 +73,17 @@ compilePackage
     -> PreparedPackage
     -> ParachuteT Error m CompiledPackage
 compilePackage dependencies prep = do
+    -- Build dependency graph.
+    let graph = do
+            rule <- fmap snd $ HMS.toList $ prep ^. packageRules
+            let key = (rule ^. rulePackage, rule ^. ruleName)
+            return (rule, key, HS.toList $ ruleDependencies rule)
+
+    -- Order rules according to dependency graph.
+    _ordering <- fmap concat $ forM (Graph.stronglyConnComp graph) $ \case
+        Graph.AcyclicSCC rule -> return [rule]
+        Graph.CyclicSCC  cycl -> tellError (recursionError cycl) $> cycl
+
     traverseOf (packageRules . traverse) compileRule prep
   where
     selfArities = aritiesFromPackage prep
@@ -168,3 +182,15 @@ runOrder (x, Unsafe unsafe) = do
         "compile" source "unknown variable" $
         "Undefined variable:" <+> PP.pretty var
     return x
+
+recursionError :: [Rule a] -> Error
+recursionError [single] = Error.mkError
+    "recursion check" (single ^. ruleAnn) "rule is recursive"
+    "This rule is recursive."
+recursionError cycl = Error.mkMultiError
+    "recursion check"
+    "rules are recursive" $ do
+        r <- cycl
+        return $ (,) (r ^. ruleAnn) $
+            "These rules are mutually recursive:" <$$>
+            PP.ind (PP.vcat (map (PP.code . PP.pretty . view ruleName) cycl))

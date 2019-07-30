@@ -19,7 +19,8 @@ class Monad m => MonadUnify v t m | m -> v, m -> t where
     -- Actual unification that traverses terms.
     unify :: t -> t -> m ()
 
-    -- State management
+    -- State management.  Doing this through requiring MonadState and just
+    -- having a Lens would be a bit nicer.
     getUnification    :: m (Unification v t)
     putUnification    :: Unification v t -> m ()
     modifyUnification :: (Unification v t -> Unification v t) -> m ()

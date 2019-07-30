@@ -465,7 +465,7 @@ evalStatement (AssignS source v x) = suspend source $ do
     return $ BoolV True
 evalStatement (TermS e) = suspend (e ^. termAnn) (evalTerm e)
 
-evalScalar :: Scalar a -> EvalM Value
+evalScalar :: Scalar -> EvalM Value
 evalScalar (String t) = return $ StringV t
 evalScalar (Number n) = return $ NumberV $ Number.fromScientific n
 evalScalar (Bool   b) = return $ BoolV   b

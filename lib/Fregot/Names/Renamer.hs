@@ -121,7 +121,8 @@ resolveRef source var refArgs = do
     deps    <- view reDependencies
 
     -- Auxiliary to check if something actually exists in the deps.
-    let checkExists pkg name = case HMS.lookup pkg deps of
+    let checkExists pkg _ | pkg == thispkg = return ()
+        checkExists pkg name = case HMS.lookup pkg deps of
             Nothing ->
                 tellRenameError source "unknown package" $
                 "Package" <+> PP.pretty pkg <+>
@@ -134,7 +135,8 @@ resolveRef source var refArgs = do
 
     case var of
 
-        "data"  | Just (pkg, rname, remainder) <- resolveData deps refArgs -> do
+        "data"  | Just (pkg, rname, remainder) <-
+                    resolveData thispkg deps refArgs -> do
             checkExists pkg rname
             remainder' <- traverse renameRefArg remainder
             return (QualifiedName pkg rname, remainder')
@@ -167,13 +169,13 @@ resolveRef source var refArgs = do
         RefBrackArg e  -> RefBrackArg <$> renameExpr e
         RefDotArg s uv -> pure (RefDotArg s uv)
 
-    resolveData deps args = listToMaybe $ do
+    resolveData thispkg deps args = listToMaybe $ do
         -- The reverse here is used to try the longest path first.
         (pre, (name : remainder)) <- reverse $ splits args
         pkg <- fmap (mkPackageName . map unVar) $ maybeToList $
             mapM refArgToVar pre
         name' <- maybeToList $ refArgToVar name
-        guard $ pkg `HMS.member` deps
+        guard $ pkg == thispkg || pkg `HMS.member` deps
         return (pkg, name', remainder)
 
 renameTerm :: Rename Term
@@ -231,7 +233,8 @@ renameTerm = \case
     -- QualifiedName, if not it's a LocalName.  WildcardName and BuiltinName are
     -- special cases.
     VarT a "_" -> pure $ VarT a WildcardName
-    VarT a v | specialBuiltinVar v -> pure $ VarT a (BuiltinName v)
+    VarT a v | specialBuiltinVar v ->
+        pure $ VarT a (BuiltinName v)
     VarT a v -> do
         pkg   <- view rePackage
         rules <- view rePackageRules
