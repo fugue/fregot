@@ -1,0 +1,15 @@
+repl% repl% 4|   x = 1
+     [32m^^^^^[0m
+rewind(debug)% 5|   x + "hi" > "wat"
+     [32m^^^^^^^^^^^^^^^^[0m
+rewind(debug)% [32m(debug)[0m error
+rewind(error)% 5|   x + "hi" > "wat"
+     [32m^^^^^^^^^^^^^^^^[0m
+rewind(debug)% repl% repl% 9|   x = 1
+     [32m^^^^^[0m
+rewind(debug)% 10|   x = 2
+      [32m^^^^^[0m
+rewind(debug)% [32m(debug)[0m finished
+repl% 10|   x = 2
+      [32m^^^^^[0m
+rewind(debug)% repl% 
