@@ -14,6 +14,7 @@ Other commands:
   :continue  continue running the debugged program
   :step  step (into) the next rule in the debugged program
   :next  step (over) the next rule in the debugged program
+  :rewind  go back to the previous debug suspension
   :test  run tests in the current package
   :where  print your location
 

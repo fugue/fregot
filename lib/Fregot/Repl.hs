@@ -27,6 +27,8 @@ import qualified Data.HashSet                      as HS
 import           Data.IORef.Extended               (IORef)
 import qualified Data.IORef.Extended               as IORef
 import qualified Data.List                         as L
+import           Data.List.NonEmpty.Extended       (NonEmpty (..))
+import qualified Data.List.NonEmpty.Extended       as NonEmpty
 import           Data.Maybe                        (fromMaybe, isNothing)
 import qualified Data.Text                         as T
 import qualified Data.Text.IO                      as T
@@ -56,10 +58,12 @@ import qualified System.Directory                  as Directory
 import           System.FilePath                   ((</>))
 import qualified System.IO.Extended                as IO
 
+type Resume = (SourceSpan, Eval.StepState Eval.Value)
+
 data Mode
-    = RegularMode
-    | Suspended   SourceSpan (Eval.StepState Eval.Value)
-    | Errored     Eval.Environment Eval.Context Error.Error
+    = RegularMode [Resume]
+    | Suspended   (NonEmpty Resume)
+    | Errored     Eval.Environment Eval.Context Error.Error [Resume]
 
 data StepTo
     = StepToBreak (Maybe Stack.StackTrace)
@@ -67,17 +71,18 @@ data StepTo
     | StepOver    Stack.StackTrace
 
 data Handle = Handle
-    { _sources     :: !Sources.Handle
-    , _interpreter :: !Interpreter.Handle
-    , _replCount   :: !(IORef Int)
+    { _resumeHistory :: !Int
+    , _sources       :: !Sources.Handle
+    , _interpreter   :: !Interpreter.Handle
+    , _replCount     :: !(IORef Int)
     -- | Last file that was loaded.  Used to implement the `:reload` command.
-    , _lastLoad    :: !(IORef (Maybe FilePath))
+    , _lastLoad      :: !(IORef (Maybe FilePath))
     -- | Currently open package.
-    , _openPackage :: !(IORef PackageName)
+    , _openPackage   :: !(IORef PackageName)
 
     -- | Current mode; either debugging or regular evaluation.
-    , _mode        :: !(IORef Mode)
-    , _breakpoints :: !(IORef (HS.HashSet Breakpoint))
+    , _mode          :: !(IORef Mode)
+    , _breakpoints   :: !(IORef (HS.HashSet Breakpoint))
     }
 
 data MetaCommand = MetaCommand
@@ -95,10 +100,11 @@ withHandle
     -> (Handle -> IO a)
     -> IO a
 withHandle _sources _interpreter f = do
+    let _resumeHistory = 10
     _replCount   <- IORef.newIORef 0
     _lastLoad    <- IORef.newIORef Nothing
     _openPackage <- IORef.newIORef "repl"
-    _mode        <- IORef.newIORef RegularMode
+    _mode        <- IORef.newIORef $ RegularMode []
     _breakpoints <- IORef.newIORef HS.empty
     f Handle {..}
 
@@ -121,9 +127,10 @@ readFocusedPackage h = do
     open  <- IORef.readIORef (h ^. openPackage)
     emode <- IORef.readIORef (h ^. mode)
     let stack = case emode of
-            RegularMode    -> Nothing
-            Suspended _ ss -> Just $ ss ^. Eval.ssEnvironment . Eval.stack
-            Errored e _ _  -> Just $ e ^. Eval.stack
+            RegularMode _            -> Nothing
+            Errored e _ _ _          -> Just $ e ^. Eval.stack
+            Suspended ((_, ss) :| _) ->
+                Just $ ss ^. Eval.ssEnvironment . Eval.stack
     return $ fromMaybe open (stack >>= Stack.package)
 
 processInput :: Handle -> T.Text -> IO ()
@@ -140,7 +147,7 @@ processInput h input = do
     bkpts   <- IORef.readIORef (h ^. breakpoints)
     pkgname <- readFocusedPackage h
     case mbRuleOrTerm of
-        Just (Left rule) | RegularMode <- emode -> do
+        Just (Left rule) | RegularMode _ <- emode -> do
             mbResult <- runInterpreter h $ \i -> do
                 Interpreter.insertRule i pkgname sourcep rule
                 Interpreter.compilePackages i
@@ -154,26 +161,26 @@ processInput h input = do
             -- this, but I'm not sure if it's worth it.
             IO.hPutStrLn IO.stderr $ "Cannot add rules while debugging"
 
-        Just (Right expr) | not (HS.null bkpts), RegularMode <- emode -> do
+        Just (Right expr) | not (HS.null bkpts), RegularMode _ <- emode -> do
             mbStepState <- runInterpreter h $ \i ->
                 Interpreter.mkStepState i pkgname expr
 
             case mbStepState of
                 Nothing     -> return ()
-                Just sstate -> processStep h (StepToBreak Nothing) sstate
+                Just sstate -> processStep h [] (StepToBreak Nothing) sstate
 
         Just (Right expr) -> do
             mbRows <- runInterpreter h $ \i -> do
                 -- Read and patch the options.
                 eopts <- Interpreter.readEvalOptions i
                 let eopts' = case emode of
-                        Suspended _ state -> eopts
+                        Suspended ((_, state) :| _) -> eopts
                             & Interpreter.eoContext  .~ (state ^. Eval.ssContext)
                             & Interpreter.eoInputDoc .~ (state ^. Eval.ssEnvironment . Eval.inputDoc)
-                        Errored env ctx _  -> eopts
+                        Errored env ctx _ _ -> eopts
                             & Interpreter.eoContext  .~ ctx
                             & Interpreter.eoInputDoc .~ (env ^. Eval.inputDoc)
-                        _                 -> eopts
+                        _ -> eopts
 
                 Interpreter.evalExpr i eopts' pkgname expr
             forM_ mbRows $ \rows -> case rows of
@@ -184,32 +191,34 @@ processInput h input = do
         Nothing -> return ()
 
 -- | Only makes sense in stepping mode.  Otherwise, does nothing.
-processStep :: Handle -> StepTo -> Eval.StepState Eval.Value -> IO ()
-processStep h stepTo state = do
+processStep
+    :: Handle -> [Resume] -> StepTo -> Eval.StepState Eval.Value -> IO ()
+processStep h resumes stepTo state = do
     mbStep <- runInterpreter h $ \i -> Interpreter.step i state
     case mbStep of
         Nothing                      ->
             PP.hPutSemDoc IO.stdout $ prefix "internal error"
         Just Interpreter.Done        -> do
             PP.hPutSemDoc IO.stdout $ prefix "finished"
-            IORef.writeIORef (h ^. mode) RegularMode
+            IORef.writeIORef (h ^. mode) $ RegularMode resumes
         Just (Interpreter.Yield x nstate)   -> do
             PP.hPutSemDoc IO.stdout $ prefix "=" <+> PP.pretty x
-            processStep h stepTo nstate
+            processStep h resumes stepTo nstate
         Just (Interpreter.Suspend source nstate) -> do
             maybeCont <- continueStepping stepTo
                 (source, nstate ^. Eval.ssEnvironment . Eval.stack)
             case maybeCont of
-                Just cont -> processStep h cont nstate
+                Just cont -> processStep h resumes cont nstate
                 Nothing -> do
                     sauce <- IORef.readIORef (h ^. sources)
                     PP.hPutSemDoc IO.stdout $ prettySnippet sauce source
-                    IORef.writeIORef (h ^. mode) (Suspended source nstate)
+                    IORef.writeIORef (h ^. mode) $ Suspended $
+                        (source, nstate) :| take (h ^. resumeHistory) resumes
         Just (Interpreter.Error env ctx e)   -> do
             PP.hPutSemDoc IO.stdout $ prefix "error"
             sauce <- IORef.readIORef (h ^. sources)
             Error.hPutErrors IO.stderr sauce Error.Text [e]
-            IORef.writeIORef (h ^. mode) (Errored env ctx e)
+            IORef.writeIORef (h ^. mode) (Errored env ctx e resumes)
   where
     prefix = (PP.hint "(debug)" <+>)
 
@@ -306,9 +315,9 @@ run h = do
         return $
             review packageNameFromString pkg <>
             (case emode of
-                RegularMode   -> ""
-                Suspended _ _ -> "(debug)"
-                Errored _ _ _ -> "(error)") <>
+                RegularMode _   -> ""
+                Suspended _     -> "(debug)"
+                Errored _ _ _ _ -> "(error)") <>
             "% "
 
 metaShortcuts :: HMS.HashMap T.Text MetaCommand
@@ -391,10 +400,11 @@ metaCommands =
                 return True
 
     , MetaCommand ":quit" "exit the repl" $ \h _ -> liftIO $ do
-        oldMode <- IORef.atomicModifyIORef (h ^. mode) $ \m -> (RegularMode, m)
+        oldMode <- IORef.atomicModifyIORef (h ^. mode) $
+            \m -> (RegularMode [], m)
         case oldMode of
-            RegularMode -> return False
-            _           -> return True
+            RegularMode _ -> return False
+            _             -> return True
 
     , MetaCommand ":reload" "reload the file from the last `:load`" $
         \h _ -> liftIO $ do
@@ -412,6 +422,23 @@ metaCommands =
     , MetaCommand ":next" "step (over) the next rule in the debugged program" $
         stepWith (StepOver . view (Eval.ssEnvironment . Eval.stack))
 
+    , MetaCommand ":rewind" "go back to the previous debug suspension" $ do
+        \h _ -> liftIO $ do
+            sauce  <- IORef.readIORef (h ^. sources)
+            source <- IORef.atomicModifyIORef' (h ^. mode) $ \case
+                RegularMode (resume : resumes) ->
+                    (Suspended (resume :| resumes), Just (fst resume))
+                Suspended (_ :| resume : resumes) ->
+                    (Suspended (resume :| resumes), Just (fst resume))
+                Errored _ _ _ (resume : resumes) ->
+                    (Suspended (resume :| resumes), Just (fst resume))
+                emode -> (emode, Nothing)
+            case source of
+                Just s  -> PP.hPutSemDoc IO.stdout $ prettySnippet sauce s
+                Nothing -> IO.hPutStrLn IO.stderr $
+                    "No previous suspension point in the debugger"
+            return True
+
     , MetaCommand ":test" "run tests in the current package" $
         \h _ -> liftIO $ do
             pkg     <- IORef.readIORef (h ^. openPackage)
@@ -425,11 +452,11 @@ metaCommands =
     , MetaCommand ":where" "print your location" $ \h _ -> liftIO $ do
         emode <- IORef.readIORef (h ^. mode)
         case emode of
-            Suspended source nstep -> do
+            Suspended ((source, nstep) :| _) -> do
                 sauce <- IORef.readIORef (h ^. sources)
                 PP.hPutSemDoc IO.stdout $ prettySuspension sauce
                     (source, nstep ^. Eval.ssEnvironment . Eval.stack)
-            Errored _ _ err -> do
+            Errored _ _ err _ -> do
                 sauce <- IORef.readIORef (h ^. sources)
                 Error.hPutErrors IO.stderr sauce Error.Text [err]
             _ -> PP.hPutSemDoc IO.stderr "only available when in debugging"
@@ -447,9 +474,10 @@ metaCommands =
     stepWith f = \h _ -> liftIO $ do
         emode <- IORef.readIORef (h ^. mode)
         case emode of
-            RegularMode        -> IO.hPutStrLn IO.stderr "Not paused"
-            Errored _ _ _      -> IO.hPutStrLn IO.stderr "Not paused"
-            Suspended _  nstep -> processStep h (f nstep) nstep
+            RegularMode _ -> IO.hPutStrLn IO.stderr "Not paused"
+            Errored _ _ _ _ -> IO.hPutStrLn IO.stderr "Not paused"
+            Suspended resumes@((_, nstep) :| _) ->
+                processStep h (NonEmpty.toList resumes) (f nstep) nstep
         return True
 
     breakHelp =
