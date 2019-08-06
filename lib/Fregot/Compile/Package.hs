@@ -18,6 +18,7 @@ import           Control.Lens                (forOf_, iforM_, traverseOf, view,
                                               (^.), (^..))
 import           Control.Monad               (forM, guard, when)
 import           Control.Monad.Parachute     (ParachuteT, tellError, tellErrors)
+import           Data.Foldable               (for_)
 import           Data.Functor                (($>))
 import qualified Data.Graph                  as Graph
 import qualified Data.HashMap.Strict         as HMS
@@ -37,6 +38,7 @@ import           Fregot.Prepare.Vars         (Arities, Safe (..), ovRuleBody,
 import           Fregot.PrettyPrint          ((<$$>), (<+>))
 import qualified Fregot.PrettyPrint          as PP
 import           Fregot.Sources.SourceSpan   (SourceSpan)
+import qualified Fregot.TypeCheck.Infer      as Infer
 import           Prelude                     hiding (head, lookup)
 
 type CompiledPackage = Package ()
@@ -80,9 +82,12 @@ compilePackage dependencies prep = do
             return (rule, key, HS.toList $ ruleDependencies rule)
 
     -- Order rules according to dependency graph.
-    _ordering <- fmap concat $ forM (Graph.stronglyConnComp graph) $ \case
+    ordering <- fmap concat $ forM (Graph.stronglyConnComp graph) $ \case
         Graph.AcyclicSCC rule -> return [rule]
         Graph.CyclicSCC  cycl -> tellError (recursionError cycl) $> cycl
+
+    -- Typecheck rules.
+    Infer.runInfer $ for_ ordering Infer.inferRule
 
     traverseOf (packageRules . traverse) compileRule prep
   where
