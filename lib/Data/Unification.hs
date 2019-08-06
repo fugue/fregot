@@ -17,6 +17,9 @@ import           Prelude             hiding (lookup)
 
 class Monad m => MonadUnify v t m | m -> v, m -> t where
     -- Actual unification that traverses terms.
+    --
+    -- TODO(jaspervdj): This should return a new `t`, so we can e.g. accumulate
+    -- type origins.
     unify :: t -> t -> m ()
 
     -- State management.  Doing this through requiring MonadState and just

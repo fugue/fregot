@@ -50,3 +50,4 @@ inferTerm (ScalarT _ scalar) =
 
 inferScalar :: Scalar -> Type
 inferScalar (String _) = Types.String
+inferScalar (Number _) = Types.Number
