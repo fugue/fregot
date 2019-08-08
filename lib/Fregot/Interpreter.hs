@@ -5,6 +5,7 @@ module Fregot.Interpreter
     ( InterpreterM
     , Handle
     , newHandle
+    , readBuiltins
     , readPackages
     , readPackageRules
     , readAllRules
@@ -36,6 +37,7 @@ import           Control.Lens                    (forOf_, ifor_, to, (^.),
                                                   (^..), _2)
 import           Control.Lens.TH                 (makeLenses)
 import           Control.Monad                   (foldM)
+import           Control.Monad.Identity          (Identity (..))
 import           Control.Monad.Parachute
 import           Control.Monad.Reader            (runReader)
 import           Control.Monad.Trans             (liftIO)
@@ -48,13 +50,14 @@ import           Data.IORef.Extended             (IORef)
 import qualified Data.IORef.Extended             as IORef
 import           Data.Maybe                      (fromMaybe)
 import qualified Data.Text.IO                    as T
+import           Data.Traversable.HigherOrder    (htraverse)
 import           Fregot.Compile.Package          (CompiledPackage)
 import qualified Fregot.Compile.Package          as Compile
 import           Fregot.Error                    (Error, catchIO)
 import qualified Fregot.Error                    as Error
 import qualified Fregot.Error.Stack              as Stack
 import qualified Fregot.Eval                     as Eval
-import qualified Fregot.Eval.Builtins            as Builtins
+import           Fregot.Eval.Builtins            (Builtins, defaultBuiltins)
 import qualified Fregot.Eval.Cache               as Cache
 import qualified Fregot.Eval.Json                as Eval.Json
 import           Fregot.Eval.Monad               (EvalCache)
@@ -65,6 +68,7 @@ import           Fregot.Names
 import qualified Fregot.Names.Renamer            as Renamer
 import qualified Fregot.Parser                   as Parser
 import qualified Fregot.Prepare                  as Prepare
+import           Fregot.Prepare.Ast              (Function (..))
 import           Fregot.Prepare.Package          (PreparedPackage)
 import qualified Fregot.Prepare.Package          as Prepare
 import           Fregot.PrettyPrint              ((<$$>), (<+>))
@@ -78,7 +82,8 @@ import           System.FilePath.Extended        (listExtensions)
 type InterpreterM a = ParachuteT Error IO a
 
 data Handle = Handle
-    { _sources      :: !Sources.Handle
+    { _builtins     :: !(Builtins Identity)
+    , _sources      :: !Sources.Handle
     -- | List of modules, and files we loaded them from.  Grouped by package
     -- name.
     , _modules      :: !(IORef (HMS.HashMap PackageName ModuleBatch))
@@ -95,11 +100,12 @@ newHandle
     :: Sources.Handle
     -> IO Handle
 newHandle _sources = do
-    _modules      <- liftIO $ IORef.newIORef HMS.empty
-    _compiled     <- liftIO $ IORef.newIORef HMS.empty
-    _cache        <- liftIO $ Cache.new
-    _cacheVersion <- liftIO $ Cache.bump _cache >>= IORef.newIORef
-    _inputDoc     <- liftIO $ IORef.newIORef emptyObject
+    _builtins     <- traverse (htraverse (fmap Identity)) defaultBuiltins
+    _modules      <- IORef.newIORef HMS.empty
+    _compiled     <- IORef.newIORef HMS.empty
+    _cache        <- Cache.new
+    _cacheVersion <- Cache.bump _cache >>= IORef.newIORef
+    _inputDoc     <- IORef.newIORef emptyObject
     return Handle {..}
 
 readDependencyGraph
@@ -181,11 +187,12 @@ saveBundle h path = liftIO $ do
 -- TODO(jaspervdj): We should probably crash rather than creating an empty
 -- package.
 preparePackage
-    :: HMS.HashMap PackageName ModuleBatch
+    :: Builtins Identity
+    -> HMS.HashMap PackageName ModuleBatch
     -> HMS.HashMap PackageName CompiledPackage
     -> PackageName
     -> InterpreterM PreparedPackage
-preparePackage modmap dependencies pkgname = do
+preparePackage builtin modmap dependencies pkgname = do
     let mods = maybe [] (map snd) (HMS.lookup pkgname modmap)
         pkg0 = Prepare.empty pkgname
         pkgRules = HS.toHashSetOf
@@ -197,7 +204,7 @@ preparePackage modmap dependencies pkgname = do
         -- Rename module.
         imports <- Prepare.prepareImports (modul0 ^. Sugar.moduleImports)
         let renamerEnv = Renamer.RenamerEnv
-                Builtins.builtins imports pkgname pkgRules dependencies
+                builtin imports pkgname pkgRules dependencies
         modul1 <- runRenamerT renamerEnv $ Renamer.renameModule modul0
 
         foldM
@@ -223,8 +230,8 @@ readCompiledPackage h want = do
         _ : _ -> do
             comp1 <- foldM
                 (\uni pkgname -> do
-                    prep <- preparePackage modmap uni pkgname
-                    cp   <- Compile.compilePackage uni prep
+                    prep <- preparePackage (h ^. builtins) modmap uni pkgname
+                    cp   <- Compile.compilePackage (h ^. builtins) uni prep
                     dieIfErrors
                     return $ HMS.insert pkgname cp uni)
                 comp0
@@ -243,6 +250,10 @@ compilePackages h = do
     comps <- liftIO $ IORef.readIORef (h ^. compiled)
     let needComp = mods `HMS.difference` comps
     ifor_ needComp $ \pkgname _ -> readCompiledPackage h pkgname
+
+-- | Get a list of all builtins.
+readBuiltins :: Handle -> InterpreterM [Function]
+readBuiltins h = return $ HMS.keys $ h ^. builtins
 
 -- | Get a list of loaded packages.
 readPackages :: Handle -> InterpreterM [PackageName]
@@ -302,7 +313,8 @@ eval h eoptions  _pkgname mx = do
     cachev <- liftIO $ IORef.readIORef (h ^. cacheVersion)
     let ctx = eoptions ^. eoContext
         env = Eval.Environment
-            { Eval._packages     = comp
+            { Eval._builtins     = h ^. builtins
+            , Eval._packages     = comp
             , Eval._inputDoc     = eoptions ^. eoInputDoc
             , Eval._cache        = h ^. cache
             , Eval._cacheVersion = cachev
@@ -320,7 +332,7 @@ evalExpr h eoptions pkgname expr = do
 
     -- Rename expression.
     let renamerEnv = Renamer.RenamerEnv
-            Builtins.builtins
+            (h ^. builtins)
             mempty  -- No imports?
             pkgname
             (HS.fromList $ Compile.rules pkg)
@@ -328,7 +340,7 @@ evalExpr h eoptions pkgname expr = do
     rterm <- runRenamerT renamerEnv $ Renamer.renameExpr expr
 
     pterm <- Prepare.prepareExpr rterm
-    cterm <- Compile.compileTerm pkg safeLocals pterm
+    cterm <- Compile.compileTerm (h ^. builtins) pkg safeLocals pterm
     dieIfErrors
     eval h eoptions pkgname (Eval.evalTerm cterm)
   where
@@ -347,14 +359,14 @@ mkStepState
     :: Handle -> PackageName -> Sugar.Expr SourceSpan Var
     -> InterpreterM (Eval.StepState Eval.Value)
 mkStepState h pkgname expr = do
-    comp   <- liftIO $ IORef.readIORef (h ^. compiled)
-    pkg    <- readCompiledPackage h pkgname
-    cachev <- liftIO $ IORef.readIORef (h ^. cacheVersion)
-    indoc  <- liftIO $ IORef.readIORef (h ^. inputDoc)
+    comp    <- liftIO $ IORef.readIORef (h ^. compiled)
+    pkg     <- readCompiledPackage h pkgname
+    cachev  <- liftIO $ IORef.readIORef (h ^. cacheVersion)
+    indoc   <- liftIO $ IORef.readIORef (h ^. inputDoc)
 
     -- Rename expression.
     let renamerEnv = Renamer.RenamerEnv
-            Builtins.builtins
+            (h ^. builtins)
             mempty  -- No imports?
             pkgname
             (HS.fromList $ Compile.rules pkg)
@@ -362,9 +374,10 @@ mkStepState h pkgname expr = do
     rexpr <- runRenamerT renamerEnv $ Renamer.renameExpr expr
 
     pterm <- Prepare.prepareExpr rexpr
-    cterm <- Compile.compileTerm pkg mempty pterm
+    cterm <- Compile.compileTerm (h ^. builtins) pkg mempty pterm
     let env = Eval.Environment
-            { Eval._packages     = comp
+            { Eval._builtins     = h ^. builtins
+            , Eval._packages     = comp
             , Eval._inputDoc     = indoc
             , Eval._cache        = h ^. cache
             , Eval._cacheVersion = cachev

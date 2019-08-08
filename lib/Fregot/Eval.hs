@@ -33,6 +33,7 @@ import           Control.Exception         (try)
 import           Control.Lens              (review, to, use, view, (%=), (.=),
                                             (.~), (^.), (^?))
 import           Control.Monad.Extended    (foldM, forM, zipWithM_)
+import           Control.Monad.Identity    (Identity (..))
 import           Control.Monad.Reader      (local)
 import           Control.Monad.Trans       (liftIO)
 import qualified Data.HashMap.Strict       as HMS
@@ -97,22 +98,24 @@ evalTerm (RefT source lhs arg) = do
             val <- evalTerm lhs
             evalRefArg source val arg
 
-evalTerm (CallT source f args)
-    | Just builtin <- HMS.lookup f builtins = do
-        vargs <- mapM evalTerm args
-        evalBuiltin source builtin vargs
+evalTerm (CallT source f args) = do
+    builtins' <- view builtins
+    case HMS.lookup f builtins' of
+        Just builtin -> do
+            vargs <- mapM evalTerm args
+            evalBuiltin source builtin vargs
 
-    | NamedFunction rn <- f = do
-        mbCompiledRule <- lookupRule rn
-        case mbCompiledRule of
-            Just cr -> do
-                vargs <- mapM evalTerm args
-                evalUserFunction source cr vargs
-            Nothing -> raise' source "unknown function" $
-                "Unknown function call:" <+> PP.pretty f
+        _ | NamedFunction rn <- f -> do
+            mbCompiledRule <- lookupRule rn
+            case mbCompiledRule of
+                Just cr -> do
+                    vargs <- mapM evalTerm args
+                    evalUserFunction source cr vargs
+                Nothing -> raise' source "unknown function" $
+                    "Unknown function call:" <+> PP.pretty f
 
-    | otherwise = raise' source "unknown function" $
-        "Unknown function call:" <+> PP.pretty f
+        _ -> raise' source "unknown function" $
+            "Unknown function call:" <+> PP.pretty f
 
 evalTerm (NameT source v) = evalName source v
 evalTerm (ScalarT _ s) = evalScalar s
@@ -170,8 +173,8 @@ evalVar _source v = do
             return $ fromMaybe (FreeV iv) mbVal
         Nothing -> FreeV <$> toInstVar v
 
-evalBuiltin :: SourceSpan -> Builtin -> [Value] -> EvalM Value
-evalBuiltin source (Builtin sig impl) args0 = do
+evalBuiltin :: SourceSpan -> Builtin Identity -> [Value] -> EvalM Value
+evalBuiltin source (Builtin sig (Identity impl)) args0 = do
     -- There are two possible scenarios if we have an N-ary function, e.g.:
     --
     --     add(x, y) = z {

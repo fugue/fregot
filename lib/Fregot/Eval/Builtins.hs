@@ -7,6 +7,7 @@
 {-# LANGUAGE MultiWayIf        #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PolyKinds         #-}
+{-# LANGUAGE Rank2Types        #-}
 {-# LANGUAGE TypeOperators     #-}
 module Fregot.Eval.Builtins
     ( ToVal (..)
@@ -19,36 +20,40 @@ module Fregot.Eval.Builtins
 
     , BuiltinException (..)
     , Builtin (..)
+    , ReadyBuiltin
     , arity
 
-    , builtins
+    , Builtins
+    , defaultBuiltins
     ) where
 
-import           Control.Applicative   ((<|>))
-import           Control.Exception     (Exception, throwIO)
-import           Control.Lens          (preview, review)
-import qualified Data.Aeson            as A
-import           Data.Bifunctor        (first)
-import           Data.Char             (intToDigit)
-import qualified Data.HashMap.Strict   as HMS
-import qualified Data.HashSet          as HS
-import           Data.Int              (Int64)
-import qualified Data.List             as L
-import qualified Data.Text             as T
-import qualified Data.Text.Encoding    as T
-import qualified Data.Time             as Time
-import qualified Data.Time.Clock.POSIX as Time.POSIX
-import qualified Data.Time.RFC3339     as Time.RFC3339
-import qualified Data.Vector           as V
-import qualified Fregot.Eval.Json      as Json
-import           Fregot.Eval.Number    (Number)
-import qualified Fregot.Eval.Number    as Number
+import           Control.Applicative          ((<|>))
+import           Control.Exception            (Exception, throwIO)
+import           Control.Lens                 (preview, review)
+import           Control.Monad.Identity       (Identity)
+import qualified Data.Aeson                   as A
+import           Data.Bifunctor               (first)
+import           Data.Char                    (intToDigit)
+import qualified Data.HashMap.Strict          as HMS
+import qualified Data.HashSet                 as HS
+import           Data.Int                     (Int64)
+import qualified Data.List                    as L
+import qualified Data.Text                    as T
+import qualified Data.Text.Encoding           as T
+import qualified Data.Time                    as Time
+import qualified Data.Time.Clock.POSIX        as Time.POSIX
+import qualified Data.Time.RFC3339            as Time.RFC3339
+import           Data.Traversable.HigherOrder (HTraversable (..))
+import qualified Data.Vector                  as V
+import qualified Fregot.Eval.Json             as Json
+import           Fregot.Eval.Number           (Number)
+import qualified Fregot.Eval.Number           as Number
 import           Fregot.Eval.Value
 import           Fregot.Names
-import           Fregot.Prepare.Ast    (BinOp (..), Function (..))
-import           Numeric               (showIntAtBase)
-import qualified Text.Pcre2            as Pcre2
-import           Text.Read             (readMaybe)
+import           Fregot.Prepare.Ast           (BinOp (..), Function (..))
+import           Numeric                      (showIntAtBase)
+import qualified Text.Pcre2                   as Pcre2
+import           Text.Read                    (readMaybe)
 
 class ToVal a where
     toVal :: a -> Value
@@ -173,18 +178,26 @@ eitherToBuiltinM = either throwBuiltinException return
 throwBuiltinException :: String -> BuiltinM a
 throwBuiltinException = throwIO . BuiltinException
 
-data Builtin where
-    Builtin :: ToVal o => Sig i o -> (Args i -> BuiltinM o) -> Builtin
+-- | A builtin function and its signature.
+data Builtin m where
+    Builtin :: ToVal o => Sig i o -> m (Args i -> BuiltinM o) -> Builtin m
 
-arity :: Builtin -> Int
+instance HTraversable Builtin where
+    htraverse f (Builtin sig impl) = Builtin sig <$> f impl
+
+type ReadyBuiltin = Builtin Identity
+
+arity :: Builtin m -> Int
 arity (Builtin sig _) = go 0 sig
   where
     go :: Int -> Sig i o -> Int
     go !acc Out    = acc
     go !acc (In s) = go (acc + 1) s
 
-builtins :: HMS.HashMap Function Builtin
-builtins = HMS.fromList
+type Builtins m = HMS.HashMap Function (Builtin m)
+
+defaultBuiltins :: Builtins IO
+defaultBuiltins = HMS.fromList
     [ (NamedFunction (BuiltinName "all"),                       builtin_all)
     , (NamedFunction (BuiltinName "any"),                       builtin_any)
     , (NamedFunction (QualifiedName "array" "concat"),          builtin_array_concat)
@@ -229,155 +242,163 @@ builtins = HMS.fromList
     , (OperatorFunction BinOrO,              builtin_bin_or)
     ]
 
-builtin_all :: Builtin
-builtin_all = Builtin (In Out)
-    (\(Cons arr Nil) -> return $! V.and (arr :: V.Vector Bool))
+builtin_all :: Monad m => Builtin m
+builtin_all = Builtin (In Out) $ pure $
+    \(Cons arr Nil) -> return $! V.and (arr :: V.Vector Bool)
 
-builtin_any :: Builtin
-builtin_any = Builtin (In Out)
-    (\(Cons arr Nil) -> return $! V.or (arr :: V.Vector Bool))
+builtin_any :: Monad m => Builtin m
+builtin_any = Builtin (In Out) $ pure $
+    \(Cons arr Nil) -> return $! V.or (arr :: V.Vector Bool)
 
-builtin_array_concat :: Builtin
-builtin_array_concat = Builtin (In (In Out)) $
+builtin_array_concat :: Monad m => Builtin m
+builtin_array_concat = Builtin (In (In Out)) $ pure $
     \(Cons l (Cons r Nil)) -> return (l <> r :: V.Vector Value)
 
-builtin_concat :: Builtin
-builtin_concat = Builtin (In (In Out))
-    (\(Cons delim (Cons (Collection texts) Nil)) ->
-    return $! T.intercalate delim texts)
+builtin_concat :: Monad m => Builtin m
+builtin_concat = Builtin (In (In Out)) $ pure $
+    \(Cons delim (Cons (Collection texts) Nil)) ->
+    return $! T.intercalate delim texts
 
-builtin_contains :: Builtin
-builtin_contains = Builtin (In (In Out)) $
+builtin_contains :: Monad m => Builtin m
+builtin_contains = Builtin (In (In Out)) $ pure $
     \(Cons str (Cons search Nil)) -> return $! search `T.isInfixOf` str
 
-builtin_count :: Builtin
-builtin_count = Builtin (In Out)
-    (\(Cons countee Nil) -> case countee of
+builtin_count :: Monad m => Builtin m
+builtin_count = Builtin (In Out) $ pure $
+    \(Cons countee Nil) -> case countee of
         InL (Collection c) -> return $! length (c :: [Value])
-        InR txt            -> return $! T.length txt)
+        InR txt            -> return $! T.length txt
 
-builtin_endswith :: Builtin
-builtin_endswith = Builtin (In (In Out))
-    (\(Cons str (Cons suffix Nil)) -> return $! suffix `T.isSuffixOf` str)
+builtin_endswith :: Monad m => Builtin m
+builtin_endswith = Builtin (In (In Out)) $ pure $
+    \(Cons str (Cons suffix Nil)) -> return $! suffix `T.isSuffixOf` str
 
-builtin_format_int :: Builtin
-builtin_format_int = Builtin (In (In Out)) $ \(Cons x (Cons base Nil)) ->
+builtin_format_int :: Monad m => Builtin m
+builtin_format_int = Builtin (In (In Out)) $ pure $
+    \(Cons x (Cons base Nil)) ->
     return $! T.pack $ showIntAtBase base intToDigit (x :: Int) ""
 
-builtin_indexof :: Builtin
-builtin_indexof = Builtin (In (In Out)) $ \(Cons haystack (Cons needle Nil)) ->
+builtin_indexof :: Monad m => Builtin m
+builtin_indexof = Builtin (In (In Out)) $ pure $
+    \(Cons haystack (Cons needle Nil)) ->
     let (prefix, match) = T.breakOn needle haystack in
     return $! if
         | T.null needle -> 0
         | T.null match  -> -1
         | otherwise     -> T.length prefix
 
-builtin_is_array :: Builtin
-builtin_is_array = Builtin (In Out) $ \(Cons val Nil) -> case val of
-    ArrayV _ -> return True
-    _        -> return False
+builtin_is_array :: Monad m => Builtin m
+builtin_is_array = Builtin (In Out) $ pure $
+    \(Cons val Nil) -> case val of
+        ArrayV _ -> return True
+        _        -> return False
 
-builtin_is_object :: Builtin
-builtin_is_object = Builtin (In Out) $ \(Cons val Nil) -> case val of
-    ObjectV _ -> return True
-    _         -> return False
+builtin_is_object :: Monad m => Builtin m
+builtin_is_object = Builtin (In Out) $ pure $
+    \(Cons val Nil) -> case val of
+        ObjectV _ -> return True
+        _         -> return False
 
-builtin_is_string :: Builtin
-builtin_is_string = Builtin (In Out) $ \(Cons val Nil) -> case val of
-    StringV _ -> return True
-    _         -> return False
+builtin_is_string :: Monad m => Builtin m
+builtin_is_string = Builtin (In Out) $ pure $
+    \(Cons val Nil) -> case val of
+        StringV _ -> return True
+        _         -> return False
 
-builtin_json_unmarshal :: Builtin
-builtin_json_unmarshal = Builtin (In Out) $ \(Cons str Nil) -> do
-    case A.eitherDecodeStrict' (T.encodeUtf8 str) of
+builtin_json_unmarshal :: Monad m => Builtin m
+builtin_json_unmarshal = Builtin (In Out) $ pure $
+    \(Cons str Nil) -> case A.eitherDecodeStrict' (T.encodeUtf8 str) of
         Left  err -> throwBuiltinException err
         Right val -> return $! Json.toValue val
 
-builtin_lower :: Builtin
-builtin_lower = Builtin (In Out) (\(Cons str Nil) -> return $! T.toLower str)
+builtin_lower :: Monad m => Builtin m
+builtin_lower = Builtin (In Out) $ pure $
+    \(Cons str Nil) -> return $! T.toLower str
 
-builtin_max :: Builtin
-builtin_max = Builtin (In Out) $
+builtin_max :: Monad m => Builtin m
+builtin_max = Builtin (In Out) $ pure $
     \(Cons (Collection vals) Nil) -> return $! case vals of
         [] -> NullV  -- TODO(jaspervdj): Should be undefined.
         _  -> maximum (vals :: [Value])
 
-builtin_min :: Builtin
-builtin_min = Builtin (In Out) $
+builtin_min :: Monad m => Builtin m
+builtin_min = Builtin (In Out) $ pure $
     \(Cons (Collection vals) Nil) -> return $! case vals of
         [] -> NullV  -- TODO(jaspervdj): Should be undefined.
         _  -> minimum (vals :: [Value])
 
-builtin_product :: Builtin
-builtin_product = Builtin (In Out) $
+builtin_product :: Monad m => Builtin m
+builtin_product = Builtin (In Out) $ pure $
     \(Cons (Collection vals) Nil) -> return $! num $ product vals
 
-builtin_re_match :: Builtin
-builtin_re_match = Builtin (In (In Out)) $
+builtin_re_match :: Monad m => Builtin m
+builtin_re_match = Builtin (In (In Out)) $ pure $
     \(Cons pattern (Cons value Nil)) -> eitherToBuiltinM $ do
         regex <- first show (Pcre2.compile pattern)
         match <- first show (Pcre2.match regex value)
         return $! not $ null match
 
-builtin_replace :: Builtin
-builtin_replace = Builtin (In (In (In Out))) $
+builtin_replace :: Monad m => Builtin m
+builtin_replace = Builtin (In (In (In Out))) $ pure $
     \(Cons str (Cons old (Cons new Nil))) -> return $! T.replace old new str
 
 utcToNs :: Time.UTCTime -> Int64
 utcToNs =
     floor . ((1e9 :: Double) *) . realToFrac . Time.POSIX.utcTimeToPOSIXSeconds
 
-builtin_time_now_ns :: Builtin
-builtin_time_now_ns = Builtin Out $ \Nil ->
-    review Number.int . utcToNs <$> Time.getCurrentTime
+builtin_time_now_ns :: Monad m => Builtin m
+builtin_time_now_ns = Builtin Out $ pure $
+    \Nil -> review Number.int . utcToNs <$> Time.getCurrentTime
 
-builtin_time_date :: Builtin
-builtin_time_date = Builtin (In Out) $ \(Cons ns Nil) ->
+builtin_time_date :: Monad m => Builtin m
+builtin_time_date = Builtin (In Out) $ pure $
+    \(Cons ns Nil) ->
     let secs      = (fromIntegral $ Number.floor ns) / 1e9
         utc       = Time.POSIX.posixSecondsToUTCTime secs
         (y, m, d) = Time.toGregorian (Time.utctDay utc) in
     return [fromIntegral y, m, d]
 
-builtin_time_parse_rfc3339_ns :: Builtin
-builtin_time_parse_rfc3339_ns = Builtin (In Out) $ \(Cons txt Nil) ->
-    case Time.RFC3339.parseTimeRFC3339 txt of
+builtin_time_parse_rfc3339_ns :: Monad m => Builtin m
+builtin_time_parse_rfc3339_ns = Builtin (In Out) $ pure $
+    \(Cons txt Nil) -> case Time.RFC3339.parseTimeRFC3339 txt of
         Just zoned -> return $! utcToNs $ Time.zonedTimeToUTC zoned
         Nothing    -> throwBuiltinException $
             "Could not parse RFC3339 time: " ++ T.unpack txt
 
-builtin_trim :: Builtin
-builtin_trim = Builtin (In (In Out))
-    (\(Cons str (Cons cutset Nil)) ->
-        return $! T.dropAround (\c -> T.any (== c) cutset) str)
+builtin_trim :: Monad m => Builtin m
+builtin_trim = Builtin (In (In Out)) $ pure $
+    \(Cons str (Cons cutset Nil)) ->
+        return $! T.dropAround (\c -> T.any (== c) cutset) str
 
-builtin_upper :: Builtin
-builtin_upper = Builtin (In Out) (\(Cons str Nil) -> return $! T.toUpper str)
+builtin_upper :: Monad m => Builtin m
+builtin_upper = Builtin (In Out) $ pure $
+    \(Cons str Nil) -> return $! T.toUpper str
 
-builtin_sort :: Builtin
-builtin_sort = Builtin (In Out) $
+builtin_sort :: Monad m => Builtin m
+builtin_sort = Builtin (In Out) $ pure $
     \(Cons (Collection vals) Nil) -> return $! L.sort (vals :: [Value])
 
-builtin_split :: Builtin
-builtin_split = Builtin (In (In Out))
-    (\(Cons str (Cons delim Nil)) -> return $! T.splitOn delim str)
+builtin_split :: Monad m => Builtin m
+builtin_split = Builtin (In (In Out)) $ pure $
+    \(Cons str (Cons delim Nil)) -> return $! T.splitOn delim str
 
-builtin_substring :: Builtin
-builtin_substring = Builtin (In (In (In Out)))
-    (\(Cons str (Cons start (Cons len Nil))) ->
+builtin_substring :: Monad m => Builtin m
+builtin_substring = Builtin (In (In (In Out))) $ pure $
+    \(Cons str (Cons start (Cons len Nil))) ->
         return $!
         (if len < 0 then id else T.take len) $!
-        T.drop start str)
+        T.drop start str
 
-builtin_sum :: Builtin
-builtin_sum = Builtin (In Out) $
+builtin_sum :: Monad m => Builtin m
+builtin_sum = Builtin (In Out) $ pure $
     \(Cons (Collection vals) Nil) -> return $! num $ sum vals
 
-builtin_startswith :: Builtin
-builtin_startswith = Builtin (In (In Out))
+builtin_startswith :: Monad m => Builtin m
+builtin_startswith = Builtin (In (In Out)) $ pure $
     (\(Cons str (Cons prefix Nil)) -> return $! prefix `T.isPrefixOf` str)
 
-builtin_to_number :: Builtin
-builtin_to_number = Builtin (In Out) $
+builtin_to_number :: Monad m => Builtin m
+builtin_to_number = Builtin (In Out) $ pure $
     \(Cons txt Nil) ->
         let str = T.unpack txt
             mbRead = (Left <$> readMaybe str) <|> (Right <$> readMaybe str) in
@@ -387,58 +408,58 @@ builtin_to_number = Builtin (In Out) $
             Just (Left i)  -> return $ review Number.int i
             Just (Right d) -> return $ review Number.double d
 
-builtin_equal :: Builtin
-builtin_equal = Builtin (In (In Out))
+builtin_equal :: Monad m => Builtin m
+builtin_equal = Builtin (In (In Out)) $ pure $
   -- TODO(jaspervdj): These don't currently work:
   --
   --     0 == 1.2 - 1.2
   --
   -- Because we'll end up comparing an IntV on the left with a DoubleV on the
   -- right.
-  (\(Cons x (Cons y Nil)) -> return $! BoolV $! x == (y :: Value))
+  \(Cons x (Cons y Nil)) -> return $! BoolV $! x == (y :: Value)
 
-builtin_not_equal :: Builtin
-builtin_not_equal = Builtin (In (In Out))
-  (\(Cons x (Cons y Nil)) -> return $! BoolV $! x /= (y :: Value))
+builtin_not_equal :: Monad m => Builtin m
+builtin_not_equal = Builtin (In (In Out)) $ pure $
+  \(Cons x (Cons y Nil)) -> return $! BoolV $! x /= (y :: Value)
 
-builtin_less_than :: Builtin
-builtin_less_than = Builtin (In (In Out)) $
+builtin_less_than :: Monad m => Builtin m
+builtin_less_than = Builtin (In (In Out)) $ pure $
   \(Cons x (Cons y Nil)) -> return $! x < num y
 
-builtin_less_than_or_equal :: Builtin
-builtin_less_than_or_equal = Builtin (In (In Out)) $
+builtin_less_than_or_equal :: Monad m => Builtin m
+builtin_less_than_or_equal = Builtin (In (In Out)) $ pure $
   \(Cons x (Cons y Nil)) -> return $! x <= num y
 
-builtin_greater_than :: Builtin
-builtin_greater_than = Builtin (In (In Out)) $
+builtin_greater_than :: Monad m => Builtin m
+builtin_greater_than = Builtin (In (In Out)) $ pure $
   \(Cons x (Cons y Nil)) -> return $! x > num y
 
-builtin_greater_than_or_equal :: Builtin
-builtin_greater_than_or_equal = Builtin (In (In Out)) $
+builtin_greater_than_or_equal :: Monad m => Builtin m
+builtin_greater_than_or_equal = Builtin (In (In Out)) $ pure $
   \(Cons x (Cons y Nil)) -> return $! x >= num y
 
-builtin_plus :: Builtin
-builtin_plus = Builtin (In (In Out)) $
+builtin_plus :: Monad m => Builtin m
+builtin_plus = Builtin (In (In Out)) $ pure $
   \(Cons x (Cons y Nil)) -> return $! num $ x + y
 
-builtin_minus :: Builtin
-builtin_minus = Builtin (In (In Out)) $
+builtin_minus :: Monad m => Builtin m
+builtin_minus = Builtin (In (In Out)) $ pure $
   \(Cons x (Cons y Nil)) -> return $! num $ x - y
 
-builtin_times :: Builtin
-builtin_times = Builtin (In (In Out)) $
+builtin_times :: Monad m => Builtin m
+builtin_times = Builtin (In (In Out)) $ pure $
   \(Cons x (Cons y Nil)) -> return $! num $ x * y
 
-builtin_divide :: Builtin
-builtin_divide = Builtin (In (In Out)) $
+builtin_divide :: Monad m => Builtin m
+builtin_divide = Builtin (In (In Out)) $ pure $
   \(Cons x (Cons y Nil)) -> return $! num $ x / y
 
-builtin_modulo :: Builtin
-builtin_modulo = Builtin (In (In Out)) $
+builtin_modulo :: Monad m => Builtin m
+builtin_modulo = Builtin (In (In Out)) $ pure $
   \(Cons x (Cons y Nil)) -> return $! x `Number.mod` y
 
-builtin_bin_or :: Builtin
-builtin_bin_or = Builtin (In (In Out)) $
+builtin_bin_or :: Monad m => Builtin m
+builtin_bin_or = Builtin (In (In Out)) $ pure $
   \(Cons x (Cons y Nil)) -> return $! SetV $ HS.union x y
 
 -- | Auxiliary function to fix types.
