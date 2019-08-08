@@ -37,6 +37,7 @@ import           Data.Char                    (intToDigit)
 import qualified Data.HashMap.Strict          as HMS
 import qualified Data.HashSet                 as HS
 import           Data.Int                     (Int64)
+import           Data.IORef                   (atomicModifyIORef', newIORef)
 import qualified Data.List                    as L
 import qualified Data.Text                    as T
 import qualified Data.Text.Encoding           as T
@@ -331,12 +332,22 @@ builtin_product :: Monad m => Builtin m
 builtin_product = Builtin (In Out) $ pure $
     \(Cons (Collection vals) Nil) -> return $! num $ product vals
 
-builtin_re_match :: Monad m => Builtin m
-builtin_re_match = Builtin (In (In Out)) $ pure $
-    \(Cons pattern (Cons value Nil)) -> eitherToBuiltinM $ do
-        regex <- first show (Pcre2.compile pattern)
-        match <- first show (Pcre2.match regex value)
-        return $! not $ null match
+builtin_re_match :: Builtin IO
+builtin_re_match = Builtin (In (In Out)) $ do
+    cacheRef <- newIORef HMS.empty
+    pure $
+        \(Cons pattern (Cons value Nil)) -> do
+        errOrRegex <- atomicModifyIORef' cacheRef $ \cache ->
+            case HMS.lookup pattern cache of
+                Just errOrRegex -> return errOrRegex
+                Nothing         ->
+                    let errOrRegex = Pcre2.compile pattern in
+                    (HMS.insert pattern errOrRegex cache, errOrRegex)
+
+        eitherToBuiltinM $ do
+            regex <- first show errOrRegex
+            match <- first show (Pcre2.match regex value)
+            return $! not $ null match
 
 builtin_replace :: Monad m => Builtin m
 builtin_replace = Builtin (In (In (In Out))) $ pure $
