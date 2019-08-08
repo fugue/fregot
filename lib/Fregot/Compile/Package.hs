@@ -27,6 +27,7 @@ import           Fregot.Compile.Graph
 import           Fregot.Compile.Order
 import           Fregot.Error                (Error)
 import qualified Fregot.Error                as Error
+import           Fregot.Eval.Builtins        (Builtins)
 import qualified Fregot.Eval.Builtins        as Builtins
 import           Fregot.Names
 import           Fregot.Prepare.Ast
@@ -43,10 +44,10 @@ type CompiledPackage = Package ()
 
 type Dependencies = HMS.HashMap PackageName CompiledPackage
 
-aritiesFromPackage :: PreparedPackage -> Arities
-aritiesFromPackage prep = \func ->
+aritiesFromPackage :: Builtins f -> PreparedPackage -> Arities
+aritiesFromPackage builtins prep = \func ->
     (do
-        builtin <- HMS.lookup func Builtins.builtins
+        builtin <- HMS.lookup func builtins
         return $ Builtins.arity builtin) <|>
     (do
         NamedFunction (QualifiedName pkg fname) <- Just func
@@ -69,10 +70,11 @@ safeGlobals prep = Safe $ HS.fromList (rules prep) <> ["data", "input"]
 
 compilePackage
     :: Monad m
-    => Dependencies
+    => Builtins f
+    -> Dependencies
     -> PreparedPackage
     -> ParachuteT Error m CompiledPackage
-compilePackage dependencies prep = do
+compilePackage builtins dependencies prep = do
     -- Build dependency graph.
     let graph = do
             rule <- fmap snd $ HMS.toList $ prep ^. packageRules
@@ -86,7 +88,7 @@ compilePackage dependencies prep = do
 
     traverseOf (packageRules . traverse) compileRule prep
   where
-    selfArities = aritiesFromPackage prep
+    selfArities = aritiesFromPackage builtins prep
 
     compileRule
         :: Monad m => Rule SourceSpan -> ParachuteT Error m (Rule SourceSpan)
@@ -144,16 +146,16 @@ compilePackage dependencies prep = do
 
 compileTerm
     :: Monad m
-    => PreparedPackage -> Safe Var -> Term SourceSpan
+    => Builtins f -> PreparedPackage -> Safe Var -> Term SourceSpan
     -> ParachuteT Error m (Term SourceSpan)
-compileTerm pkg safeLocals term0 = do
+compileTerm builtins pkg safeLocals term0 = do
     ordered <- runOrder $ orderTermForSafety arities safe0 term0
     let safe = safe0 <> ovTerm arities safe0 ordered
     tellErrors $ checkTerm arities safe ordered
     return ordered
   where
     safe0   = safeGlobals pkg <> safeLocals
-    arities = aritiesFromPackage pkg
+    arities = aritiesFromPackage builtins pkg
 
 -- | Various checks on terms.
 checkTerm :: Arities -> Safe Var -> Term SourceSpan -> [Error]

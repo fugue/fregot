@@ -15,7 +15,7 @@ module Fregot.Eval.Monad
 
     , EvalCache
 
-    , Environment (..), packages, inputDoc
+    , Environment (..), builtins, packages, inputDoc
     , cache, cacheVersion, stack
 
     , EvalException (..)
@@ -71,6 +71,7 @@ import qualified Fregot.Compile.Package    as Package
 import           Fregot.Error              (Error)
 import qualified Fregot.Error              as Error
 import qualified Fregot.Error.Stack        as Stack
+import           Fregot.Eval.Builtins      (ReadyBuiltin)
 import           Fregot.Eval.Cache         (Cache)
 import qualified Fregot.Eval.Cache         as Cache
 import           Fregot.Eval.Value
@@ -112,7 +113,8 @@ type EvalCache = Cache (PackageName, Var) Value
 --------------------------------------------------------------------------------
 
 data Environment = Environment
-    { _packages     :: !(HMS.HashMap PackageName CompiledPackage)
+    { _builtins     :: !(HMS.HashMap Function ReadyBuiltin)
+    , _packages     :: !(HMS.HashMap PackageName CompiledPackage)
     , _inputDoc     :: !Value
     , _cache        :: !EvalCache
     , _cacheVersion :: !Cache.Version

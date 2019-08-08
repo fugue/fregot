@@ -36,7 +36,6 @@ import           Data.Version                      (showVersion)
 import qualified Fregot.Error                      as Error
 import qualified Fregot.Error.Stack                as Stack
 import qualified Fregot.Eval                       as Eval
-import qualified Fregot.Eval.Builtins              as Builtins
 import qualified Fregot.Eval.Value                 as Eval
 import qualified Fregot.Interpreter                as Interpreter
 import           Fregot.Names
@@ -492,10 +491,9 @@ metaCommands =
         ]
 
 completeBuiltins :: Handle -> Hl.CompletionFunc IO
-completeBuiltins _h = Hl.completeDictionary completeWhitespace $ return
-    [ T.unpack (nameToText fname)
-    | (Prepare.NamedFunction fname, _) <- HMS.toList Builtins.builtins
-    ]
+completeBuiltins h = Hl.completeDictionary completeWhitespace $ do
+    builtins <- fromMaybe [] <$> runInterpreter h Interpreter.readBuiltins
+    return [T.unpack (nameToText f) | Prepare.NamedFunction f <- builtins]
 
 completeRules :: Handle -> Hl.CompletionFunc IO
 completeRules h = Hl.completeDictionary completeWhitespace $ do
