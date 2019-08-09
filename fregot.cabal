@@ -81,8 +81,8 @@ Library
     Data.Aeson.Extended
     Data.Aeson.TH.Extended
     Data.ByteString.Extended
-    Data.HashSet.Extended
     Data.HashMap.Strict.Extended
+    Data.HashSet.Extended
     Data.IORef.Extended
     Data.List.Extended
     Data.List.NonEmpty.Extended
@@ -92,9 +92,10 @@ Library
     Options.Applicative.Extended
     System.Console.Haskeline.Extended
     System.Directory.Find
-    System.IO.Extended
     System.FilePath.Extended
+    System.IO.Extended
     Text.Parsec.Extended
+    Text.Printf.Extended
 
     Paths_fregot
 
