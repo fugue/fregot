@@ -54,6 +54,7 @@ import           Fregot.Names
 import           Fregot.Prepare.Ast           (BinOp (..), Function (..))
 import           Numeric                      (showIntAtBase)
 import qualified Text.Pcre2                   as Pcre2
+import qualified Text.Printf.Extended         as Printf
 import           Text.Read                    (readMaybe)
 
 class ToVal a where
@@ -220,6 +221,7 @@ defaultBuiltins = HMS.fromList
     , (NamedFunction (BuiltinName "replace"),                   builtin_replace)
     , (NamedFunction (BuiltinName "sort"),                      builtin_sort)
     , (NamedFunction (BuiltinName "split"),                     builtin_split)
+    , (NamedFunction (BuiltinName "sprintf"),                   builtin_sprintf)
     , (NamedFunction (BuiltinName "substring"),                 builtin_substring)
     , (NamedFunction (BuiltinName "sum"),                       builtin_sum)
     , (NamedFunction (BuiltinName "startswith"),                builtin_startswith)
@@ -392,6 +394,12 @@ builtin_sort = Builtin (In Out) $ pure $
 builtin_split :: Monad m => Builtin m
 builtin_split = Builtin (In (In Out)) $ pure $
     \(Cons str (Cons delim Nil)) -> return $! T.splitOn delim str
+
+builtin_sprintf :: Monad m => Builtin m
+builtin_sprintf = Builtin (In (In Out)) $ pure $
+    \(Cons format (Cons args Nil)) -> eitherToBuiltinM $
+    fmap T.pack $ Printf.sprintf (T.unpack format) $
+    map Printf.Some (args :: [Value])
 
 builtin_substring :: Monad m => Builtin m
 builtin_substring = Builtin (In (In (In Out))) $ pure $
