@@ -174,7 +174,7 @@ instance Pretty a Scientific.Scientific where
         Right x -> pretty (x :: Integer)
 
 instance Pretty a T.Text where
-    pretty = string . T.unpack
+    pretty = string . T.unpack . T.replace "\t" (T.replicate 8 " ")
 
 instance Pretty a TL.Text where
     pretty = string . TL.unpack

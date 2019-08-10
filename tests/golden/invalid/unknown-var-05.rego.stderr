@@ -1,0 +1,17 @@
+fregot ([34mrenamer error[0m):
+  "unknown-var-05.rego" (line 4, column 9):
+  unknown function:
+
+    4|         double(x, y)
+               [31m^^^^^^^^^^^^[0m
+
+  Function double is not defined.
+
+fregot ([34mrenamer error[0m):
+  "unknown-var-05.rego" (line 10, column 9):
+  unknown function:
+
+    10|         double(x, y) # line 10
+                [31m^^^^^^^^^^^^[0m
+
+  Function double is not defined.
