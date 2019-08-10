@@ -1,4 +1,4 @@
-package fregot.tests.invalid.unkown_var_03
+package fregot.tests.invalid.unknown_var_03
 
 double(x) = y {
   y = x + x
