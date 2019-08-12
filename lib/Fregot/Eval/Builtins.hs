@@ -245,11 +245,15 @@ defaultBuiltins = HMS.fromList
 
 builtin_all :: Monad m => Builtin m
 builtin_all = Builtin (In Out) $ pure $
-    \(Cons arr Nil) -> return $! V.and (arr :: V.Vector Bool)
+    \(Cons arg Nil) -> case arg of
+        InL arr -> return $! all (== BoolV True) (arr :: V.Vector Value)
+        InR set -> return $! all (== BoolV True) $ HS.toList set
 
 builtin_any :: Monad m => Builtin m
 builtin_any = Builtin (In Out) $ pure $
-    \(Cons arr Nil) -> return $! V.or (arr :: V.Vector Bool)
+    \(Cons arg Nil) -> case arg of
+        InL arr -> return $! any (== BoolV True) (arr :: V.Vector Value)
+        InR set -> return $! HS.member (BoolV True) set
 
 builtin_array_concat :: Monad m => Builtin m
 builtin_array_concat = Builtin (In (In Out)) $ pure $
