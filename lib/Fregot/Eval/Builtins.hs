@@ -218,6 +218,7 @@ defaultBuiltins = HMS.fromList
     , (NamedFunction (BuiltinName "product"),                   builtin_product)
     , (NamedFunction (BuiltinName "re_match"),                  builtin_re_match)
     , (NamedFunction (BuiltinName "replace"),                   builtin_replace)
+    , (NamedFunction (BuiltinName "set"),                       builtin_set)
     , (NamedFunction (BuiltinName "sort"),                      builtin_sort)
     , (NamedFunction (BuiltinName "split"),                     builtin_split)
     , (NamedFunction (BuiltinName "substring"),                 builtin_substring)
@@ -388,6 +389,11 @@ builtin_trim = Builtin (In (In Out)) $ pure $
 builtin_upper :: Monad m => Builtin m
 builtin_upper = Builtin (In Out) $ pure $
     \(Cons str Nil) -> return $! T.toUpper str
+
+-- `set()` is OPA's constructor for an empty set, since `{}` is an empty object
+builtin_set :: Monad m => Builtin m
+builtin_set = Builtin Out $ pure $
+    \Nil -> return $! SetV HS.empty
 
 builtin_sort :: Monad m => Builtin m
 builtin_sort = Builtin (In Out) $ pure $

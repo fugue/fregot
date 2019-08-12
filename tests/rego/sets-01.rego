@@ -40,8 +40,15 @@ test_set_04 {
     set_01["Hello"] == "Hello"
 }
 
-# 5. Refering to generated sets without index.
+# 5. Referring to generated sets without index.
 
 test_set_05 {
     set_02 == {"Hello", "World"}
+}
+
+# 6. Empty set creation
+
+test_set_06 {
+    set() != { "Hello" }
+    count(set()) == 0
 }
