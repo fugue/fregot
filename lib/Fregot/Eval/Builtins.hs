@@ -34,6 +34,7 @@ import           Control.Monad.Identity       (Identity)
 import qualified Data.Aeson                   as A
 import           Data.Bifunctor               (first)
 import           Data.Char                    (intToDigit)
+import           Data.Hashable                (Hashable)
 import qualified Data.HashMap.Strict          as HMS
 import qualified Data.HashSet                 as HS
 import           Data.Int                     (Int64)
@@ -86,6 +87,9 @@ instance ToVal a => ToVal (V.Vector a) where
 instance ToVal a => ToVal [a] where
     toVal = toVal . V.fromList
 
+instance ToVal a => ToVal (HS.HashSet a) where
+    toVal = SetV . HS.map toVal
+
 class FromVal a where
     fromVal :: Value -> Either String a
 
@@ -122,8 +126,8 @@ instance FromVal a => FromVal (V.Vector a) where
 instance FromVal a => FromVal [a] where
     fromVal = fmap V.toList . fromVal
 
-instance FromVal (HS.HashSet Value) where
-    fromVal (SetV s) = Right s
+instance (Eq a, FromVal a, Hashable a) => FromVal (HS.HashSet a)  where
+    fromVal (SetV s) = fmap HS.fromList $ traverse fromVal (HS.toList s)
     fromVal v        = Left $ "Expected set but got " ++ describeValue v
 
 -- | Sometimes builtins (e.g. `count`) do not take a specific type, but any
@@ -208,6 +212,7 @@ defaultBuiltins = HMS.fromList
     , (NamedFunction (BuiltinName "endswith"),                  builtin_endswith)
     , (NamedFunction (BuiltinName "format_int"),                builtin_format_int)
     , (NamedFunction (BuiltinName "indexof"),                   builtin_indexof)
+    , (NamedFunction (BuiltinName "intersection"),              builtin_intersection)
     , (NamedFunction (BuiltinName "is_array"),                  builtin_is_array)
     , (NamedFunction (BuiltinName "is_object"),                 builtin_is_object)
     , (NamedFunction (BuiltinName "is_string"),                 builtin_is_string)
@@ -292,6 +297,12 @@ builtin_indexof = Builtin (In (In Out)) $ pure $
         | T.null needle -> 0
         | T.null match  -> -1
         | otherwise     -> T.length prefix
+
+builtin_intersection :: Monad m => Builtin m
+builtin_intersection = Builtin (In Out) $ pure $
+    \(Cons set Nil) -> return $! case  HS.toList (set :: (HS.HashSet (HS.HashSet Value))) of
+      []   -> HS.empty
+      sets -> foldr1 HS.intersection sets
 
 builtin_is_array :: Monad m => Builtin m
 builtin_is_array = Builtin (In Out) $ pure $
