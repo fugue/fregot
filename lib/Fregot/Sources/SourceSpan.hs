@@ -119,10 +119,10 @@ citeSourceSpan decorate sources ss = case sInput of
         | T.length txt >= i = PP.pretty txt
         | otherwise         = PP.indent (i - T.length txt) (PP.pretty txt)
 
-    -- Take Parsec counts tabs in a somewhat complicated way, so our strategy is
-    -- to take the space parts of the original line and reuse that literally.
-    -- We create a virtual parsec position and use that to get exactly the same
-    -- count. If the line is not long enough to take spaces from it, we'll just
+    -- Parsec counts tabs in a somewhat complicated way, so our strategy is to
+    -- take the space parts of the original line and reuse that literally.  We
+    -- create a virtual parsec position and use that to get exactly the same
+    -- count.  If the line is not long enough to take spaces from it, we'll just
     -- use normal spaces.
     takeSpacesFromTemplate :: Int -> T.Text -> T.Text
     takeSpacesFromTemplate n =
