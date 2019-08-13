@@ -29,6 +29,7 @@ import           Control.Lens          ((&), (.~), (^.))
 import           Control.Lens.TH       (makeLenses)
 import qualified Data.Aeson            as Aeson
 import           Data.Binary           (Binary)
+import           Data.Char             (isSpace)
 import           Data.Maybe            (fromMaybe, isNothing)
 import qualified Data.Text             as T
 import           Data.Typeable         (Typeable)
@@ -92,23 +93,45 @@ citeSourceSpan decorate sources ss = case sInput of
     [] -> Nothing
     [x] -> Just $
         prefix (ss ^. start . line) <> PP.pretty x <$$>
-        caretty (ss ^. start . column) (ss ^. end . column)
+        caretty x (ss ^. start . column) (ss ^. end . column)
     _ -> Just $ PP.vcat
         [ prefix i <> PP.pretty x
         | (i,x) <- zip [ss ^. start . line .. ] sInput
         ]
   where
-    prefix i        = justifyRight prefixWidth (T.pack (show i) <> "| ")
-    prefixWidth     = length (show $ ss ^. end . line) + 2
-    caretty c1 c2   = PP.indent (prefixWidth + c1 - 1) $
-                          decorate (PP.pretty $ T.replicate (c2 - c1 + 1) "^")
+    -- A line number prefix, e.g. "42| ".  Since we may have prefixes of
+    -- different length, we need to calculate the width of the longest one and
+    -- align them.
+    prefix i = justifyRight prefixw (T.pack (show i) <> "| ")
+    prefixw  = length (show $ ss ^. end . line) + 2
 
+    -- Produce a "^^^^^" line running from column c1 to column c2 (inclusive).
+    caretty x c1 c2 =
+        PP.pretty (T.replicate prefixw " ") <>
+        PP.pretty (takeSpacesFromTemplate (c1 - 1) x) <>
+        decorate (PP.pretty $ T.replicate (c2 - c1 + 1) "^")
+
+    -- The actual input text.
     sInput = sourceSpanInput sources ss
 
     justifyRight :: Int -> T.Text -> PP.SemDoc
     justifyRight i txt
         | T.length txt >= i = PP.pretty txt
         | otherwise         = PP.indent (i - T.length txt) (PP.pretty txt)
+
+    -- Take Parsec counts tabs in a somewhat complicated way, so our strategy is
+    -- to take the space parts of the original line and reuse that literally.
+    -- We create a virtual parsec position and use that to get exactly the same
+    -- count. If the line is not long enough to take spaces from it, we'll just
+    -- use normal spaces.
+    takeSpacesFromTemplate :: Int -> T.Text -> T.Text
+    takeSpacesFromTemplate n =
+        let go p template
+                | Parsec.sourceColumn p - 1 >= n = ""
+                | Just (h, t) <- T.uncons template, isSpace h =
+                    T.singleton h <> go (Parsec.updatePosChar p h) t
+                | otherwise = T.replicate (n - Parsec.sourceColumn p + 1) " " in
+        go (Parsec.newPos "virtual" 1 1)
 
 sourceSpanInput :: Sources.Sources -> SourceSpan -> [T.Text]
 sourceSpanInput sourceStore ss =
