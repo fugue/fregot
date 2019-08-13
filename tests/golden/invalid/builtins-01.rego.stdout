@@ -1,0 +1,25 @@
+passed: 0, failed: 0, errored: 2
+fregot.tests.invalid.builtins_01.test_all_object:
+fregot ([34meval error[0m):
+  "builtins-01.rego" (line 5, column 3):
+  builtin type error:
+
+    5|   all({"foo": true, "bar": false, "baz": 100})
+         [31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+
+  Expected set but got object
+
+  Stack trace:
+    rule [33mfregot.tests.invalid.builtins_01[33m.[0mtest_all_object[0m at tests:1:1
+fregot.tests.invalid.builtins_01.test_any_object:
+fregot ([34meval error[0m):
+  "builtins-01.rego" (line 9, column 3):
+  builtin type error:
+
+    9|   any({"foo": true, "bar": false, "baz": 100})
+         [31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+
+  Expected set but got object
+
+  Stack trace:
+    rule [33mfregot.tests.invalid.builtins_01[33m.[0mtest_any_object[0m at tests:1:1

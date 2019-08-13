@@ -40,8 +40,33 @@ test_set_04 {
     set_01["Hello"] == "Hello"
 }
 
-# 5. Refering to generated sets without index.
+# 5. Referring to generated sets without index.
 
 test_set_05 {
     set_02 == {"Hello", "World"}
+}
+
+# 6. Empty set creation
+
+test_set_06 {
+    set() != { "Hello" }
+    count(set()) == 0
+}
+
+# 7. Intersection
+
+test_set_07_empty {
+    intersection(set()) == set()
+}
+
+test_set_07_empty_set {
+    intersection({set()}) == set()
+}
+
+test_set_07_one_nonempty_set {
+    intersection({{true}}) == {true}
+}
+
+test_set_07_multiple_nonempty_sets {
+    intersection({{"foo", 1, 2}, {true, 1, 2}, {"foo", 1, true}}) == {1}
 }
