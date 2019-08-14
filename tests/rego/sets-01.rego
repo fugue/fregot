@@ -70,3 +70,27 @@ test_set_07_one_nonempty_set {
 test_set_07_multiple_nonempty_sets {
     intersection({{"foo", 1, 2}, {true, 1, 2}, {"foo", 1, true}}) == {1}
 }
+
+# 8. Set union
+
+test_set_08_empty {
+    union(set()) == set()
+}
+
+test_set_08_empty_set {
+    union({set()}) == set()
+}
+
+test_set_08_one_nonempty_set {
+    union({{true}}) == {true}
+}
+
+test_set_08_two_sets {
+    x := {1, 2, 3}
+    y := {"a", "b", "c"}
+    union({x, y}) == x | y
+}
+
+test_set_08_multiple_sets {
+    union({set(), {"foo", 1, 2}, {true, 1, 2}, {"foo", 1, true}}) == {1, 2, "foo", true}
+}

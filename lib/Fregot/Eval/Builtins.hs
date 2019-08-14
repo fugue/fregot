@@ -237,6 +237,7 @@ defaultBuiltins = HMS.fromList
     , (NamedFunction (QualifiedName "time" "parse_rfc3339_ns"), builtin_time_parse_rfc3339_ns)
     , (NamedFunction (BuiltinName "trim"),                      builtin_trim)
     , (NamedFunction (BuiltinName "upper"),                     builtin_upper)
+    , (NamedFunction (BuiltinName "union"),                     builtin_union)
     , (OperatorFunction EqualO,              builtin_equal)
     , (OperatorFunction NotEqualO,           builtin_not_equal)
     , (OperatorFunction LessThanO,           builtin_less_than)
@@ -302,7 +303,7 @@ builtin_indexof = Builtin (In (In Out)) $ pure $
 
 builtin_intersection :: Monad m => Builtin m
 builtin_intersection = Builtin (In Out) $ pure $
-    \(Cons set Nil) -> return $! case  HS.toList (set :: (HS.HashSet (HS.HashSet Value))) of
+    \(Cons set Nil) -> return $! case HS.toList (set :: (HS.HashSet (HS.HashSet Value))) of
       []   -> HS.empty
       sets -> foldr1 HS.intersection sets
 
@@ -402,6 +403,11 @@ builtin_trim = Builtin (In (In Out)) $ pure $
 builtin_upper :: Monad m => Builtin m
 builtin_upper = Builtin (In Out) $ pure $
     \(Cons str Nil) -> return $! T.toUpper str
+
+builtin_union :: Monad m => Builtin m
+builtin_union = Builtin (In Out) $ pure $
+    \(Cons set Nil) ->
+        return $! HS.unions $ HS.toList (set :: (HS.HashSet (HS.HashSet Value)))
 
 -- `set()` is OPA's constructor for an empty set, since `{}` is an empty object
 builtin_set :: Monad m => Builtin m
