@@ -70,7 +70,7 @@ prettyPos ss = PP.parens $
     "line"   <+> PP.pretty (ss ^. start . line) <> "," <+>
     "column" <+> PP.pretty (ss ^. start . column)
 
--- | "foo.lw" (line 42, column 10)
+-- | "foo.rego" (line 42, column 10)
 prettyLoc :: SourceSpan -> PP.Doc a
 prettyLoc ss =
     PP.dquotes (PP.pretty $ describeSourcePointer $ ss ^. sourcePointer) <+>
