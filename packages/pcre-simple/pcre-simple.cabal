@@ -13,6 +13,15 @@ Build-type:          Simple
 Extra-source-files:  README.md
 Cabal-version:       >= 1.10
 
+Extra-source-files:
+  cbits/pcre2-10.30/src/pcre2.h
+  cbits/pcre2-10.30/src/pcre2.h.in
+  cbits/pcre2-10.30/src/pcre2_internal.h
+  cbits/pcre2-10.30/src/pcre2_intmodedep.h
+  cbits/pcre2-10.30/src/pcre2_ucp.h
+  cbits/pcre2-10.30/src/pcre2_jit_match.c
+  cbits/pcre2-10.30/src/pcre2_jit_misc.c
+
 Library
   Hs-source-dirs:   src
   Default-language: Haskell2010
@@ -24,9 +33,9 @@ Library
     Text.Pcre2.Internal
 
   Build-depends:
-    base,
-    bytestring,
-    text
+    base       >= 4    && < 5,
+    bytestring >= 0.10 && < 0.11,
+    text       >= 1.2  && < 1.3
 
   Cc-options:
     "-DPCRE2_CODE_UNIT_WIDTH=8"
@@ -42,32 +51,32 @@ Library
     "-DSUPPORT_UNICODE=1"
 
   C-sources:
-    cbits/pcre2-10.30/src/pcre2_tables.c
-    cbits/pcre2-10.30/src/pcre2_substring.c
+    cbits/pcre2-10.30/src/pcre2_auto_possess.c
+    cbits/pcre2-10.30/src/pcre2_chartables.c
+    cbits/pcre2-10.30/src/pcre2_compile.c
+    cbits/pcre2-10.30/src/pcre2_config.c
     cbits/pcre2-10.30/src/pcre2_context.c
-    cbits/pcre2-10.30/src/pcre2_pattern_info.c
-    cbits/pcre2-10.30/src/pcre2_string_utils.c
-    cbits/pcre2-10.30/src/pcre2_serialize.c
-    cbits/pcre2-10.30/src/pcre2_xclass.c
+    cbits/pcre2-10.30/src/pcre2_convert.c
+    cbits/pcre2-10.30/src/pcre2_dfa_match.c
+    cbits/pcre2-10.30/src/pcre2_error.c
+    cbits/pcre2-10.30/src/pcre2_find_bracket.c
+    cbits/pcre2-10.30/src/pcre2_fuzzsupport.c
+    cbits/pcre2-10.30/src/pcre2_jit_compile.c
+    cbits/pcre2-10.30/src/pcre2_maketables.c
+    cbits/pcre2-10.30/src/pcre2_match.c
     cbits/pcre2-10.30/src/pcre2_match_data.c
     cbits/pcre2-10.30/src/pcre2_newline.c
-    cbits/pcre2-10.30/src/pcre2_config.c
-    cbits/pcre2-10.30/src/pcre2_compile.c
-    cbits/pcre2-10.30/src/pcre2_fuzzsupport.c
-    cbits/pcre2-10.30/src/pcre2_auto_possess.c
-    cbits/pcre2-10.30/src/pcre2_find_bracket.c
-    cbits/pcre2-10.30/src/pcre2_convert.c
-    cbits/pcre2-10.30/src/pcre2_substitute.c
-    cbits/pcre2-10.30/src/pcre2_dfa_match.c
-    cbits/pcre2-10.30/src/pcre2_valid_utf.c
-    cbits/pcre2-10.30/src/pcre2_error.c
     cbits/pcre2-10.30/src/pcre2_ord2utf.c
-    cbits/pcre2-10.30/src/pcre2_jit_compile.c
-    cbits/pcre2-10.30/src/pcre2_ucd.c
+    cbits/pcre2-10.30/src/pcre2_pattern_info.c
+    cbits/pcre2-10.30/src/pcre2_serialize.c
+    cbits/pcre2-10.30/src/pcre2_string_utils.c
     cbits/pcre2-10.30/src/pcre2_study.c
-    cbits/pcre2-10.30/src/pcre2_match.c
-    cbits/pcre2-10.30/src/pcre2_maketables.c
-    cbits/pcre2-10.30/src/pcre2_chartables.c
+    cbits/pcre2-10.30/src/pcre2_substitute.c
+    cbits/pcre2-10.30/src/pcre2_substring.c
+    cbits/pcre2-10.30/src/pcre2_tables.c
+    cbits/pcre2-10.30/src/pcre2_ucd.c
+    cbits/pcre2-10.30/src/pcre2_valid_utf.c
+    cbits/pcre2-10.30/src/pcre2_xclass.c
     cbits/pcre_simple.c
 
 Test-suite pcre-tests

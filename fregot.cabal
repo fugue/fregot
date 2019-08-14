@@ -8,11 +8,11 @@ Maintainer:          jasper@fugue.co
 Copyright:           Fugue, Inc.
 Category:            Language
 Build-type:          Simple
-Cabal-version:       >= 1.18
+Cabal-version:       1.18
 
 Library
   Default-language: Haskell2010
-  Ghc-options:      -Wall -Werror
+  Ghc-options:      -Wall
   Hs-source-dirs:   lib
 
   Exposed-modules:
@@ -133,14 +133,14 @@ Executable fregot
   Hs-source-dirs:    src/fregot
   Main-is:           Main.hs
   Default-language:  Haskell2010
-  Ghc-options:       -Wall -Werror -rtsopts -threaded
+  Ghc-options:       -Wall -rtsopts -threaded
   build-depends:     base, fregot
 
 Executable fspec
   Hs-source-dirs:    src/fspec
   Main-is:           Main.hs
   Default-language:  Haskell2010
-  Ghc-options:       -Wall -Werror -rtsopts -threaded
+  Ghc-options:       -Wall -rtsopts -threaded
 
   Build-depends:
     fregot,
@@ -163,7 +163,7 @@ Test-suite fregot-tests
   Main-is:           Main.hs
   Type:              exitcode-stdio-1.0
   Default-language:  Haskell2010
-  Ghc-options:       -Wall -Werror -rtsopts -threaded
+  Ghc-options:       -Wall -rtsopts -threaded
 
   Other-modules:
     Data.SafeVar.Tests
