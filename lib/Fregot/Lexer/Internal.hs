@@ -31,12 +31,17 @@ module Fregot.Lexer.Internal
     , prevCommentTokenStream
 
     , keywords
+
+      -- * Auxiliary parsers
+    , varHeadChar
+    , varTailChar
+    , varText
     ) where
 
 import           Control.Lens           ((&), (.~), (^.))
 import           Control.Monad          (void)
 import           Control.Monad.Identity (Identity)
-import           Data.Char              (isSpace)
+import           Data.Char              (isAlpha, isDigit, isSpace)
 import qualified Data.Text              as T
 import qualified Data.Vector.Extended   as V
 import           Fregot.Lexer.Comment
@@ -207,21 +212,33 @@ parseCommentBlock =
 
 parseVar :: TokenParser Token
 parseVar = do
-    x0 <- Parsec.letter <|> Parsec.char '_'
-    xs <- Parsec.many $ Parsec.alphaNum <|> Parsec.char '_'
+    x0 <- Parsec.satisfy varHeadChar
+    xs <- Parsec.many $ Parsec.satisfy varTailChar
     let txt = T.pack $ x0 : xs
     return $ case txt of
-        "as"        -> TAs
-        "default"   -> TDefault
-        "else"      -> TElse
-        "false"     -> TFalse
-        "import"    -> TImport
-        "package"   -> TPackage
-        "not"       -> TNot
-        "null"      -> TNull
-        "true"      -> TTrue
-        "with"      -> TWith
-        _           -> TVar txt
+        "as"      -> TAs
+        "default" -> TDefault
+        "else"    -> TElse
+        "false"   -> TFalse
+        "import"  -> TImport
+        "package" -> TPackage
+        "not"     -> TNot
+        "null"    -> TNull
+        "true"    -> TTrue
+        "with"    -> TWith
+        _         -> TVar txt
+
+varHeadChar :: Char -> Bool
+varHeadChar c = c == '_' || isAlpha c
+
+varTailChar :: Char -> Bool
+varTailChar c = varHeadChar c || isDigit c
+
+varText :: T.Text -> Bool
+varText "_" = False
+varText v   = case T.uncons v of
+    Nothing     -> False
+    Just (h, t) -> varHeadChar h && T.all varTailChar t
 
 -- | A token parser for an integer or a float.
 parseIntOrFloat :: TokenParser Token
@@ -298,47 +315,47 @@ parseSomeOperator = do
 
 prettyToken :: Token -> String
 prettyToken token = case token of
-    TStart                     -> "start of file"
-    TCommentBlock        _     -> "comment block"
-    TString              _     -> "String literal"
-    TInt                 _     -> "Int literal"
-    TFloat               _     -> "Float literal"
-    TVar                 i     -> T.unpack i
-    TLParen                    -> quote "("
-    TRParen                    -> quote ")"
-    TLBrace                    -> quote "{"
-    TRBrace                    -> quote "}"
-    TLBracket                  -> quote "["
-    TRBracket                  -> quote "]"
-    TUnify                     -> "="
-    TAssign                    -> ":="
-    TPeriod                    -> "."
-    TColon                     -> ":"
-    TSemicolon                 -> ";"
-    TComma                     -> ","
-    TPipe                      -> "|"
-    TAs                        -> "keyword 'as'"
-    TDefault                   -> "keyword 'default'"
-    TElse                      -> "keyword 'else'"
-    TFalse                     -> "keyword 'false'"
-    TImport                    -> "keyword 'import'"
-    TNot                       -> "keyword 'not'"
-    TNull                      -> "keyword 'null'"
-    TPackage                   -> "keyword 'package'"
-    TTrue                      -> "keyword 'true'"
-    TWith                      -> "keyword 'with'"
-    TEqual                     -> "=="
-    TNotEqual                  -> "!="
-    TLessThan                  -> "<"
-    TLessThanOrEqual           -> "<="
-    TGreaterThan               -> ">"
-    TGreaterThanOrEqual        -> ">="
-    TPlus                      -> "+"
-    TMinus                     -> "-"
-    TTimes                     -> "*"
-    TDivide                    -> "/"
-    TModulo                    -> "%"
-    TBinAnd                    -> "&"
+    TStart                 -> "start of file"
+    TCommentBlock        _ -> "comment block"
+    TString              _ -> "String literal"
+    TInt                 _ -> "Int literal"
+    TFloat               _ -> "Float literal"
+    TVar                 i -> T.unpack i
+    TLParen                -> quote "("
+    TRParen                -> quote ")"
+    TLBrace                -> quote "{"
+    TRBrace                -> quote "}"
+    TLBracket              -> quote "["
+    TRBracket              -> quote "]"
+    TUnify                 -> "="
+    TAssign                -> ":="
+    TPeriod                -> "."
+    TColon                 -> ":"
+    TSemicolon             -> ";"
+    TComma                 -> ","
+    TPipe                  -> "|"
+    TAs                    -> "keyword 'as'"
+    TDefault               -> "keyword 'default'"
+    TElse                  -> "keyword 'else'"
+    TFalse                 -> "keyword 'false'"
+    TImport                -> "keyword 'import'"
+    TNot                   -> "keyword 'not'"
+    TNull                  -> "keyword 'null'"
+    TPackage               -> "keyword 'package'"
+    TTrue                  -> "keyword 'true'"
+    TWith                  -> "keyword 'with'"
+    TEqual                 -> "=="
+    TNotEqual              -> "!="
+    TLessThan              -> "<"
+    TLessThanOrEqual       -> "<="
+    TGreaterThan           -> ">"
+    TGreaterThanOrEqual    -> ">="
+    TPlus                  -> "+"
+    TMinus                 -> "-"
+    TTimes                 -> "*"
+    TDivide                -> "/"
+    TModulo                -> "%"
+    TBinAnd                -> "&"
   where
     quote :: String -> String
     quote x = "\"" ++ x ++ "\""

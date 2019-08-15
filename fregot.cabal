@@ -169,10 +169,12 @@ Test-suite fregot-tests
     Data.SafeVar.Tests
     Fregot.Compile.Order.Tests
     Fregot.Interpreter.Dependencies.Tests
+    Fregot.Names.Tests
     Fregot.Prepare.Dsl
     Fregot.Prepare.Lens.Tests
     Fregot.Prepare.Vars.Tests
     System.Console.Haskeline.Tests
+    Test.Tasty.Extended
 
   Build-depends:
     fregot,

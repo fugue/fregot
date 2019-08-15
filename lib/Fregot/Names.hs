@@ -29,25 +29,31 @@ module Fregot.Names
     , Imports
 
     , InstVar (..)
+
+    , packageNameFromFilePath
     ) where
 
-import           Control.Lens        (review, (^?))
-import           Control.Lens.Prism  (Prism', prism')
-import           Control.Lens.TH     (makePrisms)
-import           Control.Monad       (guard)
-import           Data.Binary         (Binary)
-import           Data.Hashable       (Hashable (..))
-import           Data.String         (IsString (..))
-import           Data.Unique         (HasUnique (..), Unique, Uniquely (..))
-import           GHC.Generics        (Generic)
-import           System.IO.Unsafe    (unsafePerformIO)
-import qualified Data.Aeson          as Aeson
-import qualified Data.Binary         as Binary
-import qualified Data.HashMap.Strict as HMS
-import qualified Data.List           as L
-import qualified Data.Text.Extended  as T
-import qualified Data.Unique         as Unique
-import qualified Fregot.PrettyPrint  as PP
+import           Control.Lens          (review, (^?))
+import           Control.Lens.Prism    (Prism', prism')
+import           Control.Lens.TH       (makePrisms)
+import           Control.Monad         (guard)
+import           Data.Binary           (Binary)
+import           Data.Hashable         (Hashable (..))
+import           Data.String           (IsString (..))
+import           Data.Unique           (HasUnique (..), Unique, Uniquely (..))
+import           GHC.Generics          (Generic)
+import           System.FilePath       (dropTrailingPathSeparator, isRelative,
+                                        joinPath, splitPath, splitExtension,
+                                        (<.>))
+import           System.IO.Unsafe      (unsafePerformIO)
+import qualified Data.Aeson            as Aeson
+import qualified Data.Binary           as Binary
+import qualified Fregot.Lexer.Internal as Lexer
+import qualified Data.HashMap.Strict   as HMS
+import qualified Data.List             as L
+import qualified Data.Text.Extended    as T
+import qualified Data.Unique           as Unique
+import qualified Fregot.PrettyPrint    as PP
 
 data PackageName = PackageName {-# UNPACK #-} !Unique ![T.Text]
     deriving Eq via (Uniquely PackageName)
@@ -86,6 +92,12 @@ mkPackageName :: [T.Text] -> PackageName
 mkPackageName ps =
     Unique.getStableUnique packageNameUniqueGen ps $ \u -> PackageName u ps
 
+packageNameFromPieces :: [T.Text] -> Maybe PackageName
+packageNameFromPieces []     = Nothing
+packageNameFromPieces pieces = do
+    guard $ all Lexer.varText pieces
+    return $! mkPackageName pieces
+
 packageNameUniqueGen :: Unique.StableUniqueGen [T.Text]
 packageNameUniqueGen = unsafePerformIO Unique.newStableUniqueGen
 {-# NOINLINE packageNameUniqueGen #-}
@@ -96,10 +108,7 @@ packageNameFromString = T.fromString . packageNameFromText
 packageNameFromText :: Prism' T.Text PackageName
 packageNameFromText = prism'
     (T.intercalate "." . unPackageName)
-    (\txt -> do
-        let parts = T.split (== '.') txt
-        guard $ not $ any T.null parts
-        return $ mkPackageName parts)
+    (packageNameFromPieces . T.split (== '.'))
 
 -- | Like 'packageNameFromString', but with "data." prepended.
 dataPackageNameFromString :: Prism' String PackageName
@@ -148,19 +157,8 @@ varToText = unVar
 
 varFromText :: Prism' T.Text Var
 varFromText = prism' varToText $ \txt -> do
-    guard $ txt /= "_"
-    (h, t) <- T.uncons txt
-    guard $ allowedStartChar h && T.all allowedChar t
+    guard $ Lexer.varText txt
     return $ mkVar txt
-  where
-    allowedStartChar c =
-        (c >= 'a' && c <= 'z') ||
-        (c >= 'A' && c <= 'Z') ||
-        c == '_'
-
-    allowedChar c =
-        allowedStartChar c ||
-        (c >= '0' && c <= '9')
 
 -- | This type exists solely for pretty-printing.
 newtype Nested a = Nested {unNested :: [a]}
@@ -237,3 +235,15 @@ instance Show InstVar where
 
 instance PP.Pretty a InstVar where
     pretty = PP.pretty . show
+
+packageNameFromFilePath :: Prism' FilePath PackageName
+packageNameFromFilePath = prism' to from
+  where
+    to   p  = joinPath (fmap T.unpack $ unPackageName p) <.> "rego"
+    from fp = do
+        guard $ isRelative fp
+        let (pieces, ext) = splitExtension fp
+        guard $ ext == ".rego"
+        packageNameFromPieces $
+            fmap (T.pack . dropTrailingPathSeparator) $
+            splitPath pieces
