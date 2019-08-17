@@ -94,3 +94,14 @@ test_set_08_two_sets {
 test_set_08_multiple_sets {
     union({set(), {"foo", 1, 2}, {true, 1, 2}, {"foo", 1, true}}) == {1, 2, "foo", true}
 }
+
+# 9. Set difference
+
+test_set_09_empty {
+    set() - {1} == set()
+    {1} - set() == {1}
+}
+
+test_set_09_nonempty {
+    {1, 2, 3} - {1} == {2, 3}
+}

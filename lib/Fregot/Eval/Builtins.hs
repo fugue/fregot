@@ -490,7 +490,11 @@ builtin_plus = Builtin (In (In Out)) $ pure $
 
 builtin_minus :: Monad m => Builtin m
 builtin_minus = Builtin (In (In Out)) $ pure $
-  \(Cons x (Cons y Nil)) -> return $! num $ x - y
+  \(Cons x (Cons y Nil)) -> case (x, y) of
+      (InL x', InL y') -> return $! NumberV $ num $ x' - y'
+      (InR x', InR y') -> return $! SetV $ HS.difference (x' :: HS.HashSet Value) y'
+      (InL _, InR _) -> throwBuiltinException $ "Expected number but got set"
+      (InR _, InL _) -> throwBuiltinException $ "Expected set but got number"
 
 builtin_times :: Monad m => Builtin m
 builtin_times = Builtin (In (In Out)) $ pure $
