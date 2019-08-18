@@ -37,7 +37,7 @@ parseOptions = Options
             OA.help    "Path of output file")
     <*> (OA.some $ OA.strArgument $
             OA.metavar "PATHS" <>
-            OA.help    "Rego files or directories to test")
+            OA.help    "Rego files or directories to bundle")
 
 main :: GlobalOptions -> Options -> IO ExitCode
 main gopts opts = do
