@@ -15,6 +15,7 @@ module Fregot.Eval.Value
     , describeValue
     , emptyObject
     , updateObject
+    , trueish
     ) where
 
 import           Control.Lens         (preview, review, (^.))
@@ -117,3 +118,8 @@ instance Pf.PrintfArg Value where
         Pf.formatString (if b then "true" else "false") fmt
 
     formatArg _ fmt = Pf.errorBadFormat $ Pf.fmtChar fmt
+
+-- | Is a value true in literals?
+trueish :: Value -> Bool
+trueish (BoolV False) = False
+trueish _             = True
