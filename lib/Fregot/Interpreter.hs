@@ -348,11 +348,10 @@ evalExpr h eoptions pkgname expr = do
         eoptions ^. eoContext . Eval.locals . to HMS.keys
 
 evalVar
-    :: Handle -> SourceSpan -> PackageName -> Var
+    :: Handle -> EvalOptions -> SourceSpan -> PackageName -> Var
     -> InterpreterM (Eval.Document Eval.Value)
-evalVar h source pkgname var = do
+evalVar h eoptions source pkgname var = do
     let expr = Sugar.TermE source (Sugar.VarT source var)
-    eoptions <- readEvalOptions h
     evalExpr h eoptions pkgname expr
 
 mkStepState
