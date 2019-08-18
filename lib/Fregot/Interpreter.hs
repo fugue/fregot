@@ -89,8 +89,7 @@ data Handle = Handle
     , _modules      :: !(IORef (HMS.HashMap PackageName ModuleBatch))
     -- | Map of compiled packages.  Dynamically generated from the modules.
     , _compiled     :: !(IORef (HMS.HashMap PackageName CompiledPackage))
-    , _cache        :: !EvalCache
-    , _cacheVersion :: !(IORef Cache.Version)
+    , _cache        :: !(IORef EvalCache)
     , _inputDoc     :: !(IORef Eval.Value)
     }
 
@@ -103,8 +102,7 @@ newHandle _sources = do
     _builtins     <- traverse (htraverse (fmap Identity)) defaultBuiltins
     _modules      <- IORef.newIORef HMS.empty
     _compiled     <- IORef.newIORef HMS.empty
-    _cache        <- Cache.new
-    _cacheVersion <- Cache.bump _cache >>= IORef.newIORef
+    _cache        <- Cache.new >>= IORef.newIORef
     _inputDoc     <- IORef.newIORef emptyObject
     return Handle {..}
 
@@ -296,29 +294,29 @@ insertRule h pkgname sourcep rule =
 data EvalOptions = EvalOptions
     { _eoContext  :: !Eval.Context
     , _eoInputDoc :: !Eval.Value
+    , _eoCache    :: !EvalCache
     }
 
 $(makeLenses ''EvalOptions)
 
 readEvalOptions :: Handle -> InterpreterM EvalOptions
-readEvalOptions h = do
-    indoc <- liftIO $ IORef.readIORef (h ^. inputDoc)
-    return $! EvalOptions Eval.emptyContext indoc
+readEvalOptions h = EvalOptions
+    <$> pure Eval.emptyContext
+    <*> liftIO (IORef.readIORef (h ^. inputDoc))
+    <*> liftIO (IORef.readIORef (h ^. cache))
 
 eval
     :: Handle -> EvalOptions -> PackageName -> Eval.EvalM a
     -> InterpreterM (Eval.Document a)
 eval h eoptions  _pkgname mx = do
-    comp   <- liftIO $ IORef.readIORef (h ^. compiled)
-    cachev <- liftIO $ IORef.readIORef (h ^. cacheVersion)
+    comp <- liftIO $ IORef.readIORef (h ^. compiled)
     let ctx = eoptions ^. eoContext
         env = Eval.Environment
-            { Eval._builtins     = h ^. builtins
-            , Eval._packages     = comp
-            , Eval._inputDoc     = eoptions ^. eoInputDoc
-            , Eval._cache        = h ^. cache
-            , Eval._cacheVersion = cachev
-            , Eval._stack        = Stack.empty
+            { Eval._builtins = h ^. builtins
+            , Eval._packages = comp
+            , Eval._inputDoc = eoptions ^. eoInputDoc
+            , Eval._cache    = eoptions ^. eoCache
+            , Eval._stack    = Stack.empty
             }
 
     either fatal return =<< liftIO (Eval.runEvalM env ctx mx)
@@ -361,7 +359,6 @@ mkStepState
 mkStepState h pkgname expr = do
     comp    <- liftIO $ IORef.readIORef (h ^. compiled)
     pkg     <- readCompiledPackage h pkgname
-    cachev  <- liftIO $ IORef.readIORef (h ^. cacheVersion)
     indoc   <- liftIO $ IORef.readIORef (h ^. inputDoc)
 
     -- Rename expression.
@@ -373,15 +370,18 @@ mkStepState h pkgname expr = do
             comp
     rexpr <- runRenamerT renamerEnv $ Renamer.renameExpr expr
 
-    pterm <- Prepare.prepareExpr rexpr
-    cterm <- Compile.compileTerm (h ^. builtins) pkg mempty pterm
+    pterm  <- Prepare.prepareExpr rexpr
+    cterm  <- Compile.compileTerm (h ^. builtins) pkg mempty pterm
+
+    -- New cache for stepping, but should really be disabled.
+    scache <- liftIO $ Cache.new
+
     let env = Eval.Environment
-            { Eval._builtins     = h ^. builtins
-            , Eval._packages     = comp
-            , Eval._inputDoc     = indoc
-            , Eval._cache        = h ^. cache
-            , Eval._cacheVersion = cachev
-            , Eval._stack        = Stack.empty
+            { Eval._builtins = h ^. builtins
+            , Eval._packages = comp
+            , Eval._inputDoc = indoc
+            , Eval._cache    = scache
+            , Eval._stack    = Stack.empty
             }
 
     dieIfErrors
@@ -402,6 +402,5 @@ setInput h path = do
             PP.ind (PP.pretty err)
 
     liftIO $ do
-        newCacheVersion <- Cache.bump (h ^. cache)
-        IORef.writeIORef (h ^. cacheVersion) newCacheVersion
-        IORef.writeIORef (h ^. inputDoc)     (Eval.Json.toValue val)
+        IORef.atomicModifyIORef_ (h ^. cache) Cache.bump
+        IORef.writeIORef (h ^. inputDoc) (Eval.Json.toValue val)
