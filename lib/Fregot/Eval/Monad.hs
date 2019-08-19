@@ -16,17 +16,18 @@ module Fregot.Eval.Monad
     , EvalCache
 
     , Environment (..), builtins, packages, inputDoc
-    , cache, cacheVersion, stack
+    , cache, stack
 
     , EvalException (..)
 
+    , EnvContext (..), ecEnvironment, ecContext
     , EvalM
     , runEvalM
 
-    , StepState (..), ssEnvironment, ssContext
-    , mkStepState
+    , ResumeStep
+    , newResumeStep
     , Step (..)
-    , stepEvalM
+    , runStep
 
     , suspend
     , branch
@@ -73,7 +74,6 @@ import qualified Fregot.Error              as Error
 import qualified Fregot.Error.Stack        as Stack
 import           Fregot.Eval.Builtins      (ReadyBuiltin)
 import           Fregot.Eval.Cache         (Cache)
-import qualified Fregot.Eval.Cache         as Cache
 import           Fregot.Eval.Value
 import           Fregot.Names
 import           Fregot.Prepare.Ast
@@ -113,12 +113,11 @@ type EvalCache = Cache (PackageName, Var) Value
 --------------------------------------------------------------------------------
 
 data Environment = Environment
-    { _builtins     :: !(HMS.HashMap Function ReadyBuiltin)
-    , _packages     :: !(HMS.HashMap PackageName CompiledPackage)
-    , _inputDoc     :: !Value
-    , _cache        :: !EvalCache
-    , _cacheVersion :: !Cache.Version
-    , _stack        :: !Stack.StackTrace
+    { _builtins :: !(HMS.HashMap Function ReadyBuiltin)
+    , _packages :: !(HMS.HashMap PackageName CompiledPackage)
+    , _inputDoc :: !Value
+    , _cache    :: !EvalCache
+    , _stack    :: !Stack.StackTrace
     }
 
 $(makeLenses ''Environment)
@@ -175,44 +174,42 @@ instance MonadIO EvalM where
     liftIO mio = EvalM $ \_ ctx -> fmap (Row ctx) (liftIO mio)
     {-# INLINE liftIO #-}
 
-runEvalM :: Environment -> Context -> EvalM a -> IO (Either Error (Document a))
-runEvalM env0 ctx0 (EvalM f) = catch
+-- | Everything you need to evaluate something in a context.
+data EnvContext = EnvContext
+    { _ecContext     :: !Context
+    , _ecEnvironment :: !Environment
+    }
+
+$(makeLenses ''EnvContext)
+
+runEvalM :: EnvContext -> EvalM a -> IO (Either Error (Document a))
+runEvalM (EnvContext ctx0 env0) (EvalM f) = catch
     (Right <$> Stream.toList (f env0 ctx0))
     (\(EvalException _env _context err) -> return (Left err))
 
-data StepState a = StepState
-    { _ssStream      :: Stream Suspension IO (Row a)
-    , _ssContext     :: Context
-    , _ssEnvironment :: Environment
-    }
+type ResumeStep a = (EnvContext, Stream Suspension IO (Row a))
 
-mkStepState :: Environment -> EvalM a -> StepState a
-mkStepState env0 (EvalM f) = StepState
-    { _ssStream      = f env0 emptyContext
-    , _ssContext     = emptyContext
-    , _ssEnvironment = env0
-    }
+newResumeStep :: EnvContext -> EvalM a -> ResumeStep a
+newResumeStep envctx@(EnvContext ctx env) (EvalM f) = (envctx, f env ctx)
 
 data Step a
-    = Yield (Row a) (StepState a)
-    | Suspend SourceSpan (StepState a)
+    = Yield   (Row a)    EnvContext (Stream Suspension IO (Row a))
+    | Suspend SourceSpan EnvContext (Stream Suspension IO (Row a))
+    | Error              EnvContext Error
     | Done
-    | Error Environment Context Error
 
-$(makeLenses ''StepState)
-
-stepEvalM :: StepState a -> IO (Step a)
-stepEvalM ss = catch
+runStep :: ResumeStep a -> IO (Step a)
+runStep (ss, stream) = catch
     (do
-        sstep <- Stream.step (ss ^. ssStream)
-        let env = ss ^. ssEnvironment
+        sstep <- Stream.step stream
         case sstep of
             Stream.Yield r ns ->
-                return $ Yield r (StepState ns (r ^. rowContext) env)
+                return $ Yield r (ss & ecContext .~ (r ^. rowContext)) ns
             Stream.Suspend (i, ctx, env') ns ->
-                return $ Suspend i (StepState ns ctx env')
+                return $ Suspend i (EnvContext ctx env') ns
             Stream.Done         -> return Done)
-    (\(EvalException env context err) -> return (Error env context err))
+    (\(EvalException env context err) ->
+        return (Error (EnvContext context env) err))
 
 suspend :: SourceSpan -> EvalM a -> EvalM a
 suspend source (EvalM f) =

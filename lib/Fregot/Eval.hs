@@ -17,13 +17,14 @@ module Fregot.Eval
 
     , EvalException (..)
 
+    , EnvContext (..), ecEnvironment, ecContext
     , EvalM
     , runEvalM
 
-    , StepState (..), ssEnvironment, ssContext
-    , mkStepState
+    , ResumeStep
+    , newResumeStep
     , Step (..)
-    , stepEvalM
+    , runStep
 
     , evalVar
     , evalTerm
@@ -321,14 +322,13 @@ evalCompiledRule callerSource crule mbIndex = push $ case crule ^. ruleKind of
     cached computeValue = do
         let key = (crule ^. rulePackage, crule ^. ruleName)
 
-        version  <- view cacheVersion
         c        <- view cache
-        mbResult <- liftIO $ Cache.lookup c key version
+        mbResult <- liftIO $ Cache.lookup c key
         case mbResult of
             Just val -> return val
             Nothing  -> do
                 x <- computeValue
-                liftIO $ Cache.insert c key version x
+                liftIO $ Cache.insert c key x
                 return x
 
 evalRuleDefinition
@@ -436,9 +436,8 @@ evalRuleBody lits0 final = go lits0
         -- Since we changed the input, we need to bump up the cache.  This will
         -- also be the case when we modify `data`.
         let updateInput input0 [] = do
-                c <- view cache
-                v <- liftIO (Cache.bump c)
-                local (cacheVersion .~ v) $ local (inputDoc .~ input0) $ mx
+                c <- view cache >>= liftIO . Cache.bump
+                local (cache .~ c) $ local (inputDoc .~ input0) $ mx
             updateInput input0 (w : ws) = do
                 val    <- evalTerm (w ^. withAs)
                 input1 <- case updateObject (w ^. withPath) val input0 of

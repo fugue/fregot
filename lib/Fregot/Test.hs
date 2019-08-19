@@ -49,9 +49,8 @@ runTest
     :: Interpreter.Handle -> TestName
     -> Interpreter.InterpreterM TestResults
 runTest h testname@(pkgname, rule) = do
-    options  <- Interpreter.readEvalOptions h
     errOrDoc <- Parachute.try $
-        Interpreter.evalVar h options source pkgname rule
+        Interpreter.evalVar h Nothing source pkgname rule
 
     results <- case errOrDoc of
         Right doc@(_ : _) | all (Value.trueish . view Eval.rowValue) doc ->

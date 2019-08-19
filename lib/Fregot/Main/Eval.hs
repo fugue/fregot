@@ -68,8 +68,7 @@ main gopts opts = do
                 "eval" (r ^. ruleHead . ruleAnn) "unexpected rule"
                 "Need an expression to evaluate, not a rule"
 
-        evalOpts <- Interpreter.readEvalOptions interpreter
-        val <- Interpreter.evalExpr interpreter evalOpts "cli" expr
+        val <- Interpreter.evalExpr interpreter Nothing "cli" expr
         case traverse (Json.fromValue . view rowValue) val of
             Right js -> return $ A.toJSON js
             Left  e  -> Parachute.fatal $ Error.mkError
