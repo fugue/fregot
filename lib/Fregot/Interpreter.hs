@@ -19,13 +19,12 @@ module Fregot.Interpreter
 
     , compilePackages
 
-    , EvalOptions (..), eoContext, eoInputDoc
-    , readEvalOptions
+    , Eval.EnvContext (..), Eval.ecEnvironment, Eval.ecContext
     , evalExpr
     , evalVar
 
-    , Eval.StepState (..)
-    , mkStepState
+    , Eval.ResumeStep
+    , newResumeStep
     , Eval.Step (..)
     , step
 
@@ -82,15 +81,15 @@ import           System.FilePath.Extended        (listExtensions)
 type InterpreterM a = ParachuteT Error IO a
 
 data Handle = Handle
-    { _builtins     :: !(Builtins Identity)
-    , _sources      :: !Sources.Handle
+    { _builtins :: !(Builtins Identity)
+    , _sources  :: !Sources.Handle
     -- | List of modules, and files we loaded them from.  Grouped by package
     -- name.
-    , _modules      :: !(IORef (HMS.HashMap PackageName ModuleBatch))
+    , _modules  :: !(IORef (HMS.HashMap PackageName ModuleBatch))
     -- | Map of compiled packages.  Dynamically generated from the modules.
-    , _compiled     :: !(IORef (HMS.HashMap PackageName CompiledPackage))
-    , _cache        :: !(IORef EvalCache)
-    , _inputDoc     :: !(IORef Eval.Value)
+    , _compiled :: !(IORef (HMS.HashMap PackageName CompiledPackage))
+    , _cache    :: !(IORef EvalCache)
+    , _inputDoc :: !(IORef Eval.Value)
     }
 
 $(makeLenses ''Handle)
@@ -289,42 +288,27 @@ insertRule h pkgname sourcep rule =
         , _modulePolicy  = [rule]
         }
 
--- | We can override a few things in the evaluation.  This is particularly
--- useful when evaluating things from within the paused debugger.
-data EvalOptions = EvalOptions
-    { _eoContext  :: !Eval.Context
-    , _eoInputDoc :: !Eval.Value
-    , _eoCache    :: !EvalCache
-    }
-
-$(makeLenses ''EvalOptions)
-
-readEvalOptions :: Handle -> InterpreterM EvalOptions
-readEvalOptions h = EvalOptions
+newEvalContext :: Handle -> InterpreterM Eval.EnvContext
+newEvalContext h = Eval.EnvContext
     <$> pure Eval.emptyContext
-    <*> liftIO (IORef.readIORef (h ^. inputDoc))
-    <*> liftIO (IORef.readIORef (h ^. cache))
+    <*> (Eval.Environment
+        <$> pure (h ^. builtins)
+        <*> liftIO (IORef.readIORef (h ^. compiled))
+        <*> liftIO (IORef.readIORef (h ^. inputDoc))
+        <*> liftIO (IORef.readIORef (h ^. cache))
+        <*> pure Stack.empty)
 
 eval
-    :: Handle -> EvalOptions -> PackageName -> Eval.EvalM a
+    :: Handle -> Maybe Eval.EnvContext -> PackageName -> Eval.EvalM a
     -> InterpreterM (Eval.Document a)
-eval h eoptions  _pkgname mx = do
-    comp <- liftIO $ IORef.readIORef (h ^. compiled)
-    let ctx = eoptions ^. eoContext
-        env = Eval.Environment
-            { Eval._builtins = h ^. builtins
-            , Eval._packages = comp
-            , Eval._inputDoc = eoptions ^. eoInputDoc
-            , Eval._cache    = eoptions ^. eoCache
-            , Eval._stack    = Stack.empty
-            }
-
-    either fatal return =<< liftIO (Eval.runEvalM env ctx mx)
+eval h mbEvalEnvCtx _pkgname mx = do
+    envctx <- maybe (newEvalContext h) return mbEvalEnvCtx
+    either fatal return =<< liftIO (Eval.runEvalM envctx mx)
 
 evalExpr
-    :: Handle -> EvalOptions -> PackageName -> Sugar.Expr SourceSpan Var
-    -> InterpreterM (Eval.Document Eval.Value)
-evalExpr h eoptions pkgname expr = do
+    :: Handle -> Maybe Eval.EnvContext -> PackageName
+    -> Sugar.Expr SourceSpan Var -> InterpreterM (Eval.Document Eval.Value)
+evalExpr h mbEvalEnvCtx pkgname expr = do
     comp <- liftIO $ IORef.readIORef (h ^. compiled)
     pkg  <- readCompiledPackage h pkgname
 
@@ -340,26 +324,25 @@ evalExpr h eoptions pkgname expr = do
     pterm <- Prepare.prepareExpr rterm
     cterm <- Compile.compileTerm (h ^. builtins) pkg safeLocals pterm
     dieIfErrors
-    eval h eoptions pkgname (Eval.evalTerm cterm)
+    eval h mbEvalEnvCtx pkgname (Eval.evalTerm cterm)
   where
-    safeLocals = Compile.Safe $ HS.fromList $
-        eoptions ^. eoContext . Eval.locals . to HMS.keys
+    safeLocals = Compile.Safe $ HS.fromList $ case mbEvalEnvCtx of
+        Nothing -> mempty
+        Just ec -> ec ^. Eval.ecContext . Eval.locals . to HMS.keys
 
 evalVar
     :: Handle -> SourceSpan -> PackageName -> Var
     -> InterpreterM (Eval.Document Eval.Value)
 evalVar h source pkgname var = do
     let expr = Sugar.TermE source (Sugar.VarT source var)
-    eoptions <- readEvalOptions h
-    evalExpr h eoptions pkgname expr
+    evalExpr h Nothing pkgname expr
 
-mkStepState
+newResumeStep
     :: Handle -> PackageName -> Sugar.Expr SourceSpan Var
-    -> InterpreterM (Eval.StepState Eval.Value)
-mkStepState h pkgname expr = do
-    comp    <- liftIO $ IORef.readIORef (h ^. compiled)
-    pkg     <- readCompiledPackage h pkgname
-    indoc   <- liftIO $ IORef.readIORef (h ^. inputDoc)
+    -> InterpreterM (Eval.ResumeStep Eval.Value)
+newResumeStep h pkgname expr = do
+    envctx <- newEvalContext h
+    pkg    <- readCompiledPackage h pkgname
 
     -- Rename expression.
     let renamerEnv = Renamer.RenamerEnv
@@ -367,30 +350,19 @@ mkStepState h pkgname expr = do
             mempty  -- No imports?
             pkgname
             (HS.fromList $ Compile.rules pkg)
-            comp
+            (envctx ^. Eval.ecEnvironment . Eval.packages)
     rexpr <- runRenamerT renamerEnv $ Renamer.renameExpr expr
 
     pterm  <- Prepare.prepareExpr rexpr
     cterm  <- Compile.compileTerm (h ^. builtins) pkg mempty pterm
 
-    -- New cache for stepping, but should really be disabled.
-    scache <- liftIO $ Cache.new
-
-    let env = Eval.Environment
-            { Eval._builtins = h ^. builtins
-            , Eval._packages = comp
-            , Eval._inputDoc = indoc
-            , Eval._cache    = scache
-            , Eval._stack    = Stack.empty
-            }
-
     dieIfErrors
-    return $ Eval.mkStepState env (Eval.evalTerm cterm)
+    return $ Eval.newResumeStep envctx (Eval.evalTerm cterm)
 
 step
-    :: Handle -> Eval.StepState Eval.Value
+    :: Handle -> Eval.ResumeStep Eval.Value
     -> InterpreterM (Eval.Step Eval.Value)
-step _ = liftIO . Eval.stepEvalM
+step _ = liftIO . Eval.runStep
 
 setInput :: Handle -> FilePath -> InterpreterM ()
 setInput h path = do
@@ -402,5 +374,7 @@ setInput h path = do
             PP.ind (PP.pretty err)
 
     liftIO $ do
-        IORef.atomicModifyIORef_ (h ^. cache) Cache.bump
+        IORef.readIORef (h ^. cache) >>=
+            Cache.bump >>=
+            IORef.writeIORef (h ^. cache)
         IORef.writeIORef (h ^. inputDoc) (Eval.Json.toValue val)

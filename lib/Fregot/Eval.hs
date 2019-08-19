@@ -17,13 +17,14 @@ module Fregot.Eval
 
     , EvalException (..)
 
+    , EnvContext (..), ecEnvironment, ecContext
     , EvalM
     , runEvalM
 
-    , StepState (..), ssEnvironment, ssContext
-    , mkStepState
+    , ResumeStep
+    , newResumeStep
     , Step (..)
-    , stepEvalM
+    , runStep
 
     , evalVar
     , evalTerm
@@ -438,8 +439,8 @@ evalRuleBody lits0 final = go lits0
         -- Since we changed the input, we need to bump up the cache.  This will
         -- also be the case when we modify `data`.
         let updateInput input0 [] = do
-                c <- view cache
-                local (cache .~ Cache.bump c) $ local (inputDoc .~ input0) $ mx
+                c <- view cache >>= liftIO . Cache.bump
+                local (cache .~ c) $ local (inputDoc .~ input0) $ mx
             updateInput input0 (w : ws) = do
                 val    <- evalTerm (w ^. withAs)
                 input1 <- case updateObject (w ^. withPath) val input0 of

@@ -2,6 +2,10 @@
 --
 -- The base cache structure that we are using is defined in the 'Data.Cache'
 -- module.  Here, we add a simple IO layer, and versioning.
+--
+-- The idea is that we can bump the "version" of the cache and get a completely
+-- empty cache.  However, the old entries are still available for parts of the
+-- program that have a reference to the old version of the cache.
 {-# LANGUAGE DeriveGeneric   #-}
 {-# LANGUAGE TemplateHaskell #-}
 module Fregot.Eval.Cache
@@ -13,7 +17,7 @@ module Fregot.Eval.Cache
     , lookup
     ) where
 
-import           Control.Lens        (over, (^.))
+import           Control.Lens        ((&), (.~), (^.))
 import           Control.Lens.TH     (makeLenses)
 import qualified Data.Cache          as C
 import           Data.Hashable       (Hashable)
@@ -32,17 +36,18 @@ instance Hashable k => Hashable (Versioned k)
 
 data Cache k v = Cache
     { _cache   :: !(IORef (C.Cache (Versioned k) v))
+    , _next    :: !(IORef Version)
     , _version :: !Version
     }
 
 $(makeLenses ''Cache)
 
 new :: IO (Cache k v)
-new = Cache <$> IORef.newIORef (C.empty 100) <*> pure 0
+new = Cache <$> IORef.newIORef (C.empty 100) <*> IORef.newIORef 1 <*> pure 0
 
 -- | Obtain a new cache version.
-bump :: Cache k v -> Cache k v
-bump = over version succ
+bump :: Cache k v -> IO (Cache k v)
+bump c = IORef.atomicModifyIORef' (c ^. next) $ \n -> (succ n, c & version .~ n)
 
 -- | Add a new row.
 insert :: (Hashable k, Ord k) => Cache k v -> k -> v -> IO ()
