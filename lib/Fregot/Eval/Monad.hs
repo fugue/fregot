@@ -240,8 +240,8 @@ cut = EvalM $ \_ _ -> mempty
 {-# INLINE cut #-}
 
 negation :: (a -> Bool) -> EvalM a -> EvalM ()
-negation trueish (EvalM f) = EvalM $ \rs ctx -> do
-    peek <- Stream.peek $ Stream.filter (trueish . view rowValue) (f rs ctx)
+negation true (EvalM f) = EvalM $ \rs ctx -> do
+    peek <- Stream.peek $ Stream.filter (true . view rowValue) (f rs ctx)
     case peek of
         Nothing -> pure (Row ctx ())
         Just _  -> mempty

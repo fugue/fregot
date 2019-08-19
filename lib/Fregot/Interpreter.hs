@@ -331,11 +331,11 @@ evalExpr h mbEvalEnvCtx pkgname expr = do
         Just ec -> ec ^. Eval.ecContext . Eval.locals . to HMS.keys
 
 evalVar
-    :: Handle -> SourceSpan -> PackageName -> Var
+    :: Handle -> Maybe Eval.EnvContext -> SourceSpan -> PackageName -> Var
     -> InterpreterM (Eval.Document Eval.Value)
-evalVar h source pkgname var = do
+evalVar h mbEvalEnvCtx source pkgname var = do
     let expr = Sugar.TermE source (Sugar.VarT source var)
-    evalExpr h Nothing pkgname expr
+    evalExpr h mbEvalEnvCtx pkgname expr
 
 newResumeStep
     :: Handle -> PackageName -> Sugar.Expr SourceSpan Var

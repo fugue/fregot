@@ -431,9 +431,6 @@ evalRuleBody lits0 final = go lits0
             r <- ground (lit ^. literalAnn) v
             if trueish r then go lits else cut
 
-    trueish (BoolV False) = False
-    trueish _             = True
-
     localWiths []    mx = mx
     localWiths withs mx = do
         -- Since we changed the input, we need to bump up the cache.  This will
