@@ -371,7 +371,7 @@ metaCommands =
     , MetaCommand ":input" "set the input document" $ \h args -> do
         case args of
             _ | [path] <- T.unpack <$> args -> liftIO $ void $
-                runInterpreter h (`Interpreter.setInput` path)
+                runInterpreter h (`Interpreter.setInputFile` path)
             _ -> liftIO $ IO.hPutStrLn IO.stderr $
                 ":input takes one path argument"
         return True

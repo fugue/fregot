@@ -29,6 +29,7 @@ module Fregot.Interpreter
     , step
 
     , setInput
+    , setInputFile
     ) where
 
 import qualified Codec.Compression.GZip          as GZip
@@ -364,17 +365,19 @@ step
     -> InterpreterM (Eval.Step Eval.Value)
 step _ = liftIO . Eval.runStep
 
-setInput :: Handle -> FilePath -> InterpreterM ()
-setInput h path = do
+setInput :: Handle -> Aeson.Value -> InterpreterM ()
+setInput h val = liftIO $ do
+    IORef.readIORef (h ^. cache) >>=
+        Cache.bump >>=
+        IORef.writeIORef (h ^. cache)
+    IORef.writeIORef (h ^. inputDoc) (Eval.Json.toValue val)
+
+setInputFile :: Handle -> FilePath -> InterpreterM ()
+setInputFile h path = do
     errOrVal <- liftIO $ Aeson.eitherDecodeFileStrict' path
     val      <- case errOrVal of
         Right v  -> pure (v :: Aeson.Value)
         Left err -> fatal $ Error.mkErrorNoMeta "interpreter" $
             "Loading input file" <+> PP.pretty path <+> "failed:" <$$>
             PP.ind (PP.pretty err)
-
-    liftIO $ do
-        IORef.readIORef (h ^. cache) >>=
-            Cache.bump >>=
-            IORef.writeIORef (h ^. cache)
-        IORef.writeIORef (h ^. inputDoc) (Eval.Json.toValue val)
+    setInput h val
