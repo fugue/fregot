@@ -59,7 +59,7 @@ main gopts opts = do
         forM_ regoPaths $ Interpreter.loadModuleOrBundle interpreter
         Interpreter.compilePackages interpreter
 
-        traverse_ (Interpreter.setInput interpreter) (opts ^. input)
+        traverse_ (Interpreter.setInputFile interpreter) (opts ^. input)
 
         ruleOrExpr <- parseRuleOrExpr Sources.CliInput (opts ^. expression)
         expr <- case ruleOrExpr of
