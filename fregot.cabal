@@ -170,6 +170,7 @@ Test-suite fregot-tests
     Fregot.Compile.Order.Tests
     Fregot.Interpreter.Dependencies.Tests
     Fregot.Names.Tests
+    Fregot.Parser.Tests
     Fregot.Prepare.Dsl
     Fregot.Prepare.Lens.Tests
     Fregot.Prepare.Vars.Tests

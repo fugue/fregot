@@ -141,20 +141,22 @@ insertModule h sourcep modul = do
 
     dieIfErrors
 
-loadModule :: Handle -> FilePath -> InterpreterM ()
-loadModule h path = do
+loadModule
+    :: Handle -> Parser.ParserOptions -> FilePath -> InterpreterM PackageName
+loadModule h popts path = do
     -- Read the source code and parse the module.
     input <- catchIO $ T.readFile path
     liftIO $ IORef.atomicModifyIORef_ (h ^. sources) $
         Sources.insert sourcep input
-    modul <- Parser.lexAndParse Parser.parseModule sourcep input
+    modul <- Parser.lexAndParse (Parser.parseModule popts) sourcep input
 
     -- Insert or replace the module.
     insertModule h sourcep modul
+    return $ modul ^. Sugar.modulePackage
   where
     sourcep = Sources.FileInput path
 
-loadBundle :: Handle -> FilePath -> InterpreterM ()
+loadBundle :: Handle -> FilePath -> InterpreterM [PackageName]
 loadBundle h path = do
     errOrBundle <- Binary.decodeOrFail . GZip.decompress <$>
         liftIO (BL.readFile path)
@@ -167,10 +169,12 @@ loadBundle h path = do
                 (mappend (bundle ^. bundleSources))
             forOf_ (bundleModules . traverse . traverse) bundle $
                 \(sourcep, modul) -> insertModule h sourcep modul
+            return $ HMS.keys $ bundle ^. bundleModules
 
-loadModuleOrBundle :: Handle -> FilePath -> InterpreterM ()
-loadModuleOrBundle h path = case listExtensions path of
-    "rego" : _            -> loadModule h path
+loadModuleOrBundle
+    :: Handle -> Parser.ParserOptions -> FilePath -> InterpreterM [PackageName]
+loadModuleOrBundle h popts path = case listExtensions path of
+    "rego" : _            -> pure <$> loadModule h popts path
     "bundle" : "rego" : _ -> loadBundle h path
     _                     -> fatal $ Error.mkErrorNoMeta "interpreter" $
         "Unknown rego file extension:" <+> PP.pretty path <+>
