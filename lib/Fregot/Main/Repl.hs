@@ -15,6 +15,7 @@ import qualified Fregot.Error              as Error
 import qualified Fregot.Find               as Find
 import qualified Fregot.Interpreter        as Interpreter
 import           Fregot.Main.GlobalOptions
+import qualified Fregot.Parser             as Parser
 import qualified Fregot.Repl               as Repl
 import qualified Fregot.Sources            as Sources
 import qualified Options.Applicative       as OA
@@ -40,7 +41,8 @@ main _ opts = do
     regoPaths <- Find.findRegoFiles (opts ^. paths)
     Repl.withHandle sources interpreter $ \repl -> do
         (lerrs, mbResult) <- runParachuteT $ do
-            forM_ regoPaths $ Interpreter.loadModuleOrBundle interpreter
+            forM_ regoPaths $ Interpreter.loadModuleOrBundle
+                interpreter Parser.defaultParserOptions
             Interpreter.compilePackages interpreter
         sauce <- IORef.readIORef sources
         Error.hPutErrors IO.stderr sauce Error.Text lerrs

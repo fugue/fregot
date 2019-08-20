@@ -1,13 +1,18 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE TemplateHaskell   #-}
 module Fregot.Parser.Sugar
-    ( parseModule
+    ( ParserOptions, poDefaultPackageName
+    , defaultParserOptions
+
+    , parseModule
     , rule
     , expr
     ) where
 
 import           Control.Applicative         ((<|>))
 import           Control.Lens                ((^.))
+import           Control.Lens.TH (makeLenses)
 import           Data.Either                 (partitionEithers)
 import           Data.Functor                (($>))
 import qualified Data.Scientific             as Scientific
@@ -20,6 +25,20 @@ import           Prelude                     hiding (head)
 import qualified Text.Parsec.Expr            as Parsec
 import qualified Text.Parsec.Extended        as Parsec
 import qualified Text.Parsec.Indent.Explicit as Indent
+
+data ParserOptions = ParserOptions
+    { -- | A default package name which is used if there is no package name
+      -- declaration in the module.  If this is not set, a package name
+      -- declaration is required.
+      _poDefaultPackageName :: Maybe PackageName
+    } deriving (Show)
+
+$(makeLenses ''ParserOptions)
+
+defaultParserOptions :: ParserOptions
+defaultParserOptions = ParserOptions
+    { _poDefaultPackageName = Nothing
+    }
 
 parsePackageName :: FregotParser PackageName
 parsePackageName =
@@ -34,14 +53,18 @@ parseDataPackageName = do
         _             -> Parsec.unexpectedAt pos $
             show (PP.pretty pkgname) ++ " (imports should start with `data.`)"
 
-parseModule :: FregotParser (Module SourceSpan Var)
-parseModule = Module
-    <$> parseModuleHead
+parseModule :: ParserOptions -> FregotParser (Module SourceSpan Var)
+parseModule po = Module
+    <$> parseModuleHead po
     <*> Parsec.many parseModuleImport
     <*> Parsec.many rule
 
-parseModuleHead :: FregotParser PackageName
-parseModuleHead = Tok.symbol Tok.TPackage *> parsePackageName
+parseModuleHead :: ParserOptions -> FregotParser PackageName
+parseModuleHead po = case po ^. poDefaultPackageName of
+    Nothing  -> parser
+    Just def -> Parsec.option def parser
+  where
+    parser = Tok.symbol Tok.TPackage *> parsePackageName
 
 parseModuleImport :: FregotParser (Import SourceSpan)
 parseModuleImport = withSourceSpan $ do

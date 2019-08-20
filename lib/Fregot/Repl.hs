@@ -39,6 +39,7 @@ import qualified Fregot.Eval                       as Eval
 import qualified Fregot.Eval.Value                 as Eval
 import qualified Fregot.Interpreter                as Interpreter
 import           Fregot.Names
+import qualified Fregot.Parser                     as Parser
 import qualified Fregot.Prepare.Ast                as Prepare
 import           Fregot.PrettyPrint                ((<$$>), (<+>))
 import qualified Fregot.PrettyPrint                as PP
@@ -462,8 +463,10 @@ metaCommands =
         IO.hPutStrLn IO.stderr $ "Loading " ++ path ++ "..."
         IORef.writeIORef (h ^. lastLoad) (Just path)
         void $ runInterpreter h $ \i -> do
-            Interpreter.loadModule i path
+            pkgname <- Interpreter.loadModule i Parser.defaultParserOptions path
             Interpreter.compilePackages i
+            liftIO $ IO.hPutStrLn IO.stderr $
+                "Loaded package " ++ review packageNameFromString pkgname
         return True
 
     stepWith f = \h _ -> liftIO $ do

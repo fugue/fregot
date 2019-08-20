@@ -22,6 +22,7 @@ import           Fregot.Eval.Json             as Json
 import qualified Fregot.Find                  as Find
 import qualified Fregot.Interpreter           as Interpreter
 import           Fregot.Main.GlobalOptions
+import qualified Fregot.Parser                as Parser
 import           Fregot.Repl.Parse
 import qualified Fregot.Sources               as Sources
 import           Fregot.Sugar                 (exprAnn, ruleAnn, ruleHead)
@@ -56,7 +57,8 @@ main gopts opts = do
     interpreter <- Interpreter.newHandle sources
     regoPaths <- Find.findRegoFiles (opts ^. paths)
     (errors, mbResult) <- Parachute.runParachuteT $ do
-        forM_ regoPaths $ Interpreter.loadModuleOrBundle interpreter
+        forM_ regoPaths $ Interpreter.loadModuleOrBundle
+            interpreter Parser.defaultParserOptions
         Interpreter.compilePackages interpreter
 
         traverse_ (Interpreter.setInputFile interpreter) (opts ^. input)
