@@ -5,7 +5,10 @@ module Fregot.Interpreter
     ( InterpreterM
     , Handle
     , newHandle
+
     , readBuiltins
+    , insertBuiltin
+
     , readPackages
     , readPackageRules
     , readAllRules
@@ -57,7 +60,8 @@ import           Fregot.Error                    (Error, catchIO)
 import qualified Fregot.Error                    as Error
 import qualified Fregot.Error.Stack              as Stack
 import qualified Fregot.Eval                     as Eval
-import           Fregot.Eval.Builtins            (Builtins, defaultBuiltins)
+import           Fregot.Eval.Builtins            (Builtin, Builtins,
+                                                  defaultBuiltins)
 import qualified Fregot.Eval.Cache               as Cache
 import qualified Fregot.Eval.Json                as Eval.Json
 import           Fregot.Eval.Monad               (EvalCache)
@@ -82,7 +86,7 @@ import           System.FilePath.Extended        (listExtensions)
 type InterpreterM a = ParachuteT Error IO a
 
 data Handle = Handle
-    { _builtins :: !(Builtins Identity)
+    { _builtins :: !(IORef (Builtins Identity))
     , _sources  :: !Sources.Handle
     -- | List of modules, and files we loaded them from.  Grouped by package
     -- name.
@@ -99,7 +103,9 @@ newHandle
     :: Sources.Handle
     -> IO Handle
 newHandle _sources = do
-    _builtins     <- traverse (htraverse (fmap Identity)) defaultBuiltins
+    initializedBuiltins <- traverse (htraverse (fmap Identity)) defaultBuiltins
+
+    _builtins     <- IORef.newIORef initializedBuiltins
     _modules      <- IORef.newIORef HMS.empty
     _compiled     <- IORef.newIORef HMS.empty
     _cache        <- Cache.new >>= IORef.newIORef
@@ -218,10 +224,11 @@ preparePackage builtin modmap dependencies pkgname = do
 readCompiledPackage
     :: Handle -> PackageName -> InterpreterM CompiledPackage
 readCompiledPackage h want = do
-    graph  <- liftIO (readDependencyGraph h)
-    modmap <- liftIO $ IORef.readIORef (h ^. modules)
-    comp0  <- liftIO $ IORef.readIORef (h ^. compiled)
-    plan   <- case Deps.plan graph (HS.singleton want) of
+    graph   <- liftIO (readDependencyGraph h)
+    modmap  <- liftIO $ IORef.readIORef (h ^. modules)
+    comp0   <- liftIO $ IORef.readIORef (h ^. compiled)
+    builtin <- liftIO $ IORef.readIORef (h ^. builtins)
+    plan    <- case Deps.plan graph (HS.singleton want) of
         Right x -> return x
         Left depError -> fatal $
             Error.mkErrorNoMeta "interpreter" (PP.pretty depError)
@@ -232,8 +239,8 @@ readCompiledPackage h want = do
         _ : _ -> do
             comp1 <- foldM
                 (\uni pkgname -> do
-                    prep <- preparePackage (h ^. builtins) modmap uni pkgname
-                    cp   <- Compile.compilePackage (h ^. builtins) uni prep
+                    prep <- preparePackage builtin modmap uni pkgname
+                    cp   <- Compile.compilePackage builtin uni prep
                     dieIfErrors
                     return $ HMS.insert pkgname cp uni)
                 comp0
@@ -255,13 +262,16 @@ compilePackages h = do
 
 -- | Get a list of all builtins.
 readBuiltins :: Handle -> InterpreterM [Function]
-readBuiltins h = return $ HMS.keys $ h ^. builtins
+readBuiltins h = liftIO $ HMS.keys <$> IORef.readIORef (h ^. builtins)
+
+-- | Register a builtin.
+insertBuiltin :: Handle -> Function -> Builtin Identity -> InterpreterM ()
+insertBuiltin h k b =
+    liftIO $ IORef.atomicModifyIORef_ (h ^. builtins) $ HMS.insert k b
 
 -- | Get a list of loaded packages.
 readPackages :: Handle -> InterpreterM [PackageName]
-readPackages h = do
-    pkgs <- liftIO $ IORef.readIORef (h ^. compiled)
-    return (HMS.keys pkgs)
+readPackages h = liftIO $ HMS.keys <$> IORef.readIORef (h ^. compiled)
 
 -- | Read all rules in a specific package.
 readPackageRules :: Handle -> PackageName -> InterpreterM [Var]
@@ -297,7 +307,7 @@ newEvalContext :: Handle -> InterpreterM Eval.EnvContext
 newEvalContext h = Eval.EnvContext
     <$> pure Eval.emptyContext
     <*> (Eval.Environment
-        <$> pure (h ^. builtins)
+        <$> liftIO (IORef.readIORef (h ^. builtins))
         <*> liftIO (IORef.readIORef (h ^. compiled))
         <*> liftIO (IORef.readIORef (h ^. inputDoc))
         <*> liftIO (IORef.readIORef (h ^. cache))
@@ -314,12 +324,13 @@ evalExpr
     :: Handle -> Maybe Eval.EnvContext -> PackageName
     -> Sugar.Expr SourceSpan Var -> InterpreterM (Eval.Document Eval.Value)
 evalExpr h mbEvalEnvCtx pkgname expr = do
-    comp <- liftIO $ IORef.readIORef (h ^. compiled)
-    pkg  <- readCompiledPackage h pkgname
+    comp    <- liftIO $ IORef.readIORef (h ^. compiled)
+    pkg     <- readCompiledPackage h pkgname
+    builtin <- liftIO $ IORef.readIORef (h ^. builtins)
 
     -- Rename expression.
     let renamerEnv = Renamer.RenamerEnv
-            (h ^. builtins)
+            builtin
             mempty  -- No imports?
             pkgname
             (HS.fromList $ Compile.rules pkg)
@@ -327,7 +338,7 @@ evalExpr h mbEvalEnvCtx pkgname expr = do
     rterm <- runRenamerT renamerEnv $ Renamer.renameExpr expr
 
     pterm <- Prepare.prepareExpr rterm
-    cterm <- Compile.compileTerm (h ^. builtins) pkg safeLocals pterm
+    cterm <- Compile.compileTerm builtin pkg safeLocals pterm
     dieIfErrors
     eval h mbEvalEnvCtx pkgname (Eval.evalTerm cterm)
   where
@@ -350,8 +361,9 @@ newResumeStep h pkgname expr = do
     pkg    <- readCompiledPackage h pkgname
 
     -- Rename expression.
-    let renamerEnv = Renamer.RenamerEnv
-            (h ^. builtins)
+    let builtin    = envctx ^. Eval.ecEnvironment . Eval.builtins
+        renamerEnv = Renamer.RenamerEnv
+            builtin
             mempty  -- No imports?
             pkgname
             (HS.fromList $ Compile.rules pkg)
@@ -359,7 +371,7 @@ newResumeStep h pkgname expr = do
     rexpr <- runRenamerT renamerEnv $ Renamer.renameExpr expr
 
     pterm  <- Prepare.prepareExpr rexpr
-    cterm  <- Compile.compileTerm (h ^. builtins) pkg mempty pterm
+    cterm  <- Compile.compileTerm builtin pkg mempty pterm
 
     dieIfErrors
     return $ Eval.newResumeStep envctx (Eval.evalTerm cterm)

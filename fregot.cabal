@@ -133,14 +133,14 @@ Executable fregot
   Hs-source-dirs:    src/fregot
   Main-is:           Main.hs
   Default-language:  Haskell2010
-  Ghc-options:       -Wall -rtsopts -threaded
+  Ghc-options:       -Wall -rtsopts -threaded -O2
   build-depends:     base, fregot
 
 Executable fspec
   Hs-source-dirs:    src/fspec
   Main-is:           Main.hs
   Default-language:  Haskell2010
-  Ghc-options:       -Wall -rtsopts -threaded
+  Ghc-options:       -Wall -rtsopts -threaded -O2
 
   Build-depends:
     fregot,
@@ -169,6 +169,7 @@ Test-suite fregot-tests
     Data.SafeVar.Tests
     Fregot.Compile.Order.Tests
     Fregot.Interpreter.Dependencies.Tests
+    Fregot.Interpreter.Tests
     Fregot.Names.Tests
     Fregot.Parser.Tests
     Fregot.Prepare.Dsl
