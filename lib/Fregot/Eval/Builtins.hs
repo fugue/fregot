@@ -23,6 +23,7 @@ module Fregot.Eval.Builtins
     , ReadyBuiltin
     , arity
 
+    , Function (..)
     , Builtins
     , defaultBuiltins
     ) where
