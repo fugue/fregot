@@ -26,6 +26,9 @@ module Fregot.Eval.Builtins
     , Function (..)
     , Builtins
     , defaultBuiltins
+
+    , BuiltinM
+    , eitherToBuiltinM
     ) where
 
 import           Control.Applicative          ((<|>))
