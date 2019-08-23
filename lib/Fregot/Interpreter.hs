@@ -10,7 +10,9 @@ module Fregot.Interpreter
     , insertBuiltin
 
     , readPackages
+    , readPackage
     , readPackageRules
+
     , readAllRules
     , loadModule
     , insertRule
@@ -272,6 +274,10 @@ insertBuiltin h k b =
 -- | Get a list of loaded packages.
 readPackages :: Handle -> InterpreterM [PackageName]
 readPackages h = liftIO $ HMS.keys <$> IORef.readIORef (h ^. compiled)
+
+-- | Obtain a compiled package.
+readPackage :: Handle -> PackageName -> InterpreterM CompiledPackage
+readPackage = readCompiledPackage
 
 -- | Read all rules in a specific package.
 readPackageRules :: Handle -> PackageName -> InterpreterM [Var]
