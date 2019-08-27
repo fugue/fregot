@@ -41,7 +41,7 @@ import qualified Codec.Compression.GZip          as GZip
 import           Control.Lens                    (forOf_, ifor_, to, (^.),
                                                   (^..), _2)
 import           Control.Lens.TH                 (makeLenses)
-import           Control.Monad                   (foldM)
+import           Control.Monad                   (foldM, unless)
 import           Control.Monad.Identity          (Identity (..))
 import           Control.Monad.Parachute
 import           Control.Monad.Reader            (runReader)
@@ -142,6 +142,7 @@ insertModule h sourcep modul = do
     -- them.
     depGraph <- liftIO (readDependencyGraph h)
     let evict = Deps.evict depGraph (HS.singleton pkgname)
+    unless (HS.null evict) $ bumpCache h
 
     -- Remove everything that's in the evict set.
     liftIO $ IORef.atomicModifyIORef_ (h ^. compiled) $
@@ -387,12 +388,14 @@ step
     -> InterpreterM (Eval.Step Eval.Value)
 step _ = liftIO . Eval.runStep
 
+bumpCache :: Handle -> InterpreterM ()
+bumpCache h = liftIO $ IORef.readIORef (h ^. cache) >>=
+    Cache.bump >>= IORef.writeIORef (h ^. cache)
+
 setInput :: Handle -> Aeson.Value -> InterpreterM ()
-setInput h val = liftIO $ do
-    IORef.readIORef (h ^. cache) >>=
-        Cache.bump >>=
-        IORef.writeIORef (h ^. cache)
-    IORef.writeIORef (h ^. inputDoc) (Eval.Json.toValue val)
+setInput h val = do
+    bumpCache h
+    liftIO $ IORef.writeIORef (h ^. inputDoc) (Eval.Json.toValue val)
 
 setInputFile :: Handle -> FilePath -> InterpreterM ()
 setInputFile h path = do
