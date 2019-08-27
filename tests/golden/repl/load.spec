@@ -8,6 +8,6 @@
     ],
     "stdin": [
         ":load load.rego",
-        "data.fregot.tests.repl.load.a"
+        "a"
     ]
 }
