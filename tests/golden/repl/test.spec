@@ -8,7 +8,6 @@
     ],
     "stdin": [
         ":load test.rego",
-        ":open fregot.tests.repl.test",
         ":test"
     ]
 }

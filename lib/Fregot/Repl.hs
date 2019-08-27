@@ -467,6 +467,8 @@ metaCommands =
             Interpreter.compilePackages i
             liftIO $ IO.hPutStrLn IO.stderr $
                 "Loaded package " ++ review packageNameFromString pkgname
+            liftIO $ IORef.writeIORef (h ^. openPackage) pkgname
+
         return True
 
     stepWith f = \h _ -> liftIO $ do
