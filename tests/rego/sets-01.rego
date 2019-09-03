@@ -105,3 +105,21 @@ test_set_09_empty {
 test_set_09_nonempty {
     {1, 2, 3} - {1} == {2, 3}
 }
+
+# 10. Binary union/intersection
+
+test_set_10_binary_union {
+    {1, 2} | {2, 3} == {1, 2, 3}
+}
+
+test_set_10_binary_union_as_function {
+    or({1, 2}, {2, 3}) == {1, 2, 3}
+}
+
+test_set_10_binary_intersection {
+    {1, 2} & {2, 3} == {2}
+}
+
+test_set_10_binary_intersection_as_function {
+    and({1, 2}, {2, 3}) == {2}
+}

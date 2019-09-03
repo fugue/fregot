@@ -211,6 +211,7 @@ defaultBuiltins = HMS.fromList
     [ (NamedFunction (BuiltinName "all"),                       builtin_all)
     , (NamedFunction (BuiltinName "any"),                       builtin_any)
     , (NamedFunction (QualifiedName "array" "concat"),          builtin_array_concat)
+    , (NamedFunction (BuiltinName "and"),                       builtin_bin_and)
     , (NamedFunction (BuiltinName "concat"),                    builtin_concat)
     , (NamedFunction (BuiltinName "contains"),                  builtin_contains)
     , (NamedFunction (BuiltinName "count"),                     builtin_count)
@@ -225,6 +226,7 @@ defaultBuiltins = HMS.fromList
     , (NamedFunction (BuiltinName "lower"),                     builtin_lower)
     , (NamedFunction (BuiltinName "max"),                       builtin_max)
     , (NamedFunction (BuiltinName "min"),                       builtin_min)
+    , (NamedFunction (BuiltinName "or"),                        builtin_bin_or)
     , (NamedFunction (BuiltinName "product"),                   builtin_product)
     , (NamedFunction (BuiltinName "re_match"),                  builtin_re_match)
     , (NamedFunction (BuiltinName "replace"),                   builtin_replace)
@@ -242,6 +244,7 @@ defaultBuiltins = HMS.fromList
     , (NamedFunction (BuiltinName "trim"),                      builtin_trim)
     , (NamedFunction (BuiltinName "upper"),                     builtin_upper)
     , (NamedFunction (BuiltinName "union"),                     builtin_union)
+    , (OperatorFunction BinAndO,             builtin_bin_and)
     , (OperatorFunction EqualO,              builtin_equal)
     , (OperatorFunction NotEqualO,           builtin_not_equal)
     , (OperatorFunction LessThanO,           builtin_less_than)
@@ -511,6 +514,10 @@ builtin_divide = Builtin (In (In Out)) $ pure $
 builtin_modulo :: Monad m => Builtin m
 builtin_modulo = Builtin (In (In Out)) $ pure $
   \(Cons x (Cons y Nil)) -> return $! x `Number.mod` y
+
+builtin_bin_and :: Monad m => Builtin m
+builtin_bin_and = Builtin (In (In Out)) $ pure $
+  \(Cons x (Cons y Nil)) -> return $! SetV $ HS.intersection x y
 
 builtin_bin_or :: Monad m => Builtin m
 builtin_bin_or = Builtin (In (In Out)) $ pure $
