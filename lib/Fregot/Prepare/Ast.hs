@@ -133,6 +133,7 @@ data BinOp
     | TimesO
     | DivideO
     | ModuloO
+    | BinAndO
     | BinOrO
     deriving (Eq, Generic, Show)
 
@@ -221,6 +222,7 @@ instance PP.Pretty PP.Sem BinOp where
         TimesO              -> "*"
         DivideO             -> "/"
         ModuloO             -> "%"
+        BinAndO             -> "&"
         BinOrO              -> "|"
 
 instance PP.Pretty PP.Sem (With a) where
