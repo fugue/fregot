@@ -1,6 +1,7 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# LANGUAGE DeriveFunctor         #-}
 {-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE KindSignatures        #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings     #-}
@@ -9,16 +10,19 @@
 {-# LANGUAGE TypeSynonymInstances  #-}
 module Fregot.TypeCheck.Infer
     ( TypeError (..)
+
+    , InferEnv (..)
     , InferM
     , runInfer
 
     , inferRule
     ) where
 
-import           Control.Lens                  (forOf_, (^.))
-import           Control.Lens.TH               (makePrisms)
+import           Control.Lens                  (forOf_, view, (^.))
+import           Control.Lens.TH               (makeLenses, makePrisms)
 import           Control.Monad.Except.Extended (catching, throwError)
 import           Control.Monad.Parachute       (ParachuteT, fatal)
+import           Control.Monad.Reader          (ReaderT, runReaderT)
 import           Control.Monad.State.Strict    (StateT, evalStateT, get, modify,
                                                 put)
 import           Data.Foldable                 (for_)
@@ -26,9 +30,11 @@ import qualified Data.HashMap.Strict           as HMS
 import           Data.List.NonEmpty.Extended   (NonEmpty)
 import qualified Data.List.NonEmpty.Extended   as NonEmpty
 import           Data.Maybe                    (fromMaybe)
+import           Data.Proxy                    (Proxy)
 import qualified Data.Unification              as Unify
 import           Fregot.Error                  (Error)
 import qualified Fregot.Error                  as Error
+import           Fregot.Eval.Builtins          (Builtins)
 import           Fregot.Names
 import           Fregot.Prepare.Ast
 import           Fregot.PrettyPrint            ((<+>))
@@ -43,11 +49,16 @@ data TypeError
     = UnboundVars (HMS.HashMap UnqualifiedVar SourceSpan)
     | NoUnify (Maybe SourceSpan) SourceType SourceType
 
+data InferEnv = InferEnv
+    { _ieBuiltins :: Builtins Proxy
+    }
+
+type InferState = Unify.Unification UnqualifiedVar SourceType
+
+type InferM = ReaderT InferEnv (StateT InferState (Either TypeError))
+
 $(makePrisms ''TypeError)
-
-type Env = Unify.Unification UnqualifiedVar SourceType
-
-type InferM = StateT Env (Either TypeError)
+$(makeLenses ''InferEnv)
 
 instance Unify.MonadUnify UnqualifiedVar SourceType InferM where
     unify             = unifyTypeType
@@ -71,9 +82,9 @@ fromTypeError = \case
   where
     sub = "typecheck"
 
-runInfer :: Monad m => InferM a -> ParachuteT Error m a
-runInfer mx =
-    let errOrA = evalStateT mx Unify.empty in
+runInfer :: Monad m => InferEnv -> InferM a -> ParachuteT Error m a
+runInfer env mx =
+    let errOrA = evalStateT (runReaderT mx env) Unify.empty in
     either (fatal . fromTypeError) return errOrA
 
 inferRule :: Rule SourceSpan -> InferM ()
@@ -125,7 +136,14 @@ inferTerm
 inferTerm (ScalarT source scalar) =
     return $ (, NonEmpty.singleton source) $ inferScalar scalar
 
-inferTerm _ = undefined
+inferTerm (CallT _source fun _args) = do
+    builtins <- view ieBuiltins
+    case HMS.lookup fun builtins of
+        Nothing -> error "TODO: not a builtin"
+        Just _  -> error "TODO: Builtin"
+
+inferTerm term = error $ show $
+    "TODO(jaspervdj): Inference for" <+> PP.pretty' term
 
 inferScalar :: Scalar -> Type
 inferScalar = \case
@@ -150,7 +168,7 @@ unifyTermTerm source lhs rhs = catching _UnboundVars
 unifyTermType
     :: SourceSpan -> Term SourceSpan -> SourceType -> InferM ()
 unifyTermType _source (NameT _ (LocalName α)) ty = Unify.bindTerm α ty
-unifyTermType _source _ _ = undefined
+unifyTermType _source _ _                        = undefined
 
 unifyTypeType :: SourceType -> SourceType -> InferM ()
 unifyTypeType l@(τ, _) r@(σ, _)

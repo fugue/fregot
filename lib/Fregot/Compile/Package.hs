@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE KindSignatures      #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedLists     #-}
 {-# LANGUAGE OverloadedStrings   #-}
@@ -13,34 +14,38 @@ module Fregot.Compile.Package
     , compileTerm
     ) where
 
-import           Control.Applicative         ((<|>))
-import           Control.Lens                (forOf_, iforM_, traverseOf, view,
-                                              (^.), (^..))
-import           Control.Monad               (forM, guard, when)
-import           Control.Monad.Parachute     (ParachuteT, tellError, tellErrors)
-import           Data.Foldable               (for_)
-import           Data.Functor                (($>))
-import qualified Data.Graph                  as Graph
-import qualified Data.HashMap.Strict         as HMS
-import qualified Data.HashSet.Extended       as HS
-import           Data.List.NonEmpty.Extended (NonEmpty (..))
+import           Control.Applicative          ((<|>))
+import           Control.Lens                 (forOf_, iforM_, traverseOf, view,
+                                               (^.), (^..))
+import           Control.Monad                (forM, guard, when)
+import           Control.Monad.Identity       (runIdentity)
+import           Control.Monad.Parachute      (ParachuteT, tellError,
+                                               tellErrors)
+import           Data.Foldable                (for_)
+import           Data.Functor                 (($>))
+import qualified Data.Graph                   as Graph
+import qualified Data.HashMap.Strict          as HMS
+import qualified Data.HashSet.Extended        as HS
+import           Data.List.NonEmpty.Extended  (NonEmpty (..))
+import           Data.Proxy                   (Proxy (..))
+import           Data.Traversable.HigherOrder (htraverse)
 import           Fregot.Compile.Graph
 import           Fregot.Compile.Order
-import           Fregot.Error                (Error)
-import qualified Fregot.Error                as Error
-import           Fregot.Eval.Builtins        (Builtins)
-import qualified Fregot.Eval.Builtins        as Builtins
+import           Fregot.Error                 (Error)
+import qualified Fregot.Error                 as Error
+import           Fregot.Eval.Builtins         (Builtins)
+import qualified Fregot.Eval.Builtins         as Builtins
 import           Fregot.Names
 import           Fregot.Prepare.Ast
 import           Fregot.Prepare.Lens
 import           Fregot.Prepare.Package
-import           Fregot.Prepare.Vars         (Arities, Safe (..), ovRuleBody,
-                                              ovTerm)
-import           Fregot.PrettyPrint          ((<$$>), (<+>))
-import qualified Fregot.PrettyPrint          as PP
-import           Fregot.Sources.SourceSpan   (SourceSpan)
-import qualified Fregot.TypeCheck.Infer      as Infer
-import           Prelude                     hiding (head, lookup)
+import           Fregot.Prepare.Vars          (Arities, Safe (..), ovRuleBody,
+                                               ovTerm)
+import           Fregot.PrettyPrint           ((<$$>), (<+>))
+import qualified Fregot.PrettyPrint           as PP
+import           Fregot.Sources.SourceSpan    (SourceSpan)
+import qualified Fregot.TypeCheck.Infer       as Infer
+import           Prelude                      hiding (head, lookup)
 
 type CompiledPackage = Package ()
 
@@ -72,7 +77,7 @@ safeGlobals prep = Safe $ HS.fromList (rules prep) <> ["data", "input"]
 
 compilePackage
     :: Monad m
-    => Builtins f
+    => Builtins (f :: * -> *)
     -> Dependencies
     -> PreparedPackage
     -> ParachuteT Error m CompiledPackage
@@ -88,8 +93,15 @@ compilePackage builtins dependencies prep = do
         Graph.AcyclicSCC rule -> return [rule]
         Graph.CyclicSCC  cycl -> tellError (recursionError cycl) $> cycl
 
+    -- TODO(jaspervdj): Builtins Proxy works quite well, we should move it up in
+    -- the call stack.
+    let inferEnv = Infer.InferEnv
+            { Infer._ieBuiltins = runIdentity $
+                traverse (htraverse $ \_ -> pure Proxy) builtins
+            }
+
     -- Typecheck rules.
-    Infer.runInfer $ for_ ordering Infer.inferRule
+    Infer.runInfer inferEnv $ for_ ordering Infer.inferRule
 
     traverseOf (packageRules . traverse) compileRule prep
   where
