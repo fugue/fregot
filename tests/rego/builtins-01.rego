@@ -17,6 +17,11 @@ test_split_01 {
   splitted[2] == "us-west-1"
 }
 
+test_sprintf {
+  sprintf("I would like %d slices of %s pizza", [4, "pepperoni"]) ==
+      "I would like 4 slices of pepperoni pizza"
+}
+
 test_substring {
   substring("foobar", 3, 1 - 2) == "bar"
   substring("foobar", 3, 2) == "ba"

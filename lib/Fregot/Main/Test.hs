@@ -16,6 +16,7 @@ import qualified Fregot.Error              as Error
 import qualified Fregot.Find               as Find
 import qualified Fregot.Interpreter        as Interpreter
 import           Fregot.Main.GlobalOptions
+import qualified Fregot.Parser             as Parser
 import qualified Fregot.Sources            as Sources
 import           Fregot.Test
 import qualified Options.Applicative       as OA
@@ -40,7 +41,8 @@ main gopts opts = do
     interpreter <- Interpreter.newHandle sources
     regoPaths <- Find.findRegoFiles (opts ^. paths)
     (errors, mbResult) <- Parachute.runParachuteT $ do
-        forM_ regoPaths $ Interpreter.loadModuleOrBundle interpreter
+        forM_ regoPaths $ Interpreter.loadModuleOrBundle
+            interpreter Parser.defaultParserOptions
         Interpreter.compilePackages interpreter
         tests <- filter isTest <$> Interpreter.readAllRules interpreter
         foldMapM (\t -> runTest interpreter t) tests

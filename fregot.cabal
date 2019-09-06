@@ -8,11 +8,11 @@ Maintainer:          jasper@fugue.co
 Copyright:           Fugue, Inc.
 Category:            Language
 Build-type:          Simple
-Cabal-version:       >= 1.18
+Cabal-version:       1.18
 
 Library
   Default-language: Haskell2010
-  Ghc-options:      -Wall -Werror
+  Ghc-options:      -Wall
   Hs-source-dirs:   lib
 
   Exposed-modules:
@@ -73,6 +73,7 @@ Library
     Control.Monad.Stream
     Data.Cache
     Data.SafeVar
+    Data.Traversable.HigherOrder
     Data.Unification
     Data.Unique
     Language.Dot
@@ -81,8 +82,8 @@ Library
     Data.Aeson.Extended
     Data.Aeson.TH.Extended
     Data.ByteString.Extended
-    Data.HashSet.Extended
     Data.HashMap.Strict.Extended
+    Data.HashSet.Extended
     Data.IORef.Extended
     Data.List.Extended
     Data.List.NonEmpty.Extended
@@ -92,9 +93,10 @@ Library
     Options.Applicative.Extended
     System.Console.Haskeline.Extended
     System.Directory.Find
-    System.IO.Extended
     System.FilePath.Extended
+    System.IO.Extended
     Text.Parsec.Extended
+    Text.Printf.Extended
 
     Paths_fregot
 
@@ -132,14 +134,14 @@ Executable fregot
   Hs-source-dirs:    src/fregot
   Main-is:           Main.hs
   Default-language:  Haskell2010
-  Ghc-options:       -Wall -Werror -rtsopts -threaded
+  Ghc-options:       -Wall -rtsopts -threaded -O2
   build-depends:     base, fregot
 
 Executable fspec
   Hs-source-dirs:    src/fspec
   Main-is:           Main.hs
   Default-language:  Haskell2010
-  Ghc-options:       -Wall -Werror -rtsopts -threaded
+  Ghc-options:       -Wall -rtsopts -threaded -O2
 
   Build-depends:
     fregot,
@@ -162,16 +164,20 @@ Test-suite fregot-tests
   Main-is:           Main.hs
   Type:              exitcode-stdio-1.0
   Default-language:  Haskell2010
-  Ghc-options:       -Wall -Werror -rtsopts -threaded
+  Ghc-options:       -Wall -rtsopts -threaded
 
   Other-modules:
     Data.SafeVar.Tests
     Fregot.Compile.Order.Tests
     Fregot.Interpreter.Dependencies.Tests
+    Fregot.Interpreter.Tests
+    Fregot.Names.Tests
+    Fregot.Parser.Tests
     Fregot.Prepare.Dsl
     Fregot.Prepare.Lens.Tests
     Fregot.Prepare.Vars.Tests
     System.Console.Haskeline.Tests
+    Test.Tasty.Extended
 
   Build-depends:
     fregot,

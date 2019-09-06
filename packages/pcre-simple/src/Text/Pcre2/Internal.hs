@@ -264,7 +264,8 @@ countUtf8Characters start end = do
             if | x .&. 0x80 == 0x00 -> go (acc + 1) (p `plusPtr` 1)
                | x .&. 0xE0 == 0xC0 -> go (acc + 1) (p `plusPtr` 2)
                | x .&. 0xF0 == 0xE0 -> go (acc + 1) (p `plusPtr` 3)
-               | x .&. 0xF8 == 0xF0 -> go (acc + 1) (p `plusPtr` 4)
+               -- Otherwise: x .&. 0xF8 == 0xF0
+               | otherwise          -> go (acc + 1) (p `plusPtr` 4)
 
 --------------------------------------------------------------------------------
 -- Matching

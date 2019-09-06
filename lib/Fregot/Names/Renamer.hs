@@ -28,7 +28,7 @@ import           Fregot.Compile.Package    (CompiledPackage)
 import qualified Fregot.Compile.Package    as Package
 import           Fregot.Error              (Error)
 import qualified Fregot.Error              as Error
-import           Fregot.Eval.Builtins      (Builtin)
+import           Fregot.Eval.Builtins      (ReadyBuiltin)
 import           Fregot.Names
 import           Fregot.Prepare.Ast        (Function (..))
 import           Fregot.PrettyPrint        ((<+>))
@@ -37,7 +37,7 @@ import           Fregot.Sources.SourceSpan (SourceSpan)
 import           Fregot.Sugar
 
 data RenamerEnv = RenamerEnv
-    { _reBuiltins     :: !(HMS.HashMap Function Builtin)
+    { _reBuiltins     :: !(HMS.HashMap Function ReadyBuiltin)
     , _reImports      :: !(Imports SourceSpan)
     , _rePackage      :: !PackageName
     , _rePackageRules :: !(HS.HashSet Var)

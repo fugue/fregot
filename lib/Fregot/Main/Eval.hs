@@ -22,6 +22,7 @@ import           Fregot.Eval.Json             as Json
 import qualified Fregot.Find                  as Find
 import qualified Fregot.Interpreter           as Interpreter
 import           Fregot.Main.GlobalOptions
+import qualified Fregot.Parser                as Parser
 import           Fregot.Repl.Parse
 import qualified Fregot.Sources               as Sources
 import           Fregot.Sugar                 (exprAnn, ruleAnn, ruleHead)
@@ -56,10 +57,11 @@ main gopts opts = do
     interpreter <- Interpreter.newHandle sources
     regoPaths <- Find.findRegoFiles (opts ^. paths)
     (errors, mbResult) <- Parachute.runParachuteT $ do
-        forM_ regoPaths $ Interpreter.loadModuleOrBundle interpreter
+        forM_ regoPaths $ Interpreter.loadModuleOrBundle
+            interpreter Parser.defaultParserOptions
         Interpreter.compilePackages interpreter
 
-        traverse_ (Interpreter.setInput interpreter) (opts ^. input)
+        traverse_ (Interpreter.setInputFile interpreter) (opts ^. input)
 
         ruleOrExpr <- parseRuleOrExpr Sources.CliInput (opts ^. expression)
         expr <- case ruleOrExpr of
@@ -68,8 +70,7 @@ main gopts opts = do
                 "eval" (r ^. ruleHead . ruleAnn) "unexpected rule"
                 "Need an expression to evaluate, not a rule"
 
-        evalOpts <- Interpreter.readEvalOptions interpreter
-        val <- Interpreter.evalExpr interpreter evalOpts "cli" expr
+        val <- Interpreter.evalExpr interpreter Nothing "cli" expr
         case traverse (Json.fromValue . view rowValue) val of
             Right js -> return $ A.toJSON js
             Left  e  -> Parachute.fatal $ Error.mkError

@@ -1,0 +1,37 @@
+passed: 0, failed: 0, errored: 3
+fregot.tests.invalid.tabs_spaces.test_tab:
+fregot ([34meval error[0m):
+  "tabs-spaces.rego" (line 5, column 9):
+  builtin type error:
+
+    5| 	1 > "what?"
+       	[31m^^^^^^^^^^^[0m
+
+  Expected number but got string
+
+  Stack trace:
+    rule [33mfregot.tests.invalid.tabs_spaces[33m.[0mtest_tab[0m at tests:1:1
+fregot.tests.invalid.tabs_spaces.test_spaces:
+fregot ([34meval error[0m):
+  "tabs-spaces.rego" (line 9, column 5):
+  builtin type error:
+
+    9|     1 > "what?"
+           [31m^^^^^^^^^^^[0m
+
+  Expected number but got string
+
+  Stack trace:
+    rule [33mfregot.tests.invalid.tabs_spaces[33m.[0mtest_spaces[0m at tests:1:1
+fregot.tests.invalid.tabs_spaces.test_mixed_01:
+fregot ([34meval error[0m):
+  "tabs-spaces.rego" (line 13, column 19):
+  builtin type error:
+
+    13| 	 	  1 > "what?"
+        	 	  [31m^^^^^^^^^^^[0m
+
+  Expected number but got string
+
+  Stack trace:
+    rule [33mfregot.tests.invalid.tabs_spaces[33m.[0mtest_mixed_01[0m at tests:1:1

@@ -15,9 +15,10 @@ module Fregot.Eval.Value
     , describeValue
     , emptyObject
     , updateObject
+    , trueish
     ) where
 
-import           Control.Lens         (review)
+import           Control.Lens         (preview, review, (^.))
 import           Control.Lens.TH      (makePrisms)
 import           Data.Hashable        (Hashable (..))
 import qualified Data.HashMap.Strict  as HMS
@@ -25,12 +26,14 @@ import qualified Data.HashSet         as HS
 import qualified Data.Text            as T
 import qualified Data.Vector.Extended as V
 import           Fregot.Eval.Number   (Number)
+import qualified Fregot.Eval.Number   as Number
 import           Fregot.Names         (InstVar (..))
 import           Fregot.PrettyPrint   ((<+>))
 import qualified Fregot.PrettyPrint   as PP
 import           Fregot.Sugar         (PackageName, Var)
 import qualified Fregot.Sugar         as Sugar
 import           GHC.Generics         (Generic)
+import qualified Text.Printf.Extended as Pf
 
 -- | Please not that the ordering of these constructors is not arbitrary, it is
 -- intended to match the sorting order that OPA implements.
@@ -98,3 +101,25 @@ updateObject (v : vs) insertee (ObjectV o) =
 
 -- TODO(jaspervdj): Better error
 updateObject _ _ _ = Nothing
+
+instance Pf.PrintfArg Value where
+    formatArg (StringV t) fmt =
+        Pf.formatString (T.unpack t) fmt {Pf.fmtChar = 's'}
+
+    formatArg (NumberV n) fmt
+            | Pf.fmtChar fmt `elem` ("cdoxXbu" :: String)
+            , Just int <- preview Number.int n =
+        Pf.formatInt int fmt
+
+    formatArg (NumberV n) fmt =
+        Pf.formatRealFloat (n ^. Number.double) fmt
+
+    formatArg (BoolV b) fmt | Pf.fmtChar (Pf.vFmt 't' fmt) == 't' =
+        Pf.formatString (if b then "true" else "false") fmt
+
+    formatArg _ fmt = Pf.errorBadFormat $ Pf.fmtChar fmt
+
+-- | Is a value true in literals?
+trueish :: Value -> Bool
+trueish (BoolV False) = False
+trueish _             = True

@@ -49,11 +49,12 @@ runTest
     :: Interpreter.Handle -> TestName
     -> Interpreter.InterpreterM TestResults
 runTest h testname@(pkgname, rule) = do
-    errOrDoc <- Parachute.try $ Interpreter.evalVar h source pkgname rule
+    errOrDoc <- Parachute.try $
+        Interpreter.evalVar h Nothing source pkgname rule
 
     results <- case errOrDoc of
-        Right doc@(_ : _) | all (isTrue . view Eval.rowValue) doc -> return $
-            mempty & passed .~ [testname]
+        Right doc@(_ : _) | all (Value.trueish . view Eval.rowValue) doc ->
+            return $ mempty & passed .~ [testname]
         Right _ -> return $
             mempty & failed .~ [testname]
         Left errs -> return $
@@ -61,9 +62,6 @@ runTest h testname@(pkgname, rule) = do
 
     return results
   where
-    isTrue (Value.BoolV b) = b
-    isTrue _               = False
-
     source = SourceSpan.testSourceSpan
 
 printTestResults

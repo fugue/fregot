@@ -1,5 +1,12 @@
 fregot ([34minterpreter error[0m):
   Cyclic dependency error:
+    fregot.tests.invalid.dep_cycle_03 depends on
+    fregot.tests.invalid.dep_cycle_01 depends on
+    fregot.tests.invalid.dep_cycle_02 depends on
+    fregot.tests.invalid.dep_cycle_03
+
+fregot ([34minterpreter error[0m):
+  Cyclic dependency error:
     fregot.tests.invalid.dep_cycle_01 depends on
     fregot.tests.invalid.dep_cycle_02 depends on
     fregot.tests.invalid.dep_cycle_03 depends on
@@ -11,10 +18,3 @@ fregot ([34minterpreter error[0m):
     fregot.tests.invalid.dep_cycle_03 depends on
     fregot.tests.invalid.dep_cycle_01 depends on
     fregot.tests.invalid.dep_cycle_02
-
-fregot ([34minterpreter error[0m):
-  Cyclic dependency error:
-    fregot.tests.invalid.dep_cycle_03 depends on
-    fregot.tests.invalid.dep_cycle_01 depends on
-    fregot.tests.invalid.dep_cycle_02 depends on
-    fregot.tests.invalid.dep_cycle_03

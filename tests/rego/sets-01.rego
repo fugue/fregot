@@ -40,8 +40,86 @@ test_set_04 {
     set_01["Hello"] == "Hello"
 }
 
-# 5. Refering to generated sets without index.
+# 5. Referring to generated sets without index.
 
 test_set_05 {
     set_02 == {"Hello", "World"}
+}
+
+# 6. Empty set creation
+
+test_set_06 {
+    set() != { "Hello" }
+    count(set()) == 0
+}
+
+# 7. Intersection
+
+test_set_07_empty {
+    intersection(set()) == set()
+}
+
+test_set_07_empty_set {
+    intersection({set()}) == set()
+}
+
+test_set_07_one_nonempty_set {
+    intersection({{true}}) == {true}
+}
+
+test_set_07_multiple_nonempty_sets {
+    intersection({{"foo", 1, 2}, {true, 1, 2}, {"foo", 1, true}}) == {1}
+}
+
+# 8. Set union
+
+test_set_08_empty {
+    union(set()) == set()
+}
+
+test_set_08_empty_set {
+    union({set()}) == set()
+}
+
+test_set_08_one_nonempty_set {
+    union({{true}}) == {true}
+}
+
+test_set_08_two_sets {
+    x := {1, 2, 3}
+    y := {"a", "b", "c"}
+    union({x, y}) == x | y
+}
+
+test_set_08_multiple_sets {
+    union({set(), {"foo", 1, 2}, {true, 1, 2}, {"foo", 1, true}}) == {1, 2, "foo", true}
+}
+
+# 9. Set difference
+
+test_set_09_empty {
+    set() - {1} == set()
+    {1} - set() == {1}
+}
+
+test_set_09_nonempty {
+    {1, 2, 3} - {1} == {2, 3}
+}
+
+# 10. Binary union/intersection
+
+test_set_10_binary_union {
+    {1, 2} | {2, 3} == {1, 2, 3}
+}
+
+test_set_10_binary_union_as_function {
+    or({1, 2}, {2, 3}) == {1, 2, 3}
+}
+
+test_set_10_binary_intersection {
+    {1, 2} & {2, 3} == {2}
+}
+
+test_set_10_binary_intersection_as_function {
+    and({1, 2}, {2, 3}) == {2}
 }

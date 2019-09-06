@@ -16,6 +16,7 @@ import qualified Fregot.Error              as Error
 import qualified Fregot.Find               as Find
 import qualified Fregot.Interpreter        as Interpreter
 import           Fregot.Main.GlobalOptions
+import qualified Fregot.Parser             as Parser
 import qualified Fregot.Sources            as Sources
 import qualified Options.Applicative       as OA
 import           System.Exit               (ExitCode (..))
@@ -37,7 +38,7 @@ parseOptions = Options
             OA.help    "Path of output file")
     <*> (OA.some $ OA.strArgument $
             OA.metavar "PATHS" <>
-            OA.help    "Rego files or directories to test")
+            OA.help    "Rego files or directories to bundle")
 
 main :: GlobalOptions -> Options -> IO ExitCode
 main gopts opts = do
@@ -45,7 +46,8 @@ main gopts opts = do
     interpreter <- Interpreter.newHandle sources
     regoPaths <- Find.findRegoFiles (opts ^. paths)
     (errors, _) <- Parachute.runParachuteT $ do
-        forM_ regoPaths $ \path -> Interpreter.loadModule interpreter path
+        forM_ regoPaths $ \path -> Interpreter.loadModule interpreter
+            Parser.defaultParserOptions path
         Interpreter.saveBundle interpreter (opts ^. output)
 
     sources' <- IORef.readIORef sources

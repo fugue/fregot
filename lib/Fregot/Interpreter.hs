@@ -5,8 +5,14 @@ module Fregot.Interpreter
     ( InterpreterM
     , Handle
     , newHandle
+
+    , readBuiltins
+    , insertBuiltin
+
     , readPackages
+    , readPackage
     , readPackageRules
+
     , readAllRules
     , loadModule
     , insertRule
@@ -18,24 +24,25 @@ module Fregot.Interpreter
 
     , compilePackages
 
-    , EvalOptions (..), eoContext, eoInputDoc
-    , readEvalOptions
+    , Eval.EnvContext (..), Eval.ecEnvironment, Eval.ecContext
     , evalExpr
     , evalVar
 
-    , Eval.StepState (..)
-    , mkStepState
+    , Eval.ResumeStep
+    , newResumeStep
     , Eval.Step (..)
     , step
 
     , setInput
+    , setInputFile
     ) where
 
 import qualified Codec.Compression.GZip          as GZip
 import           Control.Lens                    (forOf_, ifor_, to, (^.),
                                                   (^..), _2)
 import           Control.Lens.TH                 (makeLenses)
-import           Control.Monad                   (foldM)
+import           Control.Monad                   (foldM, unless)
+import           Control.Monad.Identity          (Identity (..))
 import           Control.Monad.Parachute
 import           Control.Monad.Reader            (runReader)
 import           Control.Monad.Trans             (liftIO)
@@ -48,13 +55,15 @@ import           Data.IORef.Extended             (IORef)
 import qualified Data.IORef.Extended             as IORef
 import           Data.Maybe                      (fromMaybe)
 import qualified Data.Text.IO                    as T
+import           Data.Traversable.HigherOrder    (htraverse)
 import           Fregot.Compile.Package          (CompiledPackage)
 import qualified Fregot.Compile.Package          as Compile
 import           Fregot.Error                    (Error, catchIO)
 import qualified Fregot.Error                    as Error
 import qualified Fregot.Error.Stack              as Stack
 import qualified Fregot.Eval                     as Eval
-import qualified Fregot.Eval.Builtins            as Builtins
+import           Fregot.Eval.Builtins            (Builtin, Builtins,
+                                                  defaultBuiltins)
 import qualified Fregot.Eval.Cache               as Cache
 import qualified Fregot.Eval.Json                as Eval.Json
 import           Fregot.Eval.Monad               (EvalCache)
@@ -65,6 +74,7 @@ import           Fregot.Names
 import qualified Fregot.Names.Renamer            as Renamer
 import qualified Fregot.Parser                   as Parser
 import qualified Fregot.Prepare                  as Prepare
+import           Fregot.Prepare.Ast              (Function (..))
 import           Fregot.Prepare.Package          (PreparedPackage)
 import qualified Fregot.Prepare.Package          as Prepare
 import           Fregot.PrettyPrint              ((<$$>), (<+>))
@@ -78,15 +88,15 @@ import           System.FilePath.Extended        (listExtensions)
 type InterpreterM a = ParachuteT Error IO a
 
 data Handle = Handle
-    { _sources      :: !Sources.Handle
+    { _builtins :: !(IORef (Builtins Identity))
+    , _sources  :: !Sources.Handle
     -- | List of modules, and files we loaded them from.  Grouped by package
     -- name.
-    , _modules      :: !(IORef (HMS.HashMap PackageName ModuleBatch))
+    , _modules  :: !(IORef (HMS.HashMap PackageName ModuleBatch))
     -- | Map of compiled packages.  Dynamically generated from the modules.
-    , _compiled     :: !(IORef (HMS.HashMap PackageName CompiledPackage))
-    , _cache        :: !EvalCache
-    , _cacheVersion :: !(IORef Cache.Version)
-    , _inputDoc     :: !(IORef Eval.Value)
+    , _compiled :: !(IORef (HMS.HashMap PackageName CompiledPackage))
+    , _cache    :: !(IORef EvalCache)
+    , _inputDoc :: !(IORef Eval.Value)
     }
 
 $(makeLenses ''Handle)
@@ -95,11 +105,13 @@ newHandle
     :: Sources.Handle
     -> IO Handle
 newHandle _sources = do
-    _modules      <- liftIO $ IORef.newIORef HMS.empty
-    _compiled     <- liftIO $ IORef.newIORef HMS.empty
-    _cache        <- liftIO $ Cache.new
-    _cacheVersion <- liftIO $ Cache.bump _cache >>= IORef.newIORef
-    _inputDoc     <- liftIO $ IORef.newIORef emptyObject
+    initializedBuiltins <- traverse (htraverse (fmap Identity)) defaultBuiltins
+
+    _builtins     <- IORef.newIORef initializedBuiltins
+    _modules      <- IORef.newIORef HMS.empty
+    _compiled     <- IORef.newIORef HMS.empty
+    _cache        <- Cache.new >>= IORef.newIORef
+    _inputDoc     <- IORef.newIORef emptyObject
     return Handle {..}
 
 readDependencyGraph
@@ -130,6 +142,7 @@ insertModule h sourcep modul = do
     -- them.
     depGraph <- liftIO (readDependencyGraph h)
     let evict = Deps.evict depGraph (HS.singleton pkgname)
+    unless (HS.null evict) $ bumpCache h
 
     -- Remove everything that's in the evict set.
     liftIO $ IORef.atomicModifyIORef_ (h ^. compiled) $
@@ -137,20 +150,22 @@ insertModule h sourcep modul = do
 
     dieIfErrors
 
-loadModule :: Handle -> FilePath -> InterpreterM ()
-loadModule h path = do
+loadModule
+    :: Handle -> Parser.ParserOptions -> FilePath -> InterpreterM PackageName
+loadModule h popts path = do
     -- Read the source code and parse the module.
     input <- catchIO $ T.readFile path
     liftIO $ IORef.atomicModifyIORef_ (h ^. sources) $
         Sources.insert sourcep input
-    modul <- Parser.lexAndParse Parser.parseModule sourcep input
+    modul <- Parser.lexAndParse (Parser.parseModule popts) sourcep input
 
     -- Insert or replace the module.
     insertModule h sourcep modul
+    return $ modul ^. Sugar.modulePackage
   where
     sourcep = Sources.FileInput path
 
-loadBundle :: Handle -> FilePath -> InterpreterM ()
+loadBundle :: Handle -> FilePath -> InterpreterM [PackageName]
 loadBundle h path = do
     errOrBundle <- Binary.decodeOrFail . GZip.decompress <$>
         liftIO (BL.readFile path)
@@ -163,10 +178,12 @@ loadBundle h path = do
                 (mappend (bundle ^. bundleSources))
             forOf_ (bundleModules . traverse . traverse) bundle $
                 \(sourcep, modul) -> insertModule h sourcep modul
+            return $ HMS.keys $ bundle ^. bundleModules
 
-loadModuleOrBundle :: Handle -> FilePath -> InterpreterM ()
-loadModuleOrBundle h path = case listExtensions path of
-    "rego" : _            -> loadModule h path
+loadModuleOrBundle
+    :: Handle -> Parser.ParserOptions -> FilePath -> InterpreterM [PackageName]
+loadModuleOrBundle h popts path = case listExtensions path of
+    "rego" : _            -> pure <$> loadModule h popts path
     "bundle" : "rego" : _ -> loadBundle h path
     _                     -> fatal $ Error.mkErrorNoMeta "interpreter" $
         "Unknown rego file extension:" <+> PP.pretty path <+>
@@ -181,11 +198,12 @@ saveBundle h path = liftIO $ do
 -- TODO(jaspervdj): We should probably crash rather than creating an empty
 -- package.
 preparePackage
-    :: HMS.HashMap PackageName ModuleBatch
+    :: Builtins Identity
+    -> HMS.HashMap PackageName ModuleBatch
     -> HMS.HashMap PackageName CompiledPackage
     -> PackageName
     -> InterpreterM PreparedPackage
-preparePackage modmap dependencies pkgname = do
+preparePackage builtin modmap dependencies pkgname = do
     let mods = maybe [] (map snd) (HMS.lookup pkgname modmap)
         pkg0 = Prepare.empty pkgname
         pkgRules = HS.toHashSetOf
@@ -197,7 +215,7 @@ preparePackage modmap dependencies pkgname = do
         -- Rename module.
         imports <- Prepare.prepareImports (modul0 ^. Sugar.moduleImports)
         let renamerEnv = Renamer.RenamerEnv
-                Builtins.builtins imports pkgname pkgRules dependencies
+                builtin imports pkgname pkgRules dependencies
         modul1 <- runRenamerT renamerEnv $ Renamer.renameModule modul0
 
         foldM
@@ -209,10 +227,11 @@ preparePackage modmap dependencies pkgname = do
 readCompiledPackage
     :: Handle -> PackageName -> InterpreterM CompiledPackage
 readCompiledPackage h want = do
-    graph  <- liftIO (readDependencyGraph h)
-    modmap <- liftIO $ IORef.readIORef (h ^. modules)
-    comp0  <- liftIO $ IORef.readIORef (h ^. compiled)
-    plan   <- case Deps.plan graph (HS.singleton want) of
+    graph   <- liftIO (readDependencyGraph h)
+    modmap  <- liftIO $ IORef.readIORef (h ^. modules)
+    comp0   <- liftIO $ IORef.readIORef (h ^. compiled)
+    builtin <- liftIO $ IORef.readIORef (h ^. builtins)
+    plan    <- case Deps.plan graph (HS.singleton want) of
         Right x -> return x
         Left depError -> fatal $
             Error.mkErrorNoMeta "interpreter" (PP.pretty depError)
@@ -223,8 +242,8 @@ readCompiledPackage h want = do
         _ : _ -> do
             comp1 <- foldM
                 (\uni pkgname -> do
-                    prep <- preparePackage modmap uni pkgname
-                    cp   <- Compile.compilePackage uni prep
+                    prep <- preparePackage builtin modmap uni pkgname
+                    cp   <- Compile.compilePackage builtin uni prep
                     dieIfErrors
                     return $ HMS.insert pkgname cp uni)
                 comp0
@@ -244,11 +263,22 @@ compilePackages h = do
     let needComp = mods `HMS.difference` comps
     ifor_ needComp $ \pkgname _ -> readCompiledPackage h pkgname
 
+-- | Get a list of all builtins.
+readBuiltins :: Handle -> InterpreterM [Function]
+readBuiltins h = liftIO $ HMS.keys <$> IORef.readIORef (h ^. builtins)
+
+-- | Register a builtin.
+insertBuiltin :: Handle -> Function -> Builtin Identity -> InterpreterM ()
+insertBuiltin h k b =
+    liftIO $ IORef.atomicModifyIORef_ (h ^. builtins) $ HMS.insert k b
+
 -- | Get a list of loaded packages.
 readPackages :: Handle -> InterpreterM [PackageName]
-readPackages h = do
-    pkgs <- liftIO $ IORef.readIORef (h ^. compiled)
-    return (HMS.keys pkgs)
+readPackages h = liftIO $ HMS.keys <$> IORef.readIORef (h ^. compiled)
+
+-- | Obtain a compiled package.
+readPackage :: Handle -> PackageName -> InterpreterM CompiledPackage
+readPackage = readCompiledPackage
 
 -- | Read all rules in a specific package.
 readPackageRules :: Handle -> PackageName -> InterpreterM [Var]
@@ -280,47 +310,34 @@ insertRule h pkgname sourcep rule =
         , _modulePolicy  = [rule]
         }
 
--- | We can override a few things in the evaluation.  This is particularly
--- useful when evaluating things from within the paused debugger.
-data EvalOptions = EvalOptions
-    { _eoContext  :: !Eval.Context
-    , _eoInputDoc :: !Eval.Value
-    }
-
-$(makeLenses ''EvalOptions)
-
-readEvalOptions :: Handle -> InterpreterM EvalOptions
-readEvalOptions h = do
-    indoc <- liftIO $ IORef.readIORef (h ^. inputDoc)
-    return $! EvalOptions Eval.emptyContext indoc
+newEvalContext :: Handle -> InterpreterM Eval.EnvContext
+newEvalContext h = Eval.EnvContext
+    <$> pure Eval.emptyContext
+    <*> (Eval.Environment
+        <$> liftIO (IORef.readIORef (h ^. builtins))
+        <*> liftIO (IORef.readIORef (h ^. compiled))
+        <*> liftIO (IORef.readIORef (h ^. inputDoc))
+        <*> liftIO (IORef.readIORef (h ^. cache))
+        <*> pure Stack.empty)
 
 eval
-    :: Handle -> EvalOptions -> PackageName -> Eval.EvalM a
+    :: Handle -> Maybe Eval.EnvContext -> PackageName -> Eval.EvalM a
     -> InterpreterM (Eval.Document a)
-eval h eoptions  _pkgname mx = do
-    comp   <- liftIO $ IORef.readIORef (h ^. compiled)
-    cachev <- liftIO $ IORef.readIORef (h ^. cacheVersion)
-    let ctx = eoptions ^. eoContext
-        env = Eval.Environment
-            { Eval._packages     = comp
-            , Eval._inputDoc     = eoptions ^. eoInputDoc
-            , Eval._cache        = h ^. cache
-            , Eval._cacheVersion = cachev
-            , Eval._stack        = Stack.empty
-            }
-
-    either fatal return =<< liftIO (Eval.runEvalM env ctx mx)
+eval h mbEvalEnvCtx _pkgname mx = do
+    envctx <- maybe (newEvalContext h) return mbEvalEnvCtx
+    either fatal return =<< liftIO (Eval.runEvalM envctx mx)
 
 evalExpr
-    :: Handle -> EvalOptions -> PackageName -> Sugar.Expr SourceSpan Var
-    -> InterpreterM (Eval.Document Eval.Value)
-evalExpr h eoptions pkgname expr = do
-    comp <- liftIO $ IORef.readIORef (h ^. compiled)
-    pkg  <- readCompiledPackage h pkgname
+    :: Handle -> Maybe Eval.EnvContext -> PackageName
+    -> Sugar.Expr SourceSpan Var -> InterpreterM (Eval.Document Eval.Value)
+evalExpr h mbEvalEnvCtx pkgname expr = do
+    comp    <- liftIO $ IORef.readIORef (h ^. compiled)
+    pkg     <- readCompiledPackage h pkgname
+    builtin <- liftIO $ IORef.readIORef (h ^. builtins)
 
     -- Rename expression.
     let renamerEnv = Renamer.RenamerEnv
-            Builtins.builtins
+            builtin
             mempty  -- No imports?
             pkgname
             (HS.fromList $ Compile.rules pkg)
@@ -328,67 +345,64 @@ evalExpr h eoptions pkgname expr = do
     rterm <- runRenamerT renamerEnv $ Renamer.renameExpr expr
 
     pterm <- Prepare.prepareExpr rterm
-    cterm <- Compile.compileTerm pkg safeLocals pterm
+    cterm <- Compile.compileTerm builtin pkg safeLocals pterm
     dieIfErrors
-    eval h eoptions pkgname (Eval.evalTerm cterm)
+    eval h mbEvalEnvCtx pkgname (Eval.evalTerm cterm)
   where
-    safeLocals = Compile.Safe $ HS.fromList $
-        eoptions ^. eoContext . Eval.locals . to HMS.keys
+    safeLocals = Compile.Safe $ HS.fromList $ case mbEvalEnvCtx of
+        Nothing -> mempty
+        Just ec -> ec ^. Eval.ecContext . Eval.locals . to HMS.keys
 
 evalVar
-    :: Handle -> SourceSpan -> PackageName -> Var
+    :: Handle -> Maybe Eval.EnvContext -> SourceSpan -> PackageName -> Var
     -> InterpreterM (Eval.Document Eval.Value)
-evalVar h source pkgname var = do
+evalVar h mbEvalEnvCtx source pkgname var = do
     let expr = Sugar.TermE source (Sugar.VarT source var)
-    eoptions <- readEvalOptions h
-    evalExpr h eoptions pkgname expr
+    evalExpr h mbEvalEnvCtx pkgname expr
 
-mkStepState
+newResumeStep
     :: Handle -> PackageName -> Sugar.Expr SourceSpan Var
-    -> InterpreterM (Eval.StepState Eval.Value)
-mkStepState h pkgname expr = do
-    comp   <- liftIO $ IORef.readIORef (h ^. compiled)
+    -> InterpreterM (Eval.ResumeStep Eval.Value)
+newResumeStep h pkgname expr = do
+    envctx <- newEvalContext h
     pkg    <- readCompiledPackage h pkgname
-    cachev <- liftIO $ IORef.readIORef (h ^. cacheVersion)
-    indoc  <- liftIO $ IORef.readIORef (h ^. inputDoc)
 
     -- Rename expression.
-    let renamerEnv = Renamer.RenamerEnv
-            Builtins.builtins
+    let builtin    = envctx ^. Eval.ecEnvironment . Eval.builtins
+        renamerEnv = Renamer.RenamerEnv
+            builtin
             mempty  -- No imports?
             pkgname
             (HS.fromList $ Compile.rules pkg)
-            comp
+            (envctx ^. Eval.ecEnvironment . Eval.packages)
     rexpr <- runRenamerT renamerEnv $ Renamer.renameExpr expr
 
-    pterm <- Prepare.prepareExpr rexpr
-    cterm <- Compile.compileTerm pkg mempty pterm
-    let env = Eval.Environment
-            { Eval._packages     = comp
-            , Eval._inputDoc     = indoc
-            , Eval._cache        = h ^. cache
-            , Eval._cacheVersion = cachev
-            , Eval._stack        = Stack.empty
-            }
+    pterm  <- Prepare.prepareExpr rexpr
+    cterm  <- Compile.compileTerm builtin pkg mempty pterm
 
     dieIfErrors
-    return $ Eval.mkStepState env (Eval.evalTerm cterm)
+    return $ Eval.newResumeStep envctx (Eval.evalTerm cterm)
 
 step
-    :: Handle -> Eval.StepState Eval.Value
+    :: Handle -> Eval.ResumeStep Eval.Value
     -> InterpreterM (Eval.Step Eval.Value)
-step _ = liftIO . Eval.stepEvalM
+step _ = liftIO . Eval.runStep
 
-setInput :: Handle -> FilePath -> InterpreterM ()
-setInput h path = do
+bumpCache :: Handle -> InterpreterM ()
+bumpCache h = liftIO $ IORef.readIORef (h ^. cache) >>=
+    Cache.bump >>= IORef.writeIORef (h ^. cache)
+
+setInput :: Handle -> Aeson.Value -> InterpreterM ()
+setInput h val = do
+    bumpCache h
+    liftIO $ IORef.writeIORef (h ^. inputDoc) (Eval.Json.toValue val)
+
+setInputFile :: Handle -> FilePath -> InterpreterM ()
+setInputFile h path = do
     errOrVal <- liftIO $ Aeson.eitherDecodeFileStrict' path
     val      <- case errOrVal of
         Right v  -> pure (v :: Aeson.Value)
         Left err -> fatal $ Error.mkErrorNoMeta "interpreter" $
             "Loading input file" <+> PP.pretty path <+> "failed:" <$$>
             PP.ind (PP.pretty err)
-
-    liftIO $ do
-        newCacheVersion <- Cache.bump (h ^. cache)
-        IORef.writeIORef (h ^. cacheVersion) newCacheVersion
-        IORef.writeIORef (h ^. inputDoc)     (Eval.Json.toValue val)
+    setInput h val
