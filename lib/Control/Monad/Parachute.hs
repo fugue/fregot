@@ -20,7 +20,7 @@ module Control.Monad.Parachute
 import           Control.Monad.Except (MonadError (..))
 import           Control.Monad.Reader (MonadReader (..))
 import           Control.Monad.State  (MonadState (..))
-import           Control.Monad.Trans  (MonadIO (..))
+import           Control.Monad.Trans  (MonadTrans (..), MonadIO (..))
 
 data ParachuteResult e a
     = Ok a
@@ -63,6 +63,11 @@ instance MonadState s m => MonadState s (ParachuteT e m) where
 instance Monad m => MonadError [e] (ParachuteT e m) where
     throwError = fatals
     catchError = catch
+
+instance MonadTrans (ParachuteT e) where
+    lift mx = ParachuteT $ \errors -> do
+        x <- mx
+        pure (errors, Ok x)
 
 runParachuteT :: Monad m => ParachuteT e m a -> m ([e], Maybe a)
 runParachuteT p = do

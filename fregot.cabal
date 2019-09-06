@@ -78,6 +78,7 @@ Library
     Data.Unique
     Language.Dot
 
+    Control.Monad.Except.Extended
     Control.Monad.Extended
     Data.Aeson.Extended
     Data.Aeson.TH.Extended

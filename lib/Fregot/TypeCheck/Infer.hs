@@ -4,51 +4,77 @@
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE TemplateHaskell       #-}
+{-# LANGUAGE TupleSections         #-}
 {-# LANGUAGE TypeSynonymInstances  #-}
 module Fregot.TypeCheck.Infer
-    ( InferM
+    ( TypeError (..)
+    , InferM
     , runInfer
 
     , inferRule
     ) where
 
-import           Control.Lens               (forOf_, (^.))
-import           Control.Monad.Parachute    (ParachuteT, fatal, mapParachuteT)
-import           Control.Monad.State.Strict (State, evalState, get, modify, put)
-import           Data.Foldable              (for_)
-import qualified Data.Unification           as Unify
-import           Fregot.Error               (Error)
-import qualified Fregot.Error               as Error
+import           Control.Lens                  (forOf_, (^.))
+import           Control.Lens.TH               (makePrisms)
+import           Control.Monad.Except.Extended (catching, throwError)
+import           Control.Monad.Parachute       (ParachuteT, fatal)
+import           Control.Monad.State.Strict    (StateT, evalStateT, get, modify,
+                                                put)
+import           Data.Foldable                 (for_)
+import qualified Data.HashMap.Strict           as HMS
+import           Data.List.NonEmpty.Extended   (NonEmpty)
+import qualified Data.List.NonEmpty.Extended   as NonEmpty
+import           Data.Maybe                    (fromMaybe)
+import qualified Data.Unification              as Unify
+import           Fregot.Error                  (Error)
+import qualified Fregot.Error                  as Error
 import           Fregot.Names
 import           Fregot.Prepare.Ast
-import           Fregot.Sources.SourceSpan  (SourceSpan)
-import           Fregot.TypeCheck.Types     (Type)
-import qualified Fregot.TypeCheck.Types     as Types
+import           Fregot.PrettyPrint            ((<+>))
+import qualified Fregot.PrettyPrint            as PP
+import           Fregot.Sources.SourceSpan     (SourceSpan)
+import           Fregot.TypeCheck.Types        (Type)
+import qualified Fregot.TypeCheck.Types        as Types
 
-data Ground a
-    = Ground a
-    | Unground  -- Should we return the variables that are not ground?  YES
-    deriving (Functor, Show)
+type SourceType = (Type, NonEmpty SourceSpan)
 
-type Env = Unify.Unification UnqualifiedVar Type
+data TypeError
+    = UnboundVars (HMS.HashMap UnqualifiedVar SourceSpan)
+    | NoUnify (Maybe SourceSpan) SourceType SourceType
 
-type InferM = ParachuteT Error (State Env)
+$(makePrisms ''TypeError)
 
-instance Unify.MonadUnify UnqualifiedVar Type InferM where
-    unify             = undefined
+type Env = Unify.Unification UnqualifiedVar SourceType
+
+type InferM = StateT Env (Either TypeError)
+
+instance Unify.MonadUnify UnqualifiedVar SourceType InferM where
+    unify             = unifyTypeType
     getUnification    = get
     putUnification    = put
     modifyUnification = modify
 
-runInfer :: Monad m => InferM a -> ParachuteT Error m a
-runInfer = mapParachuteT $ \s -> return $ evalState s Unify.empty
+fromTypeError :: TypeError -> Error
+fromTypeError = \case
 
--- | Check that a future value is grounded, or throw an error.
-grounded :: SourceSpan -> Ground a -> InferM a
-grounded _      (Ground x) = return x
-grounded source Unground   = fatal $ Error.mkError
-    "typecheck" source "not grounded"
-    "This expression contains free variables"
+    UnboundVars vars -> Error.mkMultiError sub "Unbound variables" $ do
+        (v, source) <- HMS.toList vars
+        return $ (,) source $
+            "The variable" <+> PP.code (PP.pretty v) <+> "is not defined"
+
+    NoUnify mbSource (τ, source NonEmpty.:| _) (σ, _) ->
+        Error.mkError sub (fromMaybe source mbSource) "Unification error" $
+            "Could not unify type" <+> PP.code (PP.pretty τ) <+>
+            "with" <+> PP.code (PP.pretty σ)
+
+  where
+    sub = "typecheck"
+
+runInfer :: Monad m => InferM a -> ParachuteT Error m a
+runInfer mx =
+    let errOrA = evalStateT mx Unify.empty in
+    either (fatal . fromTypeError) return errOrA
 
 inferRule :: Rule SourceSpan -> InferM ()
 inferRule rule =
@@ -85,23 +111,19 @@ inferLiteral lit = do
     -- TODO(jaspervdj): infer `with` parts.
 
 inferStatement
-    :: Statement SourceSpan -> InferM (Ground ())
+    :: Statement SourceSpan -> InferM ()
 inferStatement = \case
-    TermS t -> (() <$) <$> inferTerm t
-    AssignS source _v t -> do
-        _tty <- grounded source =<< inferTerm t
+    TermS t -> () <$ inferTerm t
+    AssignS _source _v t -> do
+        _tty <- inferTerm t
         error "TODO(jaspervdj): bind type in env"
-    UnifyS source l r -> (() <$) <$> inferUnify source l r
-
-inferUnify
-    :: SourceSpan -> Term SourceSpan -> Term SourceSpan -> InferM (Ground Type)
-inferUnify = undefined
+    UnifyS source l r -> unifyTermTerm source l r
 
 inferTerm
-    :: Term SourceSpan -> InferM (Ground Type)
+    :: Term SourceSpan -> InferM SourceType
 
-inferTerm (ScalarT _ scalar) =
-    return $ Ground $ inferScalar scalar
+inferTerm (ScalarT source scalar) =
+    return $ (, NonEmpty.singleton source) $ inferScalar scalar
 
 inferTerm _ = undefined
 
@@ -111,3 +133,26 @@ inferScalar = \case
     Number _ -> Types.Number
     Bool   _ -> Types.Boolean
     Null     -> Types.Null
+
+unifyTermTerm
+    :: SourceSpan -> Term SourceSpan -> Term SourceSpan -> InferM ()
+unifyTermTerm _ (NameT _ (LocalName α)) (NameT _ (LocalName β)) =
+    Unify.bindVar α β
+
+unifyTermTerm source lhs rhs = catching _UnboundVars
+    (do
+        rhsty <- inferTerm rhs
+        unifyTermType source lhs rhsty)
+    (\_ -> do
+        lhsty <- inferTerm lhs
+        unifyTermType source rhs lhsty)
+
+unifyTermType
+    :: SourceSpan -> Term SourceSpan -> SourceType -> InferM ()
+unifyTermType _source (NameT _ (LocalName α)) ty = Unify.bindTerm α ty
+unifyTermType _source _ _ = undefined
+
+unifyTypeType :: SourceType -> SourceType -> InferM ()
+unifyTypeType l@(τ, _) r@(σ, _)
+    | τ == σ    = return ()
+    | otherwise = throwError $ NoUnify Nothing l r
