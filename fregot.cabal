@@ -16,6 +16,7 @@ Library
   Hs-source-dirs:   lib
 
   Exposed-modules:
+    Fregot.Arity
     Fregot.Compile.Graph
     Fregot.Compile.Order
     Fregot.Compile.Package

@@ -1,7 +1,7 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# LANGUAGE DeriveFunctor         #-}
-{-# LANGUAGE GADTs                 #-}
 {-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE GADTs                 #-}
 {-# LANGUAGE KindSignatures        #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -19,7 +19,7 @@ module Fregot.TypeCheck.Infer
     , inferRule
     ) where
 
-import           Control.Lens                  (forOf_, view, (^.))
+import           Control.Lens                  (forOf_, view, (^.), (^?))
 import           Control.Lens.TH               (makeLenses, makePrisms)
 import           Control.Monad.Except.Extended (catching, throwError)
 import           Control.Monad.Parachute       (ParachuteT, fatal)
@@ -30,12 +30,14 @@ import           Data.Foldable                 (for_)
 import qualified Data.HashMap.Strict           as HMS
 import           Data.List.NonEmpty.Extended   (NonEmpty)
 import qualified Data.List.NonEmpty.Extended   as NonEmpty
-import           Data.Maybe                    (fromMaybe)
+import           Data.Maybe                    (fromMaybe, isJust)
 import           Data.Proxy                    (Proxy)
 import qualified Data.Unification              as Unify
+import           Fregot.Arity
 import           Fregot.Error                  (Error)
 import qualified Fregot.Error                  as Error
-import           Fregot.Eval.Builtins          (Builtins)
+import           Fregot.Eval.Builtins          (Builtin, Builtins)
+import qualified Fregot.Eval.Builtins          as Builtin
 import           Fregot.Names
 import           Fregot.Prepare.Ast
 import           Fregot.PrettyPrint            ((<+>))
@@ -49,6 +51,8 @@ type SourceType = (Type, NonEmpty SourceSpan)
 data TypeError
     = UnboundVars (HMS.HashMap UnqualifiedVar SourceSpan)
     | NoUnify (Maybe SourceSpan) SourceType SourceType
+    | ArityMismatch SourceSpan Function Int Int
+    | InternalError String
 
 data InferEnv = InferEnv
     { _ieBuiltins :: Builtins Proxy
@@ -80,6 +84,12 @@ fromTypeError = \case
             "Could not unify type" <+> PP.code (PP.pretty τ) <+>
             "with" <+> PP.code (PP.pretty σ)
 
+    ArityMismatch source name expect got -> Error.mkError sub source
+        "Arity mismatch" $
+        "The function" <+> PP.code (PP.pretty name) <+> "takes" <+>
+        PP.pretty expect <+> "arguments but" <+> PP.pretty got <+> "were given"
+
+    InternalError msg -> Error.mkErrorNoMeta sub $ PP.pretty msg
   where
     sub = "typecheck"
 
@@ -89,6 +99,11 @@ runInfer env mx =
     either (fatal . fromTypeError) return errOrA
 
 inferRule :: Rule SourceSpan -> InferM ()
+inferRule rule | isJust (rule ^? ruleKind . _FunctionRule) =
+    -- TODO (jaspervdj): According to the current plan, functions will be
+    -- skipped right now and inferred in an "inlined" way.
+    return ()
+
 inferRule rule =
     -- TODO(jaspervdj): Here, we need to assign types to the arguments as well
     -- as the return value.  According to the current plan, functions will be
@@ -137,11 +152,17 @@ inferTerm
 inferTerm (ScalarT source scalar) =
     return $ (, NonEmpty.singleton source) $ inferScalar scalar
 
-inferTerm (CallT _source fun _args) = do
+inferTerm (CallT source fun args) = do
     builtins <- view ieBuiltins
-    case HMS.lookup fun builtins of
-        Nothing -> error "TODO: not a builtin"
-        Just _  -> error "TODO: Builtin"
+    case (,) <$> HMS.lookup fun builtins <*> HMS.lookup fun Builtin.wipBuiltinSigs of
+        Nothing -> error $ "TODO: not a builtin: " ++ show fun
+        Just b  -> inferBuiltin source fun b args
+
+inferTerm (NameT source (LocalName var)) = do
+    mbRes <- Unify.lookup var
+    case mbRes of
+        Nothing -> throwError $ UnboundVars (HMS.singleton var source)
+        Just ty -> return ty
 
 inferTerm term = error $ show $
     "TODO(jaspervdj): Inference for" <+> PP.pretty' term
@@ -152,6 +173,36 @@ inferScalar = \case
     Number _ -> Types.Number
     Bool   _ -> Types.Boolean
     Null     -> Types.Null
+
+inferBuiltin
+    :: SourceSpan
+    -> Function -> (Builtin Proxy, Builtin.BuiltinSig) -> [Term SourceSpan]
+    -> InferM SourceType
+inferBuiltin source name (builtin, sig) args = case checkArity arity args of
+    ArityBad got         -> throwError $ ArityMismatch source name arity got
+    ArityOk inArgs mbOut -> do
+        inTypes <- mapM inferTerm inArgs
+        env     <- walk HMS.empty (zip inSig inTypes)
+        outTy   <- case outSig of
+            Right σ -> return (σ, NonEmpty.singleton source)
+            Left  i -> maybe
+                (throwError $ InternalError "bad return index")
+                return (HMS.lookup i env)
+        case mbOut of
+            Nothing -> return outTy
+            Just o  -> do
+                unifyTermType source o outTy
+                return (Types.Boolean, NonEmpty.singleton source)
+  where
+    inSig Builtin.:~> outSig = sig
+    arity = Builtin.arity builtin
+
+    walk env []                   = return env
+    walk env ((Left i, τ) : more) = case HMS.lookup i env of
+        Nothing -> walk (HMS.insert i τ env) more
+        Just σ  -> unifyTypeType τ σ >> walk env more
+    walk env ((Right σ, τ) : more) =
+        unifyTypeType (σ, NonEmpty.singleton source) τ >> walk env more
 
 unifyTermTerm
     :: SourceSpan -> Term SourceSpan -> Term SourceSpan -> InferM ()
@@ -168,8 +219,10 @@ unifyTermTerm source lhs rhs = catching _UnboundVars
 
 unifyTermType
     :: SourceSpan -> Term SourceSpan -> SourceType -> InferM ()
-unifyTermType _source (NameT _ (LocalName α)) ty = Unify.bindTerm α ty
-unifyTermType _source _ _                        = undefined
+unifyTermType _source (NameT _ (LocalName α)) σ = Unify.bindTerm α σ
+unifyTermType _source term                    σ = do
+    τ <- inferTerm term
+    unifyTypeType τ σ
 
 unifyTypeType :: SourceType -> SourceType -> InferM ()
 unifyTypeType l@(τ, _) r@(σ, _)

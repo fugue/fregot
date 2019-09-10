@@ -30,6 +30,7 @@ module Fregot.Eval.Builtins
     , BuiltinM
     , eitherToBuiltinM
 
+    , BuiltinSig (..)
     , wipBuiltinSigs
     ) where
 
@@ -169,6 +170,7 @@ data Args (a :: [t]) where
     Nil  :: Args '[]
     Cons :: a -> Args as -> Args (a ': as)
 
+-- | TODO (jaspervdj): Use arity check instead?
 toArgs :: Sig t o -> [Value] -> Either String (Args t, Maybe Value)
 toArgs Out      []       = return (Nil, Nothing)
 toArgs Out      [final]  = return (Nil, Just final)

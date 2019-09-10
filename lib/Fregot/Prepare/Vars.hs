@@ -18,6 +18,7 @@ import           Data.Hashable         (Hashable)
 import qualified Data.HashSet.Extended as HS
 import           Data.List             (foldl')
 import           Data.Maybe            (fromMaybe)
+import           Fregot.Arity
 import           Fregot.Names
 import           Fregot.Prepare.Ast
 import           Fregot.Prepare.Lens
@@ -69,8 +70,10 @@ ovTerm arities safe (RefT _ x k) =
 
 ovTerm arities safe (CallT _ function args) =
     let arity = fromMaybe 0 (arities function) in
-    foldMap (ovTerm arities safe) (take arity args) <>
-    foldMap markTermSafe (drop arity args)
+    case checkArity arity args of
+        ArityBad _       -> mempty
+        ArityOk ina outa ->
+            foldMap (ovTerm arities safe) ina <> foldMap markTermSafe outa
 
 ovTerm _arities _safe (NameT _ _) = mempty
 
