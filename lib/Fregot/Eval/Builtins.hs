@@ -29,6 +29,8 @@ module Fregot.Eval.Builtins
 
     , BuiltinM
     , eitherToBuiltinM
+
+    , wipBuiltinSigs
     ) where
 
 import           Control.Applicative          ((<|>))
@@ -57,6 +59,7 @@ import qualified Fregot.Eval.Number           as Number
 import           Fregot.Eval.Value
 import           Fregot.Names
 import           Fregot.Prepare.Ast           (BinOp (..), Function (..))
+import qualified Fregot.TypeCheck.Types       as Ty
 import           Numeric                      (showIntAtBase)
 import qualified Text.Pcre2                   as Pcre2
 import qualified Text.Printf.Extended         as Printf
@@ -526,3 +529,14 @@ builtin_bin_or = Builtin (In (In Out)) $ pure $
 -- | Auxiliary function to fix types.
 num :: Number -> Number
 num = id
+
+
+--------------------------------------------------------------------------------
+
+data BuiltinSig = [Either Int Ty.Type] :~> (Either Int Ty.Type)
+
+wipBuiltinSigs :: HMS.HashMap Function BuiltinSig
+wipBuiltinSigs = HMS.fromList
+    [ (OperatorFunction EqualO, [Left 0, Left 0] :~> Left 0)
+    , (OperatorFunction PlusO,  [Right Ty.Number, Right Ty.Number] :~> Right Ty.Number)
+    ]

@@ -1,5 +1,6 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# LANGUAGE DeriveFunctor         #-}
+{-# LANGUAGE GADTs                 #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE KindSignatures        #-}
 {-# LANGUAGE LambdaCase            #-}
