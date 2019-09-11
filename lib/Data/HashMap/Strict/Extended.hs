@@ -3,8 +3,10 @@
 module Data.HashMap.Strict.Extended
     ( module Data.HashMap.Strict
     , shortcuts
+    , fromValues
     ) where
 
+import           Control.Arrow       ((&&&))
 import qualified Data.Binary         as Binary
 import           Data.Hashable       (Hashable)
 import           Data.HashMap.Strict
@@ -22,3 +24,6 @@ shortcuts cuts base = foldlWithKey'
         _                                   -> acc)
     base
     cuts
+
+fromValues :: (Eq k, Hashable k) => (v -> k) -> [v] -> HashMap k v
+fromValues f = fromList . fmap (f &&& id)

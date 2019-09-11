@@ -55,6 +55,7 @@ import           Fregot.Prepare.Lens
 import           Fregot.PrettyPrint        ((<$$>), (<+>))
 import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources.SourceSpan (SourceSpan)
+import           Fregot.TypeCheck.Types    (RuleType (..))
 
 ground :: SourceSpan -> Value -> EvalM Value
 ground source val = case val of
@@ -278,7 +279,7 @@ evalRefArg source indexee refArg = do
 -- the rule.
 evalCompiledRule
     :: SourceSpan
-    -> Rule SourceSpan
+    -> Rule RuleType SourceSpan
     -> Maybe Value
     -> EvalM Value
 evalCompiledRule callerSource crule mbIndex = push $ case crule ^. ruleKind of
@@ -377,7 +378,8 @@ evalRuleDefinition callerSource rule mbIndex =
             ]
 
 evalUserFunction
-    :: SourceSpan -> Rule SourceSpan -> [Value] -> EvalM Value
+    :: SourceSpan -> Rule RuleType SourceSpan -> [Value]
+    -> EvalM Value
 evalUserFunction callerSource crule callerArgs =
     pushFunctionStackFrame callerSource
         (QualifiedName (crule ^. rulePackage) (crule ^. ruleName)) $

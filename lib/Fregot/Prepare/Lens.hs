@@ -26,13 +26,14 @@ import           Fregot.Prepare.Ast
 $(makePrisms ''Term)
 
 -- All direct terms of the rule, combine with 'cosmos' to traverse deeper.
-ruleTerms :: Traversal' (Rule a) (Term a)
+ruleTerms :: Traversal' (Rule i a) (Term a)
 ruleTerms f rule = Rule
     <$> pure (rule ^. rulePackage)
     <*> pure (rule ^. ruleName)
     <*> pure (rule ^. ruleAnn)
-    <*> traverse f (rule ^. ruleDefault)
     <*> pure (rule ^. ruleKind)
+    <*> pure (rule ^. ruleInfo)
+    <*> traverse f (rule ^. ruleDefault)
     <*> traverseOf (traverse . ruleDefinitionTerms) f (rule ^. ruleDefs)
 
 -- | All direct terms of a rule definition, combine with 'cosmos' to traverse

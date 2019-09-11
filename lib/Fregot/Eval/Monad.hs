@@ -80,6 +80,7 @@ import           Fregot.Prepare.Ast
 import           Fregot.PrettyPrint        ((<$$>))
 import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources.SourceSpan (SourceSpan)
+import           Fregot.TypeCheck.Types    (RuleType)
 
 data Context = Context
     { _unification :: !(Unification InstVar Value)
@@ -288,7 +289,7 @@ toInstVar v = state $ \ctx -> case HMS.lookup v (ctx ^. locals) of
             !lcls = HMS.insert v iv (ctx ^. locals) in
         (iv, ctx {_nextInstVar = _nextInstVar ctx + 1, _locals = lcls})
 
-lookupRule :: Name -> EvalM (Maybe (Rule SourceSpan))
+lookupRule :: Name -> EvalM (Maybe (Rule RuleType SourceSpan))
 lookupRule (LocalName _) = pure Nothing
 lookupRule (QualifiedName pkgname name) = do
     env0 <- ask

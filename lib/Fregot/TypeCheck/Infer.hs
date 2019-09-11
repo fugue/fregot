@@ -19,7 +19,7 @@ module Fregot.TypeCheck.Infer
     , inferRule
     ) where
 
-import           Control.Lens                  (forOf_, view, (^.), (^?))
+import           Control.Lens                  (forOf_, view, (&), (.~), (^.))
 import           Control.Lens.TH               (makeLenses, makePrisms)
 import           Control.Monad.Except.Extended (catching, throwError)
 import           Control.Monad.Parachute       (ParachuteT, fatal)
@@ -30,7 +30,7 @@ import           Data.Foldable                 (for_)
 import qualified Data.HashMap.Strict           as HMS
 import           Data.List.NonEmpty.Extended   (NonEmpty)
 import qualified Data.List.NonEmpty.Extended   as NonEmpty
-import           Data.Maybe                    (fromMaybe, isJust)
+import           Data.Maybe                    (fromMaybe)
 import           Data.Proxy                    (Proxy)
 import qualified Data.Unification              as Unify
 import           Fregot.Arity
@@ -98,20 +98,30 @@ runInfer env mx =
     let errOrA = evalStateT (runReaderT mx env) Unify.empty in
     either (fatal . fromTypeError) return errOrA
 
-inferRule :: Rule SourceSpan -> InferM ()
-inferRule rule | isJust (rule ^? ruleKind . _FunctionRule) =
-    -- TODO (jaspervdj): According to the current plan, functions will be
-    -- skipped right now and inferred in an "inlined" way.
-    return ()
+inferRule :: Rule' -> InferM (Rule Types.RuleType SourceSpan)
+inferRule rule = case rule ^. ruleKind of
+    FunctionRule arity ->
+        -- TODO (jaspervdj): According to the current plan, functions will be
+        -- skipped right now and inferred in an "inlined" way.
+        pure $ rule & ruleInfo .~ Types.FunctionType arity
 
-inferRule rule =
     -- TODO(jaspervdj): Here, we need to assign types to the arguments as well
     -- as the return value.  According to the current plan, functions will be
     -- skipped right now and inferred in an "inlined" way.
     --
     -- We'll want to do some concatenation here in addition to the current
     -- traversal.
-    forOf_ (ruleDefs . traverse) rule inferRuleDefinition
+    CompleteRule -> do
+        forOf_ (ruleDefs . traverse) rule inferRuleDefinition
+        pure $ rule & ruleInfo .~ Types.CompleteRuleType Types.Any
+
+    GenSetRule -> do
+        forOf_ (ruleDefs . traverse) rule inferRuleDefinition
+        pure $ rule & ruleInfo .~ Types.GenSetRuleType Types.Any
+
+    GenObjectRule -> do
+        forOf_ (ruleDefs . traverse) rule inferRuleDefinition
+        pure $ rule & ruleInfo .~ Types.GenObjectRuleType Types.Any Types.Any
 
 inferRuleDefinition :: RuleDefinition SourceSpan -> InferM ()
 inferRuleDefinition rdef =

@@ -1,10 +1,14 @@
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE TemplateHaskell       #-}
 module Fregot.TypeCheck.Types
     ( Type (..)
+    , RuleType (..), _CompleteRuleType, _GenSetRuleType, _GenObjectRuleType
+    , _FunctionType
     ) where
 
+import           Control.Lens.TH    (makePrisms)
 import           Fregot.PrettyPrint ((<+>))
 import qualified Fregot.PrettyPrint as PP
 
@@ -24,3 +28,11 @@ instance PP.Pretty PP.Sem Type where
     pretty String   = PP.keyword "string"
     pretty Boolean  = PP.keyword "boolean"
     pretty Null     = PP.keyword "null"
+
+data RuleType
+    = CompleteRuleType Type
+    | GenSetRuleType Type
+    | GenObjectRuleType Type Type
+    | FunctionType  Int  -- TODO(jaspervdj)
+
+$(makePrisms ''RuleType)

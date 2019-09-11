@@ -26,7 +26,7 @@ type PreparedPackage = Package ()
 
 data Package ty = Package
     { _packageName  :: !PackageName
-    , _packageRules :: !(HMS.HashMap Var (Rule SourceSpan))
+    , _packageRules :: !(HMS.HashMap Var (Rule ty SourceSpan))
     } deriving (Show)
 
 $(makeLenses ''Package)
@@ -42,8 +42,8 @@ insert
     :: Monad m
     => Imports SourceSpan
     -> Sugar.Rule SourceSpan Name
-    -> Package ty
-    -> ParachuteT Error m (Package ty)
+    -> PreparedPackage
+    -> ParachuteT Error m PreparedPackage
 insert imports rule package = do
     new <- prepareRule (package ^. packageName) imports rule
     merged <- case HMS.lookup rname (package ^. packageRules) of
@@ -54,7 +54,7 @@ insert imports rule package = do
   where
     rname = rule ^. Sugar.ruleHead . Sugar.ruleName
 
-lookup :: Var -> Package ty -> Maybe (Rule SourceSpan)
+lookup :: Var -> Package ty -> Maybe (Rule ty SourceSpan)
 lookup var pkg = HMS.lookup var (pkg ^. packageRules)
 
 rules :: Package ty -> [Var]

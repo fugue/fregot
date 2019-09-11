@@ -16,18 +16,18 @@ module Fregot.Compile.Package
 
 import           Control.Applicative          ((<|>))
 import           Control.Lens                 (forOf_, iforM_, traverseOf, view,
-                                               (^.), (^..))
+                                               (&), (.~), (^.), (^..))
 import           Control.Monad                (forM, guard, when)
 import           Control.Monad.Identity       (runIdentity)
 import           Control.Monad.Parachute      (ParachuteT, tellError,
                                                tellErrors)
-import           Data.Foldable                (for_)
 import           Data.Functor                 (($>))
 import qualified Data.Graph                   as Graph
-import qualified Data.HashMap.Strict          as HMS
+import qualified Data.HashMap.Strict.Extended as HMS
 import qualified Data.HashSet.Extended        as HS
 import           Data.List.NonEmpty.Extended  (NonEmpty (..))
 import           Data.Proxy                   (Proxy (..))
+import           Data.Traversable             (for)
 import           Data.Traversable.HigherOrder (htraverse)
 import           Fregot.Compile.Graph
 import           Fregot.Compile.Order
@@ -45,13 +45,14 @@ import           Fregot.PrettyPrint           ((<$$>), (<+>))
 import qualified Fregot.PrettyPrint           as PP
 import           Fregot.Sources.SourceSpan    (SourceSpan)
 import qualified Fregot.TypeCheck.Infer       as Infer
+import           Fregot.TypeCheck.Types
 import           Prelude                      hiding (head, lookup)
 
-type CompiledPackage = Package ()
+type CompiledPackage = Package RuleType
 
 type Dependencies = HMS.HashMap PackageName CompiledPackage
 
-aritiesFromPackage :: Builtins f -> PreparedPackage -> Arities
+aritiesFromPackage :: Builtins f -> Package ty -> Arities
 aritiesFromPackage builtins prep = \func ->
     (do
         builtin <- HMS.lookup func builtins
@@ -72,7 +73,7 @@ aritiesFromDependencies deps = \func -> do
     return arity
 
 -- | Construct the safe-to-use global variables.
-safeGlobals :: PreparedPackage -> Safe Var
+safeGlobals :: Package ty -> Safe Var
 safeGlobals prep = Safe $ HS.fromList (rules prep) <> ["data", "input"]
 
 compilePackage
@@ -100,15 +101,15 @@ compilePackage builtins dependencies prep = do
                 traverse (htraverse $ \_ -> pure Proxy) builtins
             }
 
-    -- Typecheck rules.
-    Infer.runInfer inferEnv $ for_ ordering Infer.inferRule
+    compiled0 <- for ordering compileRule
+    compiled1 <- Infer.runInfer inferEnv $ for compiled0 Infer.inferRule
 
-    traverseOf (packageRules . traverse) compileRule prep
+    pure $ prep & packageRules .~ HMS.fromValues (view ruleName) compiled1
   where
     selfArities = aritiesFromPackage builtins prep
 
     compileRule
-        :: Monad m => Rule SourceSpan -> ParachuteT Error m (Rule SourceSpan)
+        :: Monad m => Rule' -> ParachuteT Error m Rule'
     compileRule = traverseOf (ruleDefs . traverse) compileRuleDefinition
 
     compileRuleDefinition
@@ -163,7 +164,7 @@ compilePackage builtins dependencies prep = do
 
 compileTerm
     :: Monad m
-    => Builtins f -> PreparedPackage -> Safe Var -> Term SourceSpan
+    => Builtins f -> Package ty -> Safe Var -> Term SourceSpan
     -> ParachuteT Error m (Term SourceSpan)
 compileTerm builtins pkg safeLocals term0 = do
     ordered <- runOrder $ orderTermForSafety arities safe0 term0
@@ -202,7 +203,7 @@ runOrder (x, Unsafe unsafe) = do
         "Undefined variable:" <+> PP.pretty var
     return x
 
-recursionError :: [Rule a] -> Error
+recursionError :: [Rule ty a] -> Error
 recursionError [single] = Error.mkError
     "recursion check" (single ^. ruleAnn) "rule is recursive"
     "This rule is recursive."
