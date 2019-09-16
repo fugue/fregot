@@ -99,6 +99,8 @@ compilePackage builtins dependencies prep = do
     let inferEnv = Infer.InferEnv
             { Infer._ieBuiltins = runIdentity $
                 traverse (htraverse $ \_ -> pure Proxy) builtins
+            , Infer._ieDependencies = dependencies
+            , Infer._ieThisPackage = prep ^. packageName
             }
 
     compiled0 <- for ordering compileRule

@@ -12,7 +12,7 @@
 module Fregot.TypeCheck.Infer
     ( TypeError (..)
 
-    , InferEnv (..)
+    , InferEnv (..), ieBuiltins, ieDependencies, ieThisPackage
     , InferM
     , runInfer
 
@@ -40,10 +40,11 @@ import           Fregot.Eval.Builtins          (Builtin, Builtins)
 import qualified Fregot.Eval.Builtins          as Builtin
 import           Fregot.Names
 import           Fregot.Prepare.Ast
+import           Fregot.Prepare.Package        (Package)
 import           Fregot.PrettyPrint            ((<+>))
 import qualified Fregot.PrettyPrint            as PP
 import           Fregot.Sources.SourceSpan     (SourceSpan)
-import           Fregot.TypeCheck.Types        (Type)
+import           Fregot.TypeCheck.Types        (RuleType, Type)
 import qualified Fregot.TypeCheck.Types        as Types
 
 type SourceType = (Type, NonEmpty SourceSpan)
@@ -55,7 +56,9 @@ data TypeError
     | InternalError String
 
 data InferEnv = InferEnv
-    { _ieBuiltins :: Builtins Proxy
+    { _ieBuiltins     :: Builtins Proxy
+    , _ieDependencies :: HMS.HashMap PackageName (Package RuleType)
+    , _ieThisPackage  :: PackageName
     }
 
 type InferState = Unify.Unification UnqualifiedVar SourceType
@@ -173,6 +176,9 @@ inferTerm (NameT source (LocalName var)) = do
     case mbRes of
         Nothing -> throwError $ UnboundVars (HMS.singleton var source)
         Just ty -> return ty
+
+inferTerm term@(NameT _source (QualifiedName _pkg _var)) = error $ show $
+    "TODO(jaspervdj): Inference for qualified names" <+> PP.pretty' term
 
 inferTerm term = error $ show $
     "TODO(jaspervdj): Inference for" <+> PP.pretty' term
