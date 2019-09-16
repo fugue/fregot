@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE LambdaCase      #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE TemplateHaskell       #-}
@@ -34,5 +35,17 @@ data RuleType
     | GenSetRuleType Type
     | GenObjectRuleType Type Type
     | FunctionType  Int  -- TODO(jaspervdj)
+
+instance PP.Pretty PP.Sem RuleType where
+    pretty = \case
+        CompleteRuleType ty -> "rule" <+> PP.punctuation "=" <+> PP.pretty ty
+        GenSetRuleType ty -> "rule" <+> PP.punctuation "[" <+>
+            PP.pretty ty <+> PP.punctuation "]"
+        GenObjectRuleType idx ty -> "rule" <+> PP.punctuation "[" <+>
+            PP.pretty idx <+> PP.punctuation "]" <+> PP.punctuation "=" <+>
+            PP.pretty ty
+        FunctionType arity -> "rule" <+> PP.punctuation "(" <+>
+            PP.commaSep (replicate arity "_") <+> PP.punctuation ")" <+>
+            PP.punctuation "=" <+> "_"
 
 $(makePrisms ''RuleType)

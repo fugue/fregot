@@ -15,11 +15,12 @@ module Fregot.Compile.Package
     ) where
 
 import           Control.Applicative          ((<|>))
-import           Control.Lens                 (forOf_, iforM_, traverseOf, view,
-                                               (&), (.~), (^.), (^..))
-import           Control.Monad                (forM, guard, when)
+import           Control.Lens                 (at, forOf_, iforM_, ix,
+                                               traverseOf, view, (&), (.~),
+                                               (^.), (^..), (^?))
+import           Control.Monad                (foldM, forM, guard, when)
 import           Control.Monad.Identity       (runIdentity)
-import           Control.Monad.Parachute      (ParachuteT, tellError,
+import           Control.Monad.Parachute      (ParachuteT, fatal, tellError,
                                                tellErrors)
 import           Data.Functor                 (($>))
 import qualified Data.Graph                   as Graph
@@ -94,20 +95,36 @@ compilePackage builtins dependencies prep = do
         Graph.AcyclicSCC rule -> return [rule]
         Graph.CyclicSCC  cycl -> tellError (recursionError cycl) $> cycl
 
-    -- TODO(jaspervdj): Builtins Proxy works quite well, we should move it up in
-    -- the call stack.
-    let inferEnv = Infer.InferEnv
+    -- Simple compilation and checks.
+    compiled0 <- for ordering compileRule
+
+    -- This is a version of dependencies with a placeholder for the current
+    -- package, so we can access info about the current package the same as we
+    -- could other package.
+    let vdependencies = HMS.insert pkgname
+            (prep & packageRules .~ HMS.empty) dependencies
+
+    let inferEnv0 = Infer.InferEnv
+            -- TODO(jaspervdj): Builtins Proxy works quite well, we should move
+            -- it up in the call stack.
             { Infer._ieBuiltins = runIdentity $
                 traverse (htraverse $ \_ -> pure Proxy) builtins
-            , Infer._ieDependencies = dependencies
-            , Infer._ieThisPackage = prep ^. packageName
+            , Infer._ieDependencies = vdependencies
             }
 
-    compiled0 <- for ordering compileRule
-    compiled1 <- Infer.runInfer inferEnv $ for compiled0 Infer.inferRule
+    inferEnv1 <- foldM (\inferEnv rule -> do
+        tyRule <- Infer.runInfer inferEnv $ Infer.inferRule rule
+        return $ inferEnv & Infer.ieDependencies . ix pkgname . packageRules .
+            at (rule ^. ruleName) .~ Just tyRule)
+        inferEnv0
+        compiled0
 
-    pure $ prep & packageRules .~ HMS.fromValues (view ruleName) compiled1
+    case inferEnv1 ^? Infer.ieDependencies . ix pkgname of
+        Just p  -> return p
+        Nothing -> fatal $ Error.mkErrorNoMeta
+            "compile" "Package that we are compiling went missing"
   where
+    pkgname     = prep ^. packageName
     selfArities = aritiesFromPackage builtins prep
 
     compileRule

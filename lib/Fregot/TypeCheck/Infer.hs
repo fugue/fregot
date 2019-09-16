@@ -5,6 +5,7 @@
 {-# LANGUAGE KindSignatures        #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE MultiWayIf            #-}
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE TemplateHaskell       #-}
 {-# LANGUAGE TupleSections         #-}
@@ -12,7 +13,7 @@
 module Fregot.TypeCheck.Infer
     ( TypeError (..)
 
-    , InferEnv (..), ieBuiltins, ieDependencies, ieThisPackage
+    , InferEnv (..), ieBuiltins, ieDependencies
     , InferM
     , runInfer
 
@@ -23,7 +24,7 @@ import           Control.Lens                  (forOf_, view, (&), (.~), (^.))
 import           Control.Lens.TH               (makeLenses, makePrisms)
 import           Control.Monad.Except.Extended (catching, throwError)
 import           Control.Monad.Parachute       (ParachuteT, fatal)
-import           Control.Monad.Reader          (ReaderT, runReaderT)
+import           Control.Monad.Reader          (ReaderT, ask, runReaderT)
 import           Control.Monad.State.Strict    (StateT, evalStateT, get, modify,
                                                 put)
 import           Data.Foldable                 (for_)
@@ -41,10 +42,11 @@ import qualified Fregot.Eval.Builtins          as Builtin
 import           Fregot.Names
 import           Fregot.Prepare.Ast
 import           Fregot.Prepare.Package        (Package)
+import           qualified Fregot.Prepare.Package        as Package
 import           Fregot.PrettyPrint            ((<+>))
 import qualified Fregot.PrettyPrint            as PP
 import           Fregot.Sources.SourceSpan     (SourceSpan)
-import           Fregot.TypeCheck.Types        (RuleType, Type)
+import           Fregot.TypeCheck.Types        (RuleType (..), Type)
 import qualified Fregot.TypeCheck.Types        as Types
 
 type SourceType = (Type, NonEmpty SourceSpan)
@@ -58,7 +60,6 @@ data TypeError
 data InferEnv = InferEnv
     { _ieBuiltins     :: Builtins Proxy
     , _ieDependencies :: HMS.HashMap PackageName (Package RuleType)
-    , _ieThisPackage  :: PackageName
     }
 
 type InferState = Unify.Unification UnqualifiedVar SourceType
@@ -177,8 +178,13 @@ inferTerm (NameT source (LocalName var)) = do
         Nothing -> throwError $ UnboundVars (HMS.singleton var source)
         Just ty -> return ty
 
-inferTerm term@(NameT _source (QualifiedName _pkg _var)) = error $ show $
-    "TODO(jaspervdj): Inference for qualified names" <+> PP.pretty' term
+inferTerm term@(NameT source (QualifiedName pkg var)) = do
+    env <- ask
+    if  | Just package <- HMS.lookup pkg (env ^. ieDependencies)
+        , Just rule <- Package.lookup var package ->
+            (, NonEmpty.singleton source) <$> ruleTypeToType (rule ^. ruleInfo)
+        | otherwise -> error $ show $
+            "TODO(jaspervdj): rule not found: " <+> PP.pretty' term
 
 inferTerm term = error $ show $
     "TODO(jaspervdj): Inference for" <+> PP.pretty' term
@@ -244,3 +250,8 @@ unifyTypeType :: SourceType -> SourceType -> InferM ()
 unifyTypeType l@(τ, _) r@(σ, _)
     | τ == σ    = return ()
     | otherwise = throwError $ NoUnify Nothing l r
+
+-- | Converts a rule type to a normal type.
+ruleTypeToType :: RuleType -> InferM Type
+ruleTypeToType (CompleteRuleType ty) = return ty
+ruleTypeToType _                     = error "TODO(jaspervdj): ruleTypeToType"
