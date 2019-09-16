@@ -11,11 +11,14 @@ import           Control.Lens              ((^.))
 import           Control.Lens.TH           (makeLenses)
 import           Control.Monad.Extended    (foldMapM, forM_)
 import qualified Control.Monad.Parachute   as Parachute
+import           Data.Bifunctor            (bimap)
 import qualified Data.IORef                as IORef
+import           Data.List                 (sortOn)
 import qualified Fregot.Error              as Error
 import qualified Fregot.Find               as Find
 import qualified Fregot.Interpreter        as Interpreter
 import           Fregot.Main.GlobalOptions
+import           Fregot.Names              (unPackageName, unVar)
 import qualified Fregot.Parser             as Parser
 import qualified Fregot.Sources            as Sources
 import           Fregot.Test
@@ -44,7 +47,8 @@ main gopts opts = do
         forM_ regoPaths $ Interpreter.loadModuleOrBundle
             interpreter Parser.defaultParserOptions
         Interpreter.compilePackages interpreter
-        tests <- filter isTest <$> Interpreter.readAllRules interpreter
+        tests <- sortOn (bimap unPackageName unVar) . filter isTest <$>
+            Interpreter.readAllRules interpreter
         foldMapM (\t -> runTest interpreter t) tests
 
     sources' <- IORef.readIORef sources
