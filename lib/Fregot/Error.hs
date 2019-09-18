@@ -20,6 +20,7 @@ module Fregot.Error
 
     , Format (..)
     , hPutErrors
+    , errorToJson
 
     , fromParsecError
     , fromParsecError'
