@@ -22,5 +22,5 @@ test_set_i {
 }
 
 test_set_j {
-    set_j == {"three"}
+    set_j == {"one", "three"}
 }

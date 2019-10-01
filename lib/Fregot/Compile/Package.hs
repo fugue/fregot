@@ -64,9 +64,11 @@ aritiesFromDependencies deps = \func -> do
     FunctionRule arity                          <- Just (userdef ^. ruleKind)
     return arity
 
--- | Construct the safe-to-use global variables.
+-- | Construct the safe-to-use global variables.  We don't need to look at the
+-- rules in the package since the names referring to that have been turned into
+-- 'QualifiedName' rather than 'LocalName' already.
 safeGlobals :: PreparedPackage -> Safe Var
-safeGlobals prep = Safe $ HS.fromList (rules prep) <> ["data", "input"]
+safeGlobals _prep = Safe ["data", "input"]
 
 compilePackage
     :: Monad m
