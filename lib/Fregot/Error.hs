@@ -20,6 +20,7 @@ module Fregot.Error
 
     , Format (..)
     , hPutErrors
+    , errorToJson
 
     , fromParsecError
     , fromParsecError'
@@ -100,15 +101,16 @@ instance Aeson.ToJSON SourceSpanMessage where
         , "body"       Aeson..= (e ^. body)
         ]
 
-instance Aeson.ToJSON Error where
-    toJSON e = Aeson.object
-        [ "severity"    Aeson..= (e ^. severity)
-        , "subsystem"   Aeson..= (e ^. subsystem)
-        , "sourceSpans" Aeson..= (e ^. sourceSpans)
-        , "details"     Aeson..= (e ^. details)
-        , "hints"       Aeson..= (e ^. hints)
-        , "stack"       Aeson..= (e ^. stack)
-        ]
+errorToJson :: Sources.Sources -> Error -> Aeson.Value
+errorToJson sources err = Aeson.object
+    [ "severity"    Aeson..= (err ^. severity)
+    , "subsystem"   Aeson..= (err ^. subsystem)
+    , "sourceSpans" Aeson..= (err ^. sourceSpans)
+    , "details"     Aeson..= (err ^. details)
+    , "hints"       Aeson..= (err ^. hints)
+    , "stack"       Aeson..= (err ^. stack)
+    , "_text"       Aeson..= PP.toText (prettyError sources err)
+    ]
 
 -- | It's fine, it's only a warning...
 severe :: Traversable f => f Error -> Bool
@@ -130,7 +132,7 @@ hPutErrors handle sources fmt messages0 = case fmt of
         | otherwise      -> PP.hPutSemDoc handle $
             prettyErrors sources messages1
     Json -> do
-        BL.hPutStr handle $ Aeson.encode messages1
+        BL.hPutStr handle $ Aeson.encode $ map (errorToJson sources) messages1
         BL8.hPutStrLn handle ""
   where
     sortKey   = preview (sourceSpans . _head . sourceSpan)
