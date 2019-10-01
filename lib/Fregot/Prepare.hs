@@ -15,8 +15,8 @@ import           Control.Monad.Extended    (foldM, unless, when)
 import           Control.Monad.Parachute   (ParachuteT, fatal, tellError)
 import qualified Data.HashMap.Strict       as HMS
 import qualified Data.List                 as L
-import           Data.Maybe                (catMaybes)
-import           Data.Maybe                (isJust, isNothing, mapMaybe)
+import           Data.Maybe                (catMaybes, isJust, isNothing,
+                                            mapMaybe)
 import           Fregot.Error              (Error)
 import qualified Fregot.Error              as Error
 import           Fregot.Names
@@ -188,7 +188,7 @@ prepareRuleBody
     :: Monad m
     => Sugar.RuleBody SourceSpan Name
     -> ParachuteT Error m (RuleBody SourceSpan)
-prepareRuleBody = mapM prepareLiteral
+prepareRuleBody = fmap catMaybes . mapM prepareRuleStatement
 
 prepareRuleElse
     :: Monad m
@@ -197,6 +197,15 @@ prepareRuleElse
 prepareRuleElse re = RuleElse (re ^. Sugar.ruleElseAnn)
     <$> traverse prepareTerm (re ^. Sugar.ruleElseValue)
     <*> prepareRuleBody (re ^. Sugar.ruleElseBody)
+
+-- | 'VarDeclS' statements are removed as we don't need them anymore, the info
+-- that we are dealing with a local name is now in 'Name'.
+prepareRuleStatement
+    :: Monad m
+    => Sugar.RuleStatement SourceSpan Name
+    -> ParachuteT Error m (Maybe (Literal SourceSpan))
+prepareRuleStatement (Sugar.VarDeclS _ _) = pure Nothing
+prepareRuleStatement (Sugar.LiteralS lit) = Just <$> prepareLiteral lit
 
 prepareLiteral
     :: Monad m

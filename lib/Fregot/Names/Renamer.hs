@@ -76,13 +76,18 @@ renameRuleHead rh = RuleHead
     <*> traverse renameTerm (rh ^. ruleValue)
 
 renameRuleBody :: RuleBody SourceSpan Var -> RenamerM (RuleBody SourceSpan Name)
-renameRuleBody = traverse renameLiteral
+renameRuleBody = traverse renameRuleStatement
 
 renameRuleElse :: Rename RuleElse
 renameRuleElse re = RuleElse
     <$> pure (re ^. ruleElseAnn)
     <*> traverse renameTerm (re ^. ruleElseValue)
     <*> renameRuleBody (re ^. ruleElseBody)
+
+renameRuleStatement :: Rename RuleStatement
+renameRuleStatement = \case
+    VarDeclS a vs -> pure (VarDeclS a vs)
+    LiteralS lit  -> LiteralS <$> renameLiteral lit
 
 renameLiteral :: Rename Literal
 renameLiteral lit = Literal

@@ -163,6 +163,7 @@ data Token
     | TPackage
     | TNot
     | TNull
+    | TSome
     | TTrue
     | TWith
     | TEqual
@@ -224,6 +225,7 @@ parseVar = do
         "package" -> TPackage
         "not"     -> TNot
         "null"    -> TNull
+        "some"    -> TSome
         "true"    -> TTrue
         "with"    -> TWith
         _         -> TVar txt
@@ -261,6 +263,7 @@ keywords =
     , "package"
     , "not"
     , "null"
+    , "some"
     , "true"
     , "with"
     ]
@@ -342,6 +345,7 @@ prettyToken token = case token of
     TNot                   -> "keyword 'not'"
     TNull                  -> "keyword 'null'"
     TPackage               -> "keyword 'package'"
+    TSome                  -> "keyword 'some'"
     TTrue                  -> "keyword 'true'"
     TWith                  -> "keyword 'with'"
     TEqual                 -> "=="
