@@ -24,7 +24,7 @@ module Fregot.Sugar
     , ruleValue, ruleElses
     , RuleBody
     , RuleElse (..), ruleElseAnn, ruleElseValue, ruleElseBody
-    , RuleStatement (..)
+    , RuleStatement (..), _VarDeclS, _LiteralS
     , Literal (..), literalAnn, literalNegation, literalExpr, literalWith
 
     , Expr (..), exprAnn
@@ -201,6 +201,7 @@ $(makeLenses ''Module)
 $(makeLenses ''Rule)
 $(makeLenses ''RuleHead)
 $(makeLenses ''RuleElse)
+$(makePrisms ''RuleStatement)
 $(makeLenses ''Literal)
 $(makeLenses ''With)
 $(makePrisms ''Expr)
