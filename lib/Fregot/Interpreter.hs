@@ -215,7 +215,7 @@ preparePackage builtin modmap dependencies pkgname = do
         -- Rename module.
         imports <- Prepare.prepareImports (modul0 ^. Sugar.moduleImports)
         let renamerEnv = Renamer.RenamerEnv
-                builtin imports pkgname pkgRules dependencies
+                builtin imports pkgname pkgRules dependencies HS.empty
         modul1 <- runRenamerT renamerEnv $ Renamer.renameModule modul0
 
         foldM
@@ -342,6 +342,7 @@ evalExpr h mbEvalEnvCtx pkgname expr = do
             pkgname
             (HS.fromList $ Compile.rules pkg)
             comp
+            HS.empty
     rterm <- runRenamerT renamerEnv $ Renamer.renameExpr expr
 
     pterm <- Prepare.prepareExpr rterm
@@ -375,6 +376,7 @@ newResumeStep h pkgname expr = do
             pkgname
             (HS.fromList $ Compile.rules pkg)
             (envctx ^. Eval.ecEnvironment . Eval.packages)
+            HS.empty
     rexpr <- runRenamerT renamerEnv $ Renamer.renameExpr expr
 
     pterm  <- Prepare.prepareExpr rexpr

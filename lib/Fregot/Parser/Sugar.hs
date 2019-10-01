@@ -117,7 +117,7 @@ parseRuleElse = withSourceSpan $ do
     return $ \_ruleElseAnn -> RuleElse {..}
 
 parseUnbracedRuleBody :: FregotParser (RuleBody SourceSpan Var)
-parseUnbracedRuleBody = blockOrSemi literal
+parseUnbracedRuleBody = blockOrSemi ruleStatement
 
 -- | Parse either a block of lines, or lines separated by a semicolon, or both.
 blockOrSemi :: FregotParser a -> FregotParser [a]
@@ -142,6 +142,14 @@ blockOrSemi linep =
                     l <- linep
                     (l :) <$> go pos1) <|>
         return []
+
+ruleStatement :: FregotParser (RuleStatement SourceSpan Var)
+ruleStatement =
+    (withSourceSpan $ do
+        Tok.symbol Tok.TSome
+        vars <- Parsec.sepBy1 var (Tok.symbol Tok.TPeriod)
+        return $ \ann -> VarDeclS ann vars) <|>
+     (LiteralS <$> literal)
 
 literal :: FregotParser (Literal SourceSpan Var)
 literal = withSourceSpan $ do
