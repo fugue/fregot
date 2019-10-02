@@ -14,14 +14,14 @@ module Fregot.Names.Renamer
     , renameExpr
     ) where
 
-import           Control.Lens              (view, (^.))
+import           Control.Lens              (locally, view, (^.), (^..), _2)
 import           Control.Lens.TH           (makeLenses)
 import           Control.Monad             (guard)
 import           Control.Monad.Parachute   (ParachuteT, fatal, tellError)
 import           Control.Monad.Reader      (Reader)
 import           Data.Bifunctor            (first)
 import qualified Data.HashMap.Strict       as HMS
-import qualified Data.HashSet              as HS
+import qualified Data.HashSet.Extended     as HS
 import           Data.List.Extended        (splits, unsnoc)
 import           Data.Maybe                (isNothing, listToMaybe, maybeToList)
 import           Fregot.Compile.Package    (CompiledPackage)
@@ -42,6 +42,7 @@ data RenamerEnv = RenamerEnv
     , _rePackage      :: !PackageName
     , _rePackageRules :: !(HS.HashSet Var)
     , _reDependencies :: !(HMS.HashMap PackageName CompiledPackage)
+    , _reLocalVars    :: !(HS.HashSet UnqualifiedVar)
     }
 
 $(makeLenses ''RenamerEnv)
@@ -54,6 +55,18 @@ tellRenameError :: SourceSpan -> PP.SemDoc -> PP.SemDoc -> RenamerM ()
 tellRenameError source title = tellError .
     Error.mkError "renamer" source title
 
+withLocalVarDecls
+    :: [RuleBody SourceSpan Var]  -- ^ Bodies that may have 'some' statements
+    -> RenamerM a                 -- ^ Renamer to be run with the local vars
+    -> RenamerM a
+withLocalVarDecls bodies =
+    locally reLocalVars (HS.union localVars)
+  where
+    localVars :: HS.HashSet UnqualifiedVar
+    localVars = HS.toHashSetOf
+        (traverse . traverse . _VarDeclS . _2 . traverse)
+        bodies
+
 renameModule :: Rename Module
 renameModule modul = Module
     <$> pure (modul ^. modulePackage)
@@ -61,10 +74,14 @@ renameModule modul = Module
     <*> traverse renameRule (modul ^. modulePolicy)
 
 renameRule :: Rename Rule
-renameRule rule = Rule
+renameRule rule = withLocalVarDecls bodies $ Rule
     <$> renameRuleHead (rule ^. ruleHead)
     <*> traverse renameRuleBody (rule ^. ruleBodies)
     <*> traverse renameRuleElse (rule ^. ruleElses)
+  where
+    bodies =
+        (rule ^. ruleBodies) ++
+        (rule ^.. ruleElses . traverse . ruleElseBody)
 
 renameRuleHead :: Rename RuleHead
 renameRuleHead rh = RuleHead
@@ -76,13 +93,18 @@ renameRuleHead rh = RuleHead
     <*> traverse renameTerm (rh ^. ruleValue)
 
 renameRuleBody :: RuleBody SourceSpan Var -> RenamerM (RuleBody SourceSpan Name)
-renameRuleBody = traverse renameLiteral
+renameRuleBody = traverse renameRuleStatement
 
 renameRuleElse :: Rename RuleElse
 renameRuleElse re = RuleElse
     <$> pure (re ^. ruleElseAnn)
     <*> traverse renameTerm (re ^. ruleElseValue)
     <*> renameRuleBody (re ^. ruleElseBody)
+
+renameRuleStatement :: Rename RuleStatement
+renameRuleStatement = \case
+    VarDeclS a vs -> pure (VarDeclS a vs)
+    LiteralS lit  -> LiteralS <$> renameLiteral lit
 
 renameLiteral :: Rename Literal
 renameLiteral lit = Literal
@@ -115,10 +137,11 @@ resolveRef
     -> Var -> [RefArg SourceSpan Var]
     -> RenamerM (Name, [RefArg SourceSpan Name])
 resolveRef source var refArgs = do
-    imports <- view reImports
-    rules   <- view rePackageRules
-    thispkg <- view rePackage
-    deps    <- view reDependencies
+    imports   <- view reImports
+    rules     <- view rePackageRules
+    thispkg   <- view rePackage
+    deps      <- view reDependencies
+    locals    <- view reLocalVars
 
     -- Auxiliary to check if something actually exists in the deps.
     let checkExists pkg _ | pkg == thispkg = return ()
@@ -153,9 +176,10 @@ resolveRef source var refArgs = do
         _ -> do
             refArgs' <- traverse renameRefArg refArgs
             let name
-                    | specialBuiltinVar var = BuiltinName var
-                    | HS.member var rules   = QualifiedName thispkg var
-                    | otherwise             = LocalName var
+                    | specialBuiltinVar var  = BuiltinName var
+                    | HS.member var rules    = QualifiedName thispkg var
+                    | var `HS.member` locals = LocalName var
+                    | otherwise              = LocalName var
             return (name, refArgs')
 
   where
@@ -236,11 +260,13 @@ renameTerm = \case
     VarT a v | specialBuiltinVar v ->
         pure $ VarT a (BuiltinName v)
     VarT a v -> do
-        pkg   <- view rePackage
-        rules <- view rePackageRules
+        locals <- view reLocalVars
+        pkg    <- view rePackage
+        rules  <- view rePackageRules
         case v `HS.member` rules of
-            True  -> pure (VarT a (QualifiedName pkg v))
-            False -> pure (VarT a (LocalName v))
+            _ | v `HS.member` locals -> pure (VarT a (LocalName v))
+            True                     -> pure (VarT a (QualifiedName pkg v))
+            False                    -> pure (VarT a (LocalName v))
 
     ScalarT a s -> pure (ScalarT a s)
 
@@ -248,10 +274,13 @@ renameTerm = \case
     SetT    a xs -> SetT    a <$> traverse renameExpr xs
     ObjectT a xs -> ObjectT a <$> renameObject xs
 
-    ArrayCompT  a   x b -> ArrayCompT  a <$> renameTerm x <*> renameRuleBody b
-    SetCompT    a   x b -> SetCompT    a <$> renameTerm x <*> renameRuleBody b
-    ObjectCompT a k x b -> ObjectCompT a <$>
-        renameObjectKey k <*> renameTerm x <*> renameRuleBody b
+    ArrayCompT  a   x b -> withLocalVarDecls [b] $
+        ArrayCompT a <$> renameTerm x <*> renameRuleBody b
+    SetCompT    a   x b -> withLocalVarDecls [b] $
+        SetCompT a <$> renameTerm x <*> renameRuleBody b
+    ObjectCompT a k x b -> withLocalVarDecls [b] $
+        ObjectCompT a
+            <$> renameObjectKey k <*> renameTerm x <*> renameRuleBody b
 
 renameObject :: Object SourceSpan Var -> RenamerM (Object SourceSpan Name)
 renameObject = traverse renameItem

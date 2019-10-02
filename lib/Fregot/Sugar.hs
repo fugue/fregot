@@ -24,6 +24,7 @@ module Fregot.Sugar
     , ruleValue, ruleElses
     , RuleBody
     , RuleElse (..), ruleElseAnn, ruleElseValue, ruleElseBody
+    , RuleStatement (..), _VarDeclS, _LiteralS
     , Literal (..), literalAnn, literalNegation, literalExpr, literalWith
 
     , Expr (..), exprAnn
@@ -88,7 +89,7 @@ data RuleHead a n = RuleHead
 
 instance (Binary a, Binary n) => Binary (RuleHead a n)
 
-type RuleBody a n = [Literal a n]
+type RuleBody a n = [RuleStatement a n]
 
 data RuleElse a n = RuleElse
     { _ruleElseAnn   :: !a
@@ -97,6 +98,13 @@ data RuleElse a n = RuleElse
     } deriving (Generic, Show)
 
 instance (Binary a, Binary n) => Binary (RuleElse a n)
+
+data RuleStatement a n
+    = LiteralS !(Literal a n)
+    | VarDeclS !a ![UnqualifiedVar]
+    deriving (Generic, Show)
+
+instance (Binary a, Binary n) => Binary (RuleStatement a n)
 
 data Literal a n = Literal
     { _literalAnn      :: !a
@@ -193,6 +201,7 @@ $(makeLenses ''Module)
 $(makeLenses ''Rule)
 $(makeLenses ''RuleHead)
 $(makeLenses ''RuleElse)
+$(makePrisms ''RuleStatement)
 $(makeLenses ''Literal)
 $(makeLenses ''With)
 $(makePrisms ''Expr)
@@ -251,6 +260,11 @@ instance PP.Pretty PP.Sem n => PP.Pretty PP.Sem (RuleElse a n) where
             Nothing -> Nothing
             Just v  -> Just $ PP.punctuation "=" <+> PP.pretty v) ?<+>
         prettyRuleBody (re ^. ruleElseBody)
+
+instance PP.Pretty PP.Sem n => PP.Pretty PP.Sem (RuleStatement a n) where
+    pretty (LiteralS l)    = PP.pretty l
+    pretty (VarDeclS _ vs) =
+        PP.keyword "some" <+> PP.commaSep (map PP.pretty vs)
 
 instance PP.Pretty PP.Sem n => PP.Pretty PP.Sem (Literal a n) where
     pretty lit =
