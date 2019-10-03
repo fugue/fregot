@@ -13,12 +13,14 @@ module Fregot.TypeCheck.Types
     ) where
 
 import           Control.Lens.TH    (makePrisms)
+import           Data.Maybe         (maybeToList)
 import           Fregot.PrettyPrint ((<+>))
 import qualified Fregot.PrettyPrint as PP
 
 data Type
     = Any
     | Or Type Type
+    | Set Type
     | Number
     | String
     | Boolean
@@ -29,13 +31,17 @@ data Type
     deriving (Eq)
 
 instance PP.Pretty PP.Sem Type where
-    pretty Any      = PP.keyword "any"
-    pretty (Or x y) = PP.pretty x <+> PP.punctuation "|" <+> PP.pretty y
-    pretty Number   = PP.keyword "number"
-    pretty String   = PP.keyword "string"
-    pretty Boolean  = PP.keyword "boolean"
-    pretty Null     = PP.keyword "null"
-    pretty Empty    = PP.keyword "empty"
+    pretty = \case
+        Any      -> PP.keyword "any"
+        (Or x y) -> PP.pretty x <+> PP.punctuation "|" <+> PP.pretty y
+        (Set x)  -> ho "set" (PP.pretty x)
+        Number   -> PP.keyword "number"
+        String   -> PP.keyword "string"
+        Boolean  -> PP.keyword "boolean"
+        Null     -> PP.keyword "null"
+        Empty    -> PP.keyword "empty"
+      where
+        ho t a = PP.keyword t <> PP.punctuation "<" <> a <> PP.punctuation ">"
 
 data RuleType
     = CompleteRuleType Type
@@ -60,7 +66,8 @@ $(makePrisms ''RuleType)
 data MergeType
     = MergeAny
     | MergeOr
-        { moNumber  :: Bool
+        { moSet     :: Maybe MergeType
+        , moNumber  :: Bool
         , moString  :: Bool
         , moBoolean :: Bool
         , moNull    :: Bool
@@ -71,18 +78,20 @@ instance Semigroup MergeType where
     MergeAny       <> _              = MergeAny
     _              <> MergeAny       = MergeAny
     l@(MergeOr {}) <> r@(MergeOr {}) = MergeOr
-        { moNumber  = moNumber  l || moNumber  r
+        { moSet     = moSet     l <> moSet     r
+        , moNumber  = moNumber  l || moNumber  r
         , moString  = moString  l || moString  r
         , moBoolean = moBoolean l || moBoolean r
         , moNull    = moNull    l || moNull    r
         }
 
 instance Monoid MergeType where
-    mempty = MergeOr False False False False
+    mempty = MergeOr Nothing False False False False
 
 toMergeType :: Type -> MergeType
 toMergeType Any      = MergeAny
 toMergeType (Or x y) = toMergeType x <> toMergeType y
+toMergeType (Set x)  = mempty {moSet     = Just (toMergeType x)}
 toMergeType Number   = mempty {moNumber  = True}
 toMergeType String   = mempty {moString  = True}
 toMergeType Boolean  = mempty {moBoolean = True}
@@ -93,6 +102,7 @@ fromMergeType :: MergeType -> Type
 fromMergeType MergeAny     = Any
 fromMergeType MergeOr {..} =
     let list =
+            [Set x   | x <- maybeToList $ fromMergeType <$> moSet] ++
             [Number  | moNumber]  ++
             [String  | moString]  ++
             [Boolean | moBoolean] ++

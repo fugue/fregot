@@ -28,11 +28,13 @@ import           Control.Monad.Parachute       (ParachuteT, fatal)
 import           Control.Monad.Reader          (ReaderT, ask, runReaderT)
 import           Control.Monad.State.Strict    (StateT, evalStateT, get, modify,
                                                 put)
+import           Data.Bifunctor                (bimap, first)
 import           Data.Foldable                 (for_)
 import qualified Data.HashMap.Strict           as HMS
 import           Data.List.NonEmpty.Extended   (NonEmpty (..))
 import qualified Data.List.NonEmpty.Extended   as NonEmpty
-import           Data.Maybe                    (fromMaybe, maybeToList)
+import           Data.Maybe                    (catMaybes, fromMaybe,
+                                                maybeToList)
 import           Data.Proxy                    (Proxy)
 import qualified Data.Unification              as Unify
 import           Fregot.Arity
@@ -98,6 +100,14 @@ fromTypeError = \case
   where
     sub = "typecheck"
 
+-- | Run some code, but then discard the additional results of the unification.
+isolateUnification :: InferM a -> InferM a
+isolateUnification mx = do
+    state <- get
+    x     <- mx
+    put state
+    return x
+
 runInfer :: Monad m => InferEnv -> InferM a -> ParachuteT Error m a
 runInfer env mx =
     let errOrA = evalStateT (runReaderT mx env) Unify.empty in
@@ -120,39 +130,53 @@ inferRule rule = case rule ^. ruleKind of
         rdefTypes <- forM (rule ^. ruleDefs) $ \rdef -> inferRuleDefinition rdef
         defType   <- traverse inferTerm (rule ^. ruleDefault)
         let retType = Types.mergeTypes $ fmap fst $
-                maybeToList defType ++ rdefTypes
+                maybeToList defType ++ map snd rdefTypes
         pure $ rule & ruleInfo .~ Types.CompleteRuleType retType
 
     GenSetRule -> do
-        forOf_ (ruleDefs . traverse) rule inferRuleDefinition
-        pure $ rule & ruleInfo .~ Types.GenSetRuleType Types.Any
+        idxValTys <- forM (rule ^. ruleDefs) inferRuleDefinition
+        let idxType = Types.mergeTypes $ map fst $ catMaybes $ map fst idxValTys
+        pure $ rule & ruleInfo .~ Types.GenSetRuleType idxType
 
     GenObjectRule -> do
         forOf_ (ruleDefs . traverse) rule inferRuleDefinition
         pure $ rule & ruleInfo .~ Types.GenObjectRuleType Types.Any Types.Any
 
--- TODO(jaspervdj): We currently return the type of the value but we should
--- return the type of the optional index as well.
-inferRuleDefinition :: RuleDefinition SourceSpan -> InferM SourceType
+-- | Infer a rule definition and return the type of the index as well as the
+-- return type.
+inferRuleDefinition
+    :: RuleDefinition SourceSpan -> InferM (Maybe SourceType, SourceType)
 inferRuleDefinition rdef = do
     -- TODO(jaspervdj): Return something that can be merged with other rule
     -- definition infer results.
     --
     -- Here, we'll also want some concatenative step.
     valueType <- case NonEmpty.fromList (rdef ^. ruleBodies) of
-        Nothing     -> maybe (pure bool) inferTerm (rdef ^. ruleValue)
+        Nothing     -> inferReturns
         Just bodies ->
-            fmap mergeSourceTypes $
-            traverse (\body -> do
-                -- TODO(jaspervdj): Back up and restore state.
+            fmap mergeReturns $
+            traverse (\body -> isolateUnification $ do
                 inferRuleBody body
-                maybe (pure bool) inferTerm (rdef ^. ruleValue))
+                inferReturns)
                 bodies
 
     -- TODO(jaspervdj): Deal with elses, values, etc.
     pure valueType
   where
     bool = (Types.Boolean, NonEmpty.singleton (rdef ^. ruleDefAnn))
+
+    inferReturns :: InferM (Maybe SourceType, SourceType)
+    inferReturns = do
+        valTy   <- maybe (pure bool) inferTerm (rdef ^. ruleValue)
+        indexTy <- traverse inferTerm (rdef ^. ruleIndex)
+        return (indexTy, valTy)
+
+    mergeReturns
+        :: NonEmpty (Maybe SourceType, SourceType)
+        -> (Maybe SourceType, SourceType)
+    mergeReturns rets =
+        bimap (fmap mergeSourceTypes . NonEmpty.catMaybes) mergeSourceTypes $
+        NonEmpty.unzip rets
 
 mergeSourceTypes :: NonEmpty SourceType -> SourceType
 mergeSourceTypes stys =
@@ -178,9 +202,9 @@ inferStatement
     :: Statement SourceSpan -> InferM ()
 inferStatement = \case
     TermS t -> () <$ inferTerm t
-    AssignS _source _v t -> do
-        _tty <- inferTerm t
-        error "TODO(jaspervdj): bind type in env"
+    AssignS _source v t -> do
+        tty <- inferTerm t
+        Unify.bindTerm v tty
     UnifyS source l r -> unifyTermTerm source l r
 
 inferTerm
@@ -208,6 +232,13 @@ inferTerm term@(NameT source (QualifiedName pkg var)) = do
             (, NonEmpty.singleton source) <$> ruleTypeToType (rule ^. ruleInfo)
         | otherwise -> error $ show $
             "TODO(jaspervdj): rule not found: " <+> PP.pretty' term
+
+inferTerm (SetT source items) = do
+    tys <- traverse inferTerm items
+    pure $ maybe
+        (Types.Set Types.Any, NonEmpty.singleton source)
+        (first Types.Set . mergeSourceTypes)
+        (NonEmpty.fromList tys)
 
 inferTerm term = error $ show $
     "TODO(jaspervdj): Inference for" <+> PP.pretty' term
@@ -240,13 +271,17 @@ unifyTermType _source term                    σ = do
     unifyTypeType τ σ
 
 unifyTypeType :: SourceType -> SourceType -> InferM ()
-unifyTypeType l@(τ, _) r@(σ, _)
+unifyTypeType (Types.Set τ, l) (Types.Set σ, r) = unifyTypeType (τ, l) (σ, r)
+unifyTypeType (Types.Any, _)   (_, _)           = return ()
+unifyTypeType (_, _)           (Types.Any, _)   = return ()
+unifyTypeType (τ, l) (σ, r)
     | τ == σ    = return ()
-    | otherwise = throwError $ NoUnify Nothing l r
+    | otherwise = throwError $ NoUnify Nothing (τ, l) (σ, r)
 
 -- | Converts a rule type to a normal type.
 ruleTypeToType :: RuleType -> InferM Type
 ruleTypeToType (CompleteRuleType ty) = return ty
+ruleTypeToType (GenSetRuleType ty)   = return (Types.Set ty)
 ruleTypeToType _                     = error "TODO(jaspervdj): ruleTypeToType"
 
 inferBuiltin
