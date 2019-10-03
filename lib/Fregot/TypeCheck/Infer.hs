@@ -22,6 +22,7 @@ module Fregot.TypeCheck.Infer
 
 import           Control.Lens                  (forOf_, view, (&), (.~), (^.))
 import           Control.Lens.TH               (makeLenses, makePrisms)
+import           Control.Monad                 (forM, join)
 import           Control.Monad.Except.Extended (catching, throwError)
 import           Control.Monad.Parachute       (ParachuteT, fatal)
 import           Control.Monad.Reader          (ReaderT, ask, runReaderT)
@@ -29,9 +30,9 @@ import           Control.Monad.State.Strict    (StateT, evalStateT, get, modify,
                                                 put)
 import           Data.Foldable                 (for_)
 import qualified Data.HashMap.Strict           as HMS
-import           Data.List.NonEmpty.Extended   (NonEmpty)
+import           Data.List.NonEmpty.Extended   (NonEmpty (..))
 import qualified Data.List.NonEmpty.Extended   as NonEmpty
-import           Data.Maybe                    (fromMaybe)
+import           Data.Maybe                    (fromMaybe, maybeToList)
 import           Data.Proxy                    (Proxy)
 import qualified Data.Unification              as Unify
 import           Fregot.Arity
@@ -116,8 +117,11 @@ inferRule rule = case rule ^. ruleKind of
     -- We'll want to do some concatenation here in addition to the current
     -- traversal.
     CompleteRule -> do
-        forOf_ (ruleDefs . traverse) rule inferRuleDefinition
-        pure $ rule & ruleInfo .~ Types.CompleteRuleType Types.Any
+        rdefTypes <- forM (rule ^. ruleDefs) $ \rdef -> inferRuleDefinition rdef
+        defType   <- traverse inferTerm (rule ^. ruleDefault)
+        let retType = Types.mergeTypes $ fmap fst $
+                maybeToList defType ++ rdefTypes
+        pure $ rule & ruleInfo .~ Types.CompleteRuleType retType
 
     GenSetRule -> do
         forOf_ (ruleDefs . traverse) rule inferRuleDefinition
@@ -127,14 +131,33 @@ inferRule rule = case rule ^. ruleKind of
         forOf_ (ruleDefs . traverse) rule inferRuleDefinition
         pure $ rule & ruleInfo .~ Types.GenObjectRuleType Types.Any Types.Any
 
-inferRuleDefinition :: RuleDefinition SourceSpan -> InferM ()
-inferRuleDefinition rdef =
+-- TODO(jaspervdj): We currently return the type of the value but we should
+-- return the type of the optional index as well.
+inferRuleDefinition :: RuleDefinition SourceSpan -> InferM SourceType
+inferRuleDefinition rdef = do
     -- TODO(jaspervdj): Return something that can be merged with other rule
     -- definition infer results.
     --
     -- Here, we'll also want some concatenative step.
-    forOf_ (ruleBodies . traverse) rdef inferRuleBody
+    valueType <- case NonEmpty.fromList (rdef ^. ruleBodies) of
+        Nothing     -> maybe (pure bool) inferTerm (rdef ^. ruleValue)
+        Just bodies ->
+            fmap mergeSourceTypes $
+            traverse (\body -> do
+                -- TODO(jaspervdj): Back up and restore state.
+                inferRuleBody body
+                maybe (pure bool) inferTerm (rdef ^. ruleValue))
+                bodies
+
     -- TODO(jaspervdj): Deal with elses, values, etc.
+    pure valueType
+  where
+    bool = (Types.Boolean, NonEmpty.singleton (rdef ^. ruleDefAnn))
+
+mergeSourceTypes :: NonEmpty SourceType -> SourceType
+mergeSourceTypes stys =
+    let (tys, anns) = NonEmpty.unzip stys in
+    (Types.mergeTypes (NonEmpty.toList tys), join anns)
 
 inferRuleBody :: RuleBody SourceSpan -> InferM ()
 inferRuleBody body =
@@ -196,36 +219,6 @@ inferScalar = \case
     Bool   _ -> Types.Boolean
     Null     -> Types.Null
 
-inferBuiltin
-    :: SourceSpan
-    -> Function -> (Builtin Proxy, Builtin.BuiltinSig) -> [Term SourceSpan]
-    -> InferM SourceType
-inferBuiltin source name (builtin, sig) args = case checkArity arity args of
-    ArityBad got         -> throwError $ ArityMismatch source name arity got
-    ArityOk inArgs mbOut -> do
-        inTypes <- mapM inferTerm inArgs
-        env     <- walk HMS.empty (zip inSig inTypes)
-        outTy   <- case outSig of
-            Right σ -> return (σ, NonEmpty.singleton source)
-            Left  i -> maybe
-                (throwError $ InternalError "bad return index")
-                return (HMS.lookup i env)
-        case mbOut of
-            Nothing -> return outTy
-            Just o  -> do
-                unifyTermType source o outTy
-                return (Types.Boolean, NonEmpty.singleton source)
-  where
-    inSig Builtin.:~> outSig = sig
-    arity = Builtin.arity builtin
-
-    walk env []                   = return env
-    walk env ((Left i, τ) : more) = case HMS.lookup i env of
-        Nothing -> walk (HMS.insert i τ env) more
-        Just σ  -> unifyTypeType τ σ >> walk env more
-    walk env ((Right σ, τ) : more) =
-        unifyTypeType (σ, NonEmpty.singleton source) τ >> walk env more
-
 unifyTermTerm
     :: SourceSpan -> Term SourceSpan -> Term SourceSpan -> InferM ()
 unifyTermTerm _ (NameT _ (LocalName α)) (NameT _ (LocalName β)) =
@@ -255,3 +248,33 @@ unifyTypeType l@(τ, _) r@(σ, _)
 ruleTypeToType :: RuleType -> InferM Type
 ruleTypeToType (CompleteRuleType ty) = return ty
 ruleTypeToType _                     = error "TODO(jaspervdj): ruleTypeToType"
+
+inferBuiltin
+    :: SourceSpan
+    -> Function -> (Builtin Proxy, Builtin.BuiltinSig) -> [Term SourceSpan]
+    -> InferM SourceType
+inferBuiltin source name (builtin, sig) args = case checkArity arity args of
+    ArityBad got         -> throwError $ ArityMismatch source name arity got
+    ArityOk inArgs mbOut -> do
+        inTypes <- mapM inferTerm inArgs
+        env     <- walk HMS.empty (zip inSig inTypes)
+        outTy   <- case outSig of
+            Right σ -> return (σ, NonEmpty.singleton source)
+            Left  i -> maybe
+                (throwError $ InternalError "bad return index")
+                return (HMS.lookup i env)
+        case mbOut of
+            Nothing -> return outTy
+            Just o  -> do
+                unifyTermType source o outTy
+                return (Types.Boolean, NonEmpty.singleton source)
+  where
+    inSig Builtin.:~> outSig = sig
+    arity = Builtin.arity builtin
+
+    walk env []                   = return env
+    walk env ((Left i, τ) : more) = case HMS.lookup i env of
+        Nothing -> walk (HMS.insert i τ env) more
+        Just σ  -> unifyTypeType τ σ >> walk env more
+    walk env ((Right σ, τ) : more) =
+        unifyTypeType (σ, NonEmpty.singleton source) τ >> walk env more
