@@ -12,12 +12,14 @@
 {-# LANGUAGE TypeSynonymInstances  #-}
 module Fregot.TypeCheck.Infer
     ( TypeError (..)
+    , SourceType
 
     , InferEnv (..), ieBuiltins, ieDependencies
     , InferM
     , runInfer
 
     , inferRule
+    , inferTerm
     ) where
 
 import           Control.Lens                  (forOf_, view, (&), (.~), (^.))

@@ -134,12 +134,24 @@ readFocusedPackage h = do
                 ss ^. _1 . Eval.ecEnvironment . Eval.stack
     return $ fromMaybe open (stack >>= Stack.package)
 
-processInput :: Handle -> T.Text -> IO ()
-processInput h input = do
+freshReplInput :: Handle -> T.Text -> IO Sources.SourcePointer
+freshReplInput h input = do
     replNum <- IORef.atomicModifyIORef (h ^. replCount) $ \x -> (x + 1, x)
     let sourcep = Sources.ReplInput replNum input
     IORef.atomicModifyIORef_ (h ^. sources) $ Sources.insert sourcep input
+    pure $ Sources.ReplInput replNum input
 
+readEvalContext :: Handle -> IO (Maybe Interpreter.EnvContext)
+readEvalContext h = do
+    emode <- IORef.readIORef (h ^. mode)
+    pure $ case emode of
+        Suspended ((_, (ec, _)) :| _) -> Just ec
+        Errored ec _ _                -> Just ec
+        _                             -> Nothing
+
+processInput :: Handle -> T.Text -> IO ()
+processInput h input = do
+    sourcep                   <- freshReplInput h input
     (parseErrs, mbRuleOrTerm) <- runParachuteT $ parseRuleOrExpr sourcep input
     sauce <- IORef.readIORef (h ^. sources)
     Error.hPutErrors IO.stderr sauce Error.Text parseErrs
@@ -171,13 +183,9 @@ processInput h input = do
                 Just sstate -> processStep h [] (StepToBreak Nothing) sstate
 
         Just (Right expr) -> do
+            envctx <- readEvalContext h
             mbRows <- runInterpreter h $ \i -> do
                 -- Figure out what environment we want to eval in.
-                let envctx = case emode of
-                        Suspended ((_, (ec, _)) :| _) -> Just ec
-                        Errored ec _ _                -> Just ec
-                        _                             -> Nothing
-
                 Interpreter.evalExpr i envctx pkgname expr
             forM_ mbRows $ \rows -> case rows of
                 [] -> PP.hPutSemDoc IO.stderr $ PP.pretty Eval.emptyObject
@@ -418,7 +426,7 @@ metaCommands =
     , MetaCommand ":next" "step (over) the next rule in the debugged program" $
         stepWith (StepOver . view (_1 . Eval.ecEnvironment . Eval.stack))
 
-    , MetaCommand ":rewind" "go back to the previous debug suspension" $ do
+    , MetaCommand ":rewind" "go back to the previous debug suspension" $
         \h _ -> liftIO $ do
             sauce  <- IORef.readIORef (h ^. sources)
             source <- IORef.atomicModifyIORef' (h ^. mode) $ \case
@@ -444,6 +452,25 @@ metaCommands =
             sauce <- IORef.readIORef (h ^. sources)
             forM_ results (Test.printTestResults IO.stdout sauce)
             return True
+
+    , MetaCommand ":type" "print the type of a term" $ \h args -> liftIO $ do
+        let input = T.unwords args
+        sourcep <- freshReplInput h input
+        (errs, mbExpr) <- runParachuteT $
+            Parser.lexAndParse Parser.expr sourcep input
+
+        sauce <- IORef.readIORef (h ^. sources)
+        Error.hPutErrors IO.stderr sauce Error.Text errs
+
+        pkgname <- IORef.readIORef (h ^. openPackage)
+        forM_ mbExpr $ \expr -> do
+            envctx <- readEvalContext h
+            mbType <- runInterpreter h $ \i ->
+                Interpreter.typeExpr i envctx pkgname expr
+            forM_ mbType $ \ty -> PP.hPutSemDoc IO.stdout $
+                PP.pretty expr <+> PP.punctuation ":" <+> PP.pretty ty
+
+        return True
 
     , MetaCommand ":where" "print your location" $ \h _ -> liftIO $ do
         emode <- IORef.readIORef (h ^. mode)

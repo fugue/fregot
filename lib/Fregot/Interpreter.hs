@@ -35,6 +35,8 @@ module Fregot.Interpreter
 
     , setInput
     , setInputFile
+
+    , typeExpr
     ) where
 
 import qualified Codec.Compression.GZip          as GZip
@@ -74,7 +76,7 @@ import           Fregot.Names
 import qualified Fregot.Names.Renamer            as Renamer
 import qualified Fregot.Parser                   as Parser
 import qualified Fregot.Prepare                  as Prepare
-import           Fregot.Prepare.Ast              (Function (..))
+import           Fregot.Prepare.Ast              (Function (..), Term)
 import           Fregot.Prepare.Package          (PreparedPackage)
 import qualified Fregot.Prepare.Package          as Prepare
 import           Fregot.PrettyPrint              ((<$$>), (<+>))
@@ -83,6 +85,7 @@ import           Fregot.Sources                  (SourcePointer)
 import qualified Fregot.Sources                  as Sources
 import           Fregot.Sources.SourceSpan       (SourceSpan)
 import qualified Fregot.Sugar                    as Sugar
+import qualified Fregot.TypeCheck.Types          as Types
 import           System.FilePath.Extended        (listExtensions)
 
 type InterpreterM a = ParachuteT Error IO a
@@ -331,28 +334,8 @@ evalExpr
     :: Handle -> Maybe Eval.EnvContext -> PackageName
     -> Sugar.Expr SourceSpan Var -> InterpreterM (Eval.Document Eval.Value)
 evalExpr h mbEvalEnvCtx pkgname expr = do
-    comp    <- liftIO $ IORef.readIORef (h ^. compiled)
-    pkg     <- readCompiledPackage h pkgname
-    builtin <- liftIO $ IORef.readIORef (h ^. builtins)
-
-    -- Rename expression.
-    let renamerEnv = Renamer.RenamerEnv
-            builtin
-            mempty  -- No imports?
-            pkgname
-            (HS.fromList $ Compile.rules pkg)
-            comp
-            HS.empty
-    rterm <- runRenamerT renamerEnv $ Renamer.renameExpr expr
-
-    pterm <- Prepare.prepareExpr rterm
-    cterm <- Compile.compileTerm builtin pkg safeLocals pterm
-    dieIfErrors
+    (cterm, _ty) <- compileExpr h mbEvalEnvCtx pkgname expr
     eval h mbEvalEnvCtx pkgname (Eval.evalTerm cterm)
-  where
-    safeLocals = Compile.Safe $ HS.fromList $ case mbEvalEnvCtx of
-        Nothing -> mempty
-        Just ec -> ec ^. Eval.ecContext . Eval.locals . to HMS.keys
 
 evalVar
     :: Handle -> Maybe Eval.EnvContext -> SourceSpan -> PackageName -> Var
@@ -367,6 +350,7 @@ newResumeStep
 newResumeStep h pkgname expr = do
     envctx <- newEvalContext h
     pkg    <- readCompiledPackage h pkgname
+    comp   <- liftIO $ IORef.readIORef (h ^. compiled)
 
     -- Rename expression.
     let builtin    = envctx ^. Eval.ecEnvironment . Eval.builtins
@@ -379,8 +363,8 @@ newResumeStep h pkgname expr = do
             HS.empty
     rexpr <- runRenamerT renamerEnv $ Renamer.renameExpr expr
 
-    pterm  <- Prepare.prepareExpr rexpr
-    cterm  <- Compile.compileTerm builtin pkg mempty pterm
+    pterm        <- Prepare.prepareExpr rexpr
+    (cterm, _ty) <- Compile.compileTerm builtin comp pkg mempty pterm
 
     dieIfErrors
     return $ Eval.newResumeStep envctx (Eval.evalTerm cterm)
@@ -408,3 +392,37 @@ setInputFile h path = do
             "Loading input file" <+> PP.pretty path <+> "failed:" <$$>
             PP.ind (PP.pretty err)
     setInput h val
+
+compileExpr
+    :: Handle -> Maybe Eval.EnvContext -> PackageName
+    -> Sugar.Expr SourceSpan Var
+    -> InterpreterM (Term SourceSpan, Types.Type)
+compileExpr h mbEvalEnvCtx pkgname expr = do
+    comp    <- liftIO $ IORef.readIORef (h ^. compiled)
+    pkg     <- readCompiledPackage h pkgname
+    builtin <- liftIO $ IORef.readIORef (h ^. builtins)
+
+    -- Rename expression.
+    let renamerEnv = Renamer.RenamerEnv
+            builtin
+            mempty  -- No imports?
+            pkgname
+            (HS.fromList $ Compile.rules pkg)
+            comp
+            HS.empty
+    rterm <- runRenamerT renamerEnv $ Renamer.renameExpr expr
+
+    pterm      <- Prepare.prepareExpr rterm
+    (cterm, ty) <- Compile.compileTerm builtin comp pkg safeLocals pterm
+    dieIfErrors
+    return (cterm, fst ty)
+  where
+    safeLocals = Compile.Safe $ HS.fromList $ case mbEvalEnvCtx of
+        Nothing -> mempty
+        Just ec -> ec ^. Eval.ecContext . Eval.locals . to HMS.keys
+
+typeExpr
+    :: Handle -> Maybe Eval.EnvContext -> PackageName
+    -> Sugar.Expr SourceSpan Var -> InterpreterM Types.Type
+typeExpr h mbEvalEnvCtx pkgname expr =
+    snd <$> compileExpr h mbEvalEnvCtx pkgname expr

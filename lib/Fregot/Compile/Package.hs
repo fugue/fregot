@@ -185,13 +185,27 @@ compilePackage builtins dependencies prep = do
 
 compileTerm
     :: Monad m
-    => Builtins f -> Package ty -> Safe Var -> Term SourceSpan
-    -> ParachuteT Error m (Term SourceSpan)
-compileTerm builtins pkg safeLocals term0 = do
+    => Builtins f
+    -> Dependencies
+    -> Package ty
+    -> Safe Var
+    -> Term SourceSpan
+    -> ParachuteT Error m (Term SourceSpan, Infer.SourceType)
+compileTerm builtins dependencies pkg safeLocals term0 = do
     ordered <- runOrder $ orderTermForSafety arities safe0 term0
     let safe = safe0 <> ovTerm arities safe0 ordered
     tellErrors $ checkTerm arities safe ordered
-    return ordered
+
+    let inferEnv = Infer.InferEnv
+            -- TODO(jaspervdj): Builtins Proxy works quite well, we should move
+            -- it up in the call stack.
+            { Infer._ieBuiltins = runIdentity $
+                traverse (htraverse $ \_ -> pure Proxy) builtins
+            , Infer._ieDependencies = dependencies
+            }
+
+    ty <- Infer.runInfer inferEnv $ Infer.inferTerm ordered
+    return (ordered, ty)
   where
     safe0   = safeGlobals pkg <> safeLocals
     arities = aritiesFromPackage builtins pkg
