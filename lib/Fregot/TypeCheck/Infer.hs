@@ -22,7 +22,7 @@ module Fregot.TypeCheck.Infer
     , inferTerm
     ) where
 
-import           Control.Lens                  (forOf_, view, (&), (.~), (^.))
+import           Control.Lens                  (view, (&), (.~), (^.))
 import           Control.Lens.TH               (makeLenses, makePrisms)
 import           Control.Monad                 (forM, join)
 import           Control.Monad.Except.Extended (catching, throwError)
@@ -141,8 +141,11 @@ inferRule rule = case rule ^. ruleKind of
         pure $ rule & ruleInfo .~ Types.GenSetRuleType idxType
 
     GenObjectRule -> do
-        forOf_ (ruleDefs . traverse) rule inferRuleDefinition
-        pure $ rule & ruleInfo .~ Types.GenObjectRuleType Types.Any Types.Any
+        (ixs, vals) <- unzip <$> forM (rule ^. ruleDefs) inferRuleDefinition
+        let idxType = Types.mergeTypes $ map fst $ catMaybes ixs
+            valType = Types.mergeTypes $ map fst vals
+            objType = Types.ObjectType HMS.empty idxType valType
+        pure $ rule & ruleInfo .~ Types.GenObjectRuleType objType
 
 -- | Infer a rule definition and return the type of the index as well as the
 -- return type.
@@ -230,8 +233,8 @@ inferTerm (NameT source (LocalName var)) = do
 inferTerm term@(NameT source (QualifiedName pkg var)) = do
     env <- ask
     if  | Just package <- HMS.lookup pkg (env ^. ieDependencies)
-        , Just rule <- Package.lookup var package ->
-            (, NonEmpty.singleton source) <$> ruleTypeToType (rule ^. ruleInfo)
+        , Just rule <- Package.lookup var package -> pure
+            (Types.ruleTypeToType (rule ^. ruleInfo), NonEmpty.singleton source)
         | otherwise -> error $ show $
             "TODO(jaspervdj): rule not found: " <+> PP.pretty' term
 
@@ -279,12 +282,6 @@ unifyTypeType (_, _)           (Types.Any, _)   = return ()
 unifyTypeType (τ, l) (σ, r)
     | τ == σ    = return ()
     | otherwise = throwError $ NoUnify Nothing (τ, l) (σ, r)
-
--- | Converts a rule type to a normal type.
-ruleTypeToType :: RuleType -> InferM Type
-ruleTypeToType (CompleteRuleType ty) = return ty
-ruleTypeToType (GenSetRuleType ty)   = return (Types.Set ty)
-ruleTypeToType _                     = error "TODO(jaspervdj): ruleTypeToType"
 
 inferBuiltin
     :: SourceSpan

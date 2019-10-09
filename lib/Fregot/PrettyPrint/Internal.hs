@@ -153,6 +153,9 @@ infixl 7 ?<$$$>
 class Pretty a p where
     pretty :: p -> Doc a
 
+instance Pretty a (Doc a) where
+    pretty = id
+
 instance Pretty a String where
     pretty = string
 
