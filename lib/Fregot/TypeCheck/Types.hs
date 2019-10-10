@@ -30,6 +30,7 @@ data ObjectType ty = ObjectType
 data Type
     = Any
     | Or Type Type
+    | Array Type
     | Set Type
     | Object (ObjectType Type)
     | Number
@@ -52,6 +53,7 @@ instance PP.Pretty PP.Sem Type where
     pretty = \case
         Any           -> PP.keyword "any"
         Or x y        -> PP.pretty x <+> PP.punctuation "|" <+> PP.pretty y
+        Array x       -> ho "array" (PP.pretty x)
         Set x         -> ho "set" (PP.pretty x)
         Object ot     -> PP.pretty ot
         Number        -> PP.keyword "number"
@@ -65,7 +67,8 @@ instance PP.Pretty PP.Sem Type where
 data MergeType
     = MergeAny
     | MergeOr
-        { moSet     :: Maybe MergeType
+        { moArray   :: Maybe MergeType
+        , moSet     :: Maybe MergeType
         , moObject  :: Maybe (ObjectType MergeType)
         , moNumber  :: Bool
         , moString  :: Bool
@@ -84,7 +87,8 @@ instance Semigroup MergeType where
     MergeAny       <> _              = MergeAny
     _              <> MergeAny       = MergeAny
     l@(MergeOr {}) <> r@(MergeOr {}) = MergeOr
-        { moSet     = moSet     l <> moSet     r
+        { moArray   = moArray   l <> moArray   r
+        , moSet     = moSet     l <> moSet     r
         , moObject  = moObject  l <> moObject  r
         , moNumber  = moNumber  l || moNumber  r
         , moString  = moString  l || moString  r
@@ -93,13 +97,14 @@ instance Semigroup MergeType where
         }
 
 instance Monoid MergeType where
-    mempty = MergeOr Nothing Nothing False False False False
+    mempty = MergeOr Nothing Nothing Nothing False False False False
 
 toMergeType :: Type -> MergeType
 toMergeType Any        = MergeAny
 toMergeType (Or x y)   = toMergeType x <> toMergeType y
-toMergeType (Object o) = mempty {moObject  = Just (fmap toMergeType o)}
+toMergeType (Array x)  = mempty {moArray   = Just (toMergeType x)}
 toMergeType (Set x)    = mempty {moSet     = Just (toMergeType x)}
+toMergeType (Object o) = mempty {moObject  = Just (fmap toMergeType o)}
 toMergeType Number     = mempty {moNumber  = True}
 toMergeType String     = mempty {moString  = True}
 toMergeType Boolean    = mempty {moBoolean = True}
@@ -110,11 +115,13 @@ fromMergeType :: MergeType -> Type
 fromMergeType MergeAny     = Any
 fromMergeType MergeOr {..} =
     let list =
-            [Set x   | x <- maybeToList $ fromMergeType <$> moSet] ++
-            [Number  | moNumber]  ++
-            [String  | moString]  ++
-            [Boolean | moBoolean] ++
-            [Null    | moNull] in
+            [Array x  | x <- maybeToList $ fromMergeType <$> moArray] ++
+            [Set x    | x <- maybeToList $ fromMergeType <$> moSet] ++
+            [Object o | o <- maybeToList $ fmap fromMergeType <$> moObject] ++
+            [Number   | moNumber]  ++
+            [String   | moString]  ++
+            [Boolean  | moBoolean] ++
+            [Null     | moNull] in
     case list of
         []       -> Empty
         (x : xs) -> foldr Or x xs

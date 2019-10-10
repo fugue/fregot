@@ -242,6 +242,13 @@ inferTerm term@(NameT source (QualifiedName pkg var)) = do
         | otherwise -> error $ show $
             "TODO(jaspervdj): rule not found: " <+> PP.pretty' term
 
+inferTerm (ArrayT source items) = do
+    tys <- traverse inferTerm items
+    pure $ maybe
+        (Types.Array Types.Any, NonEmpty.singleton source)
+        (first Types.Array . mergeSourceTypes)
+        (NonEmpty.fromList tys)
+
 inferTerm (SetT source items) = do
     tys <- traverse inferTerm items
     pure $ maybe
@@ -273,8 +280,8 @@ inferTerm (ObjectT source obj) = do
         , NonEmpty.singleton source
         )
 
-inferTerm term = error $ show $
-    "TODO(jaspervdj): Inference for" <+> PP.pretty' term
+-- inferTerm term = error $ show $
+    -- "TODO(jaspervdj): Inference for" <+> PP.pretty' term
 
 inferScalar :: Scalar -> Type
 inferScalar = \case
