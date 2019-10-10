@@ -280,8 +280,21 @@ inferTerm (ObjectT source obj) = do
         , NonEmpty.singleton source
         )
 
--- inferTerm term = error $ show $
-    -- "TODO(jaspervdj): Inference for" <+> PP.pretty' term
+inferTerm (ArrayCompT source headTerm body) = do
+    headTy <- isolateUnification $ do
+        inferRuleBody body
+        inferTerm headTerm
+    pure $ (Types.Array (fst headTy), NonEmpty.singleton source)
+
+inferTerm (RefT source lhs rhs) = do
+    lhsTy <- inferTerm lhs
+    case lhsTy of
+        (Types.Array itemTy, _) -> do
+            unifyTermType source rhs (Types.Number, NonEmpty.singleton source)
+            return (itemTy, NonEmpty.singleton source)
+
+inferTerm term = error $ show $
+    "TODO(jaspervdj): Inference for" <+> PP.pretty' term
 
 inferScalar :: Scalar -> Type
 inferScalar = \case
@@ -292,6 +305,8 @@ inferScalar = \case
 
 unifyTermTerm
     :: SourceSpan -> Term SourceSpan -> Term SourceSpan -> InferM ()
+unifyTermTerm _ (NameT _ WildcardName)  _                       = return ()
+unifyTermTerm _ _                       (NameT _ WildcardName)  = return ()
 unifyTermTerm _ (NameT _ (LocalName α)) (NameT _ (LocalName β)) =
     Unify.bindVar α β
 
@@ -305,6 +320,7 @@ unifyTermTerm source lhs rhs = catching _UnboundVars
 
 unifyTermType
     :: SourceSpan -> Term SourceSpan -> SourceType -> InferM ()
+unifyTermType _source (NameT _ WildcardName)  _ = return ()
 unifyTermType _source (NameT _ (LocalName α)) σ = Unify.bindTerm α σ
 unifyTermType _source term                    σ = do
     τ <- inferTerm term
