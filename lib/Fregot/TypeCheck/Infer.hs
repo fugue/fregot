@@ -292,6 +292,9 @@ inferTerm (RefT source lhs rhs) = do
         (Types.Array itemTy, _) -> do
             unifyTermType source rhs (Types.Number, NonEmpty.singleton source)
             return (itemTy, NonEmpty.singleton source)
+        (Types.Set elemTy, _) -> do
+            unifyTermType source rhs (elemTy, NonEmpty.singleton source)
+            return (Types.Boolean, NonEmpty.singleton source)
 
 inferTerm term = error $ show $
     "TODO(jaspervdj): Inference for" <+> PP.pretty' term
