@@ -30,7 +30,8 @@ import           Control.Monad.Parachute       (ParachuteT, fatal)
 import           Control.Monad.Reader          (ReaderT, ask, runReaderT)
 import           Control.Monad.State.Strict    (StateT, evalStateT, get, modify,
                                                 put)
-import           Data.Bifunctor                (bimap, first)
+import           Data.Bifunctor                (bimap, first, second)
+import           Data.Either                   (partitionEithers)
 import           Data.Foldable                 (for_)
 import qualified Data.HashMap.Strict           as HMS
 import           Data.List.NonEmpty.Extended   (NonEmpty (..))
@@ -38,6 +39,7 @@ import qualified Data.List.NonEmpty.Extended   as NonEmpty
 import           Data.Maybe                    (catMaybes, fromMaybe,
                                                 maybeToList)
 import           Data.Proxy                    (Proxy)
+import           Data.Traversable              (for)
 import qualified Data.Unification              as Unify
 import           Fregot.Arity
 import           Fregot.Error                  (Error)
@@ -144,7 +146,9 @@ inferRule rule = case rule ^. ruleKind of
         (ixs, vals) <- unzip <$> forM (rule ^. ruleDefs) inferRuleDefinition
         let idxType = Types.mergeTypes $ map fst $ catMaybes ixs
             valType = Types.mergeTypes $ map fst vals
-            objType = Types.ObjectType HMS.empty idxType valType
+            objType = Types.ObjectType HMS.empty $ case ixs of
+                [] -> Nothing
+                _  -> Just (idxType, valType)
         pure $ rule & ruleInfo .~ Types.GenObjectRuleType objType
 
 -- | Infer a rule definition and return the type of the index as well as the
@@ -244,6 +248,30 @@ inferTerm (SetT source items) = do
         (Types.Set Types.Any, NonEmpty.singleton source)
         (first Types.Set . mergeSourceTypes)
         (NonEmpty.fromList tys)
+
+inferTerm (ObjectT source obj) = do
+    scalarsOrDynamics <- for obj $ \(keyTerm, valueTerm) -> do
+        valueType <- inferTerm valueTerm
+        case keyTerm of
+            ScalarT _ scalar -> return (Left (scalar, valueType))
+            _                -> Right . (, valueType) <$> inferTerm keyTerm
+
+    let scalars  :: [(Scalar, SourceType)]
+        dynamics :: [(SourceType, SourceType)]
+        (scalars, dynamics) = partitionEithers scalarsOrDynamics
+
+    return
+        ( Types.Object Types.ObjectType
+            { Types.otStatic = HMS.fromList $ second fst <$> scalars
+            , Types.otDynamic = case dynamics of
+                []  -> Nothing
+                _   -> Just
+                    ( Types.mergeTypes $ fst . fst <$> dynamics
+                    , Types.mergeTypes $ fst . snd <$> dynamics
+                    )
+            }
+        , NonEmpty.singleton source
+        )
 
 inferTerm term = error $ show $
     "TODO(jaspervdj): Inference for" <+> PP.pretty' term

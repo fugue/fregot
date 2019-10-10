@@ -46,6 +46,7 @@ import           Control.Lens       (Lens', lens, preview, (^.), _2)
 import           Control.Lens.Prism (Prism', prism')
 import           Control.Lens.TH    (makeLenses, makePrisms)
 import           Data.Binary        (Binary)
+import           Data.Hashable      (Hashable)
 import qualified Data.List          as L
 import           Data.Scientific    (Scientific)
 import qualified Data.Text.Extended as T
@@ -157,6 +158,7 @@ data Scalar
     deriving (Eq, Generic, Show)
 
 instance Binary Scalar
+instance Hashable Scalar
 
 type Object a n = [(ObjectKey a n, Expr a n)]
 

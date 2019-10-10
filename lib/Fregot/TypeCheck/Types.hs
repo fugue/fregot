@@ -18,14 +18,13 @@ module Fregot.TypeCheck.Types
 import           Control.Lens.TH     (makePrisms)
 import qualified Data.HashMap.Strict as HMS
 import           Data.Maybe          (maybeToList)
-import qualified Fregot.Eval.Value   as Value
+import qualified Fregot.Prepare.Ast  as Ast
 import           Fregot.PrettyPrint  ((<+>))
 import qualified Fregot.PrettyPrint  as PP
 
 data ObjectType ty = ObjectType
-    { otStatic       :: HMS.HashMap Value.Value ty
-    , otDynamicKey   :: ty
-    , otDynamicValue :: ty
+    { otStatic  :: HMS.HashMap Ast.Scalar ty
+    , otDynamic :: Maybe (ty, ty)
     } deriving (Eq, Functor, Show)
 
 data Type
@@ -45,7 +44,9 @@ data Type
 instance PP.Pretty PP.Sem ty => PP.Pretty PP.Sem (ObjectType ty) where
     pretty ObjectType {..} = PP.object $
         [(PP.pretty' k, v) | (k, v) <- HMS.toList otStatic] ++
-        [(PP.pretty otDynamicKey, otDynamicValue)]
+        [ (PP.pretty otDynamicKey, otDynamicValue)
+        | (otDynamicKey, otDynamicValue) <- maybeToList $ otDynamic
+        ]
 
 instance PP.Pretty PP.Sem Type where
     pretty = \case
@@ -75,9 +76,8 @@ data MergeType
 
 instance Semigroup ty => Semigroup (ObjectType ty) where
     l <> r = ObjectType
-        { otStatic       = HMS.unionWith (<>) (otStatic l) (otStatic r)
-        , otDynamicKey   = otDynamicKey   l <> otDynamicKey   r
-        , otDynamicValue = otDynamicValue l <> otDynamicValue r
+        { otStatic  = HMS.unionWith (<>) (otStatic l) (otStatic r)
+        , otDynamic = otDynamic l <> otDynamic r
         }
 
 instance Semigroup MergeType where
