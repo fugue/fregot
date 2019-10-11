@@ -6,7 +6,7 @@
 {-# LANGUAGE RecordWildCards       #-}
 {-# LANGUAGE TemplateHaskell       #-}
 module Fregot.TypeCheck.Types
-    ( ObjectType (..)
+    ( ObjectType (..), otStatic, otDynamic
     , Type (..)
     , mergeTypes
 
@@ -15,7 +15,8 @@ module Fregot.TypeCheck.Types
     , ruleTypeToType
     ) where
 
-import           Control.Lens.TH     (makePrisms)
+import           Control.Lens        ((&), (.~), (^.))
+import           Control.Lens.TH     (makeLenses, makePrisms)
 import qualified Data.HashMap.Strict as HMS
 import           Data.Maybe          (maybeToList)
 import qualified Fregot.Prepare.Ast  as Ast
@@ -23,9 +24,11 @@ import           Fregot.PrettyPrint  ((<+>))
 import qualified Fregot.PrettyPrint  as PP
 
 data ObjectType ty = ObjectType
-    { otStatic  :: HMS.HashMap Ast.Scalar ty
-    , otDynamic :: Maybe (ty, ty)
+    { _otStatic  :: HMS.HashMap Ast.Scalar ty
+    , _otDynamic :: Maybe (ty, ty)
     } deriving (Eq, Functor, Show)
+
+$(makeLenses ''ObjectType)
 
 data Type
     = Any
@@ -44,9 +47,9 @@ data Type
 
 instance PP.Pretty PP.Sem ty => PP.Pretty PP.Sem (ObjectType ty) where
     pretty ObjectType {..} = PP.object $
-        [(PP.pretty' k, v) | (k, v) <- HMS.toList otStatic] ++
+        [(PP.pretty' k, v) | (k, v) <- HMS.toList _otStatic] ++
         [ (PP.pretty otDynamicKey, otDynamicValue)
-        | (otDynamicKey, otDynamicValue) <- maybeToList $ otDynamic
+        | (otDynamicKey, otDynamicValue) <- maybeToList $ _otDynamic
         ]
 
 instance PP.Pretty PP.Sem Type where
@@ -78,10 +81,12 @@ data MergeType
     deriving (Show)
 
 instance Semigroup ty => Semigroup (ObjectType ty) where
-    l <> r = ObjectType
-        { otStatic  = HMS.unionWith (<>) (otStatic l) (otStatic r)
-        , otDynamic = otDynamic l <> otDynamic r
-        }
+    l <> r = mempty
+        & otStatic  .~ HMS.unionWith (<>) (l ^. otStatic) (r ^. otStatic)
+        & otDynamic .~ (l ^. otDynamic <> r ^. otDynamic)
+
+instance Semigroup ty => Monoid (ObjectType ty) where
+    mempty = ObjectType HMS.empty Nothing
 
 instance Semigroup MergeType where
     MergeAny       <> _              = MergeAny

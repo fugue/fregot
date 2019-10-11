@@ -269,8 +269,8 @@ inferTerm (ObjectT source obj) = do
 
     return
         ( Types.Object Types.ObjectType
-            { Types.otStatic = HMS.fromList $ second fst <$> scalars
-            , Types.otDynamic = case dynamics of
+            { Types._otStatic  = HMS.fromList $ second fst <$> scalars
+            , Types._otDynamic = case dynamics of
                 []  -> Nothing
                 _   -> Just
                     ( Types.mergeTypes $ fst . fst <$> dynamics
@@ -295,6 +295,10 @@ inferTerm (RefT source lhs rhs) = do
         (Types.Set elemTy, _) -> do
             unifyTermType source rhs (elemTy, NonEmpty.singleton source)
             return (Types.Boolean, NonEmpty.singleton source)
+        (Types.Object objTy, _)
+            | ScalarT _ rhsScalar <- rhs
+            , Just specific <- HMS.lookup rhsScalar (objTy ^. Types.otStatic) ->
+                return (specific, NonEmpty.singleton source)
 
 inferTerm term = error $ show $
     "TODO(jaspervdj): Inference for" <+> PP.pretty' term
