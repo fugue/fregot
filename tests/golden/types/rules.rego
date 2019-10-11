@@ -19,3 +19,8 @@ some_object[k] = v {
   k = "two"
   v = 2
 }
+
+test_some_rules {
+  some_number == 4
+  some_object["one"] == 1
+}

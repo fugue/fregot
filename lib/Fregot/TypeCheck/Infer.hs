@@ -50,7 +50,7 @@ import           Fregot.Names
 import           Fregot.Prepare.Ast
 import           Fregot.Prepare.Package        (Package)
 import           qualified Fregot.Prepare.Package        as Package
-import           Fregot.PrettyPrint            ((<+>))
+import           Fregot.PrettyPrint            ((<+>), (<+>?))
 import qualified Fregot.PrettyPrint            as PP
 import           Fregot.Sources.SourceSpan     (SourceSpan)
 import           Fregot.TypeCheck.Types        (RuleType (..), Type)
@@ -62,6 +62,7 @@ data TypeError
     = UnboundVars (HMS.HashMap UnqualifiedVar SourceSpan)
     | NoUnify (Maybe SourceSpan) SourceType SourceType
     | ArityMismatch SourceSpan Function Int Int
+    | CannotRef SourceSpan SourceType
     | InternalError String
 
 data InferEnv = InferEnv
@@ -99,6 +100,13 @@ fromTypeError = \case
         "Arity mismatch" $
         "The function" <+> PP.code (PP.pretty name) <+> "takes" <+>
         PP.pretty expect <+> "arguments but" <+> PP.pretty got <+> "were given"
+
+    CannotRef source (τ, _) -> Error.mkError sub source
+        "Not indexable" $
+        "Cannot index the type" <+> PP.code (PP.pretty τ) <+>?
+        (case τ of
+            Types.Object _ -> Just $ "with the given key"
+            _              -> Nothing)
 
     InternalError msg -> Error.mkErrorNoMeta sub $ PP.pretty msg
   where
@@ -156,10 +164,6 @@ inferRule rule = case rule ^. ruleKind of
 inferRuleDefinition
     :: RuleDefinition SourceSpan -> InferM (Maybe SourceType, SourceType)
 inferRuleDefinition rdef = do
-    -- TODO(jaspervdj): Return something that can be merged with other rule
-    -- definition infer results.
-    --
-    -- Here, we'll also want some concatenative step.
     valueType <- case NonEmpty.fromList (rdef ^. ruleBodies) of
         Nothing     -> inferReturns
         Just bodies ->
@@ -228,6 +232,14 @@ inferTerm (CallT source fun args) = do
         Nothing -> error $ "TODO: not a builtin: " ++ show fun
         Just b  -> inferBuiltin source fun b args
 
+inferTerm (NameT source WildcardName) =
+    pure (Types.Any, NonEmpty.singleton source)
+
+inferTerm (NameT source (BuiltinName _)) =
+    -- TODO(jaspervdj); BuiltinName will be "data" or "input", perhaps there
+    -- should be an Enum type?
+    pure (Types.Any, NonEmpty.singleton source)
+
 inferTerm (NameT source (LocalName var)) = do
     mbRes <- Unify.lookup var
     case mbRes of
@@ -284,7 +296,20 @@ inferTerm (ArrayCompT source headTerm body) = do
     headTy <- isolateUnification $ do
         inferRuleBody body
         inferTerm headTerm
-    pure $ (Types.Array (fst headTy), NonEmpty.singleton source)
+    pure (Types.Array (fst headTy), NonEmpty.singleton source)
+
+inferTerm (SetCompT source headTerm body) = do
+    headTy <- isolateUnification $ do
+        inferRuleBody body
+        inferTerm headTerm
+    pure (Types.Set (fst headTy), NonEmpty.singleton source)
+
+inferTerm (ObjectCompT source keyTerm valueTerm body) = do
+    (keyTy, valueTy) <- isolateUnification $ do
+        inferRuleBody body
+        (,) <$> inferTerm keyTerm <*> inferTerm valueTerm
+    let objTy = Types.ObjectType HMS.empty $ Just (keyTy, valueTy)
+    pure (Types.Object (fmap fst objTy), NonEmpty.singleton source)
 
 inferTerm (RefT source lhs rhs) = do
     lhsTy <- inferTerm lhs
@@ -296,12 +321,37 @@ inferTerm (RefT source lhs rhs) = do
             unifyTermType source rhs (elemTy, NonEmpty.singleton source)
             return (Types.Boolean, NonEmpty.singleton source)
         (Types.Object objTy, _)
+            -- In case the index is a scalar, and it's present in the object
+            -- type, we can return a very granular type.
             | ScalarT _ rhsScalar <- rhs
             , Just specific <- HMS.lookup rhsScalar (objTy ^. Types.otStatic) ->
                 return (specific, NonEmpty.singleton source)
 
-inferTerm term = error $ show $
-    "TODO(jaspervdj): Inference for" <+> PP.pretty' term
+            -- Otherwise we need to look at the dynamic part.
+            | Just (dynKeyTy, dynValTy) <- objTy ^. Types.otDynamic -> do
+                unifyTermType source rhs (dynKeyTy, NonEmpty.singleton source)
+                return (dynValTy, NonEmpty.singleton source)
+
+            -- There is no static or dynamic part that matches, this is either
+            -- an internal error or a known empty object.
+            | otherwise -> throwError $ CannotRef source lhsTy
+
+        (Types.Any, _) -> do
+            unifyTermType source rhs (Types.Any, NonEmpty.singleton source)
+            return (Types.Any, NonEmpty.singleton source)
+
+        (Types.Or _ _, _) ->
+            -- TODO(jaspervdj): We _can_ support this but it requires a little
+            -- effort; we need to merge all the possible types, try indexing
+            -- into the possibly present array/set/object, and then merge the
+            -- results.
+            throwError $ CannotRef source lhsTy
+
+        (Types.Null,    _) -> throwError $ CannotRef source lhsTy
+        (Types.Number,  _) -> throwError $ CannotRef source lhsTy
+        (Types.String,  _) -> throwError $ CannotRef source lhsTy
+        (Types.Boolean, _) -> throwError $ CannotRef source lhsTy
+        (Types.Empty,   _) -> throwError $ CannotRef source lhsTy
 
 inferScalar :: Scalar -> Type
 inferScalar = \case
