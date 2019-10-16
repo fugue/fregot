@@ -60,6 +60,7 @@ type SourceType = (Type, NonEmpty SourceSpan)
 
 data TypeError
     = UnboundVars (HMS.HashMap UnqualifiedVar SourceSpan)
+    | UnboundName Name SourceSpan
     | NoUnify (Maybe SourceSpan) SourceType SourceType
     | ArityMismatch SourceSpan Function Int Int
     | CannotRef SourceSpan SourceType
@@ -90,6 +91,9 @@ fromTypeError = \case
         (v, source) <- HMS.toList vars
         return $ (,) source $
             "The variable" <+> PP.code (PP.pretty v) <+> "is not defined"
+
+    UnboundName name source -> Error.mkError sub source "Unbound name" $
+        "The name" <+> PP.code (PP.pretty name) <+> "is not defined"
 
     NoUnify mbSource (τ, source NonEmpty.:| _) (σ, _) ->
         Error.mkError sub (fromMaybe source mbSource) "Unification error" $
@@ -251,13 +255,12 @@ inferTerm (NameT source (LocalName var)) = do
         Nothing -> throwError $ UnboundVars (HMS.singleton var source)
         Just ty -> return ty
 
-inferTerm term@(NameT source (QualifiedName pkg var)) = do
+inferTerm (NameT source name@(QualifiedName pkg var)) = do
     env <- ask
     if  | Just package <- HMS.lookup pkg (env ^. ieDependencies)
         , Just rule <- Package.lookup var package -> pure
             (Types.ruleTypeToType (rule ^. ruleInfo), NonEmpty.singleton source)
-        | otherwise -> error $ show $
-            "TODO(jaspervdj): rule not found: " <+> PP.pretty' term
+        | otherwise -> throwError $ UnboundName name source
 
 inferTerm (ArrayT source items) = do
     tys <- traverse inferTerm items
