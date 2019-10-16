@@ -15,7 +15,7 @@ import qualified Fregot.Interpreter        as Interpreter
 import           Fregot.Names              (Name (..))
 import qualified Fregot.Repl.Parse         as Repl
 import qualified Fregot.Sources            as Sources
-import qualified Fregot.TypeCheck.Builtins as B
+import qualified Fregot.TypeCheck.Builtins as Types
 import qualified Fregot.TypeCheck.Types    as Types
 import qualified Test.Tasty                as Tasty
 import           Test.Tasty.HUnit          ((@?=))
@@ -44,5 +44,5 @@ tests = Tasty.testGroup "Fregot.Interpreter.Tests"
     magicImpl :: B.Builtin Identity
     magicImpl = B.Builtin
         B.Out
-        (B.out Types.Number) $
+        (Types.out Types.Number) $
         pure $ \B.Nil -> return $! review Number.int 101

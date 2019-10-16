@@ -29,9 +29,6 @@ module Fregot.Eval.Builtins
 
     , BuiltinM
     , eitherToBuiltinM
-
-    , BuiltinSig (..)
-    , wipBuiltinSigs
     ) where
 
 import           Control.Applicative          ((<|>))
@@ -60,7 +57,8 @@ import qualified Fregot.Eval.Number           as Number
 import           Fregot.Eval.Value
 import           Fregot.Names
 import           Fregot.Prepare.Ast           (BinOp (..), Function (..))
-import           Fregot.TypeCheck.Builtins
+import           Fregot.TypeCheck.Builtins    ((.->.))
+import qualified Fregot.TypeCheck.Builtins    as Ty
 import qualified Fregot.TypeCheck.Types       as Ty
 import           Numeric                      (showIntAtBase)
 import qualified Text.Pcre2                   as Pcre2
@@ -199,7 +197,7 @@ data Builtin m where
     -- TODO(jaspervdj): BuiltinType and Sig are somewhat redundant.
     Builtin
         :: ToVal o
-        => Sig i o -> BuiltinType i -> m (Args i -> BuiltinM o) -> Builtin m
+        => Sig i o -> Ty.BuiltinType i -> m (Args i -> BuiltinM o) -> Builtin m
 
 instance HTraversable Builtin where
     htraverse f (Builtin sig ty impl) = Builtin sig ty <$> f impl
@@ -271,7 +269,7 @@ defaultBuiltins = HMS.fromList
 builtin_all :: Monad m => Builtin m
 builtin_all = Builtin
     (In Out)
-    (Ty.collectionOf Ty.Boolean .->. out Ty.Boolean) $ pure $
+    (Ty.collectionOf Ty.Boolean .->. Ty.out Ty.Boolean) $ pure $
     \(Cons arg Nil) -> case arg of
         InL arr -> return $! all (== BoolV True) (arr :: V.Vector Value)
         InR set -> return $! all (== BoolV True) $ HS.toList set
@@ -279,7 +277,7 @@ builtin_all = Builtin
 builtin_any :: Monad m => Builtin m
 builtin_any = Builtin
     (In Out)
-    (Ty.collectionOf Ty.Boolean .->. out Ty.Boolean) $ pure $
+    (Ty.collectionOf Ty.Boolean .->. Ty.out Ty.Boolean) $ pure $
     \(Cons arg Nil) -> case arg of
         InL arr -> return $! any (== BoolV True) (arr :: V.Vector Value)
         InR set -> return $! HS.member (BoolV True) set
@@ -525,7 +523,8 @@ builtin_to_number = Builtin (In Out)
 
 builtin_equal :: Monad m => Builtin m
 builtin_equal = Builtin (In (In Out))
-  undefined $ pure $
+  (\c (Ty.Cons x (Ty.Cons y Ty.Nil)) -> Ty.bcUnify c x y)
+  $ pure $
   -- TODO(jaspervdj): These don't currently work:
   --
   --     0 == 1.2 - 1.2
@@ -601,14 +600,3 @@ builtin_bin_or = Builtin (In (In Out))
 -- | Auxiliary function to fix types.
 num :: Number -> Number
 num = id
-
-
---------------------------------------------------------------------------------
-
-data BuiltinSig = [Either Int Ty.Type] :~> (Either Int Ty.Type)
-
-wipBuiltinSigs :: HMS.HashMap Function BuiltinSig
-wipBuiltinSigs = HMS.fromList
-    [ (OperatorFunction EqualO, [Left 0, Left 0] :~> Left 0)
-    , (OperatorFunction PlusO,  [Right Ty.Number, Right Ty.Number] :~> Right Ty.Number)
-    ]

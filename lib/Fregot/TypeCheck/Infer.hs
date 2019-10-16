@@ -10,6 +10,7 @@
 {-# LANGUAGE TemplateHaskell       #-}
 {-# LANGUAGE TupleSections         #-}
 {-# LANGUAGE TypeSynonymInstances  #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
 module Fregot.TypeCheck.Infer
     ( TypeError (..)
     , SourceType
@@ -53,6 +54,7 @@ import           qualified Fregot.Prepare.Package        as Package
 import           Fregot.PrettyPrint            ((<+>), (<+>?))
 import qualified Fregot.PrettyPrint            as PP
 import           Fregot.Sources.SourceSpan     (SourceSpan)
+import qualified Fregot.TypeCheck.Builtins     as B
 import           Fregot.TypeCheck.Types        (RuleType (..), Type)
 import qualified Fregot.TypeCheck.Types        as Types
 
@@ -64,6 +66,7 @@ data TypeError
     | NoUnify (Maybe SourceSpan) SourceType SourceType
     | ArityMismatch SourceSpan Function Int Int
     | CannotRef SourceSpan SourceType
+    | BuiltinTypeError SourceSpan PP.SemDoc
     | InternalError String
 
 data InferEnv = InferEnv
@@ -111,6 +114,9 @@ fromTypeError = \case
         (case τ of
             Types.Object _ -> Just $ "with the given key"
             _              -> Nothing)
+
+    BuiltinTypeError source doc -> Error.mkError sub source
+        "Builtin type error" doc
 
     InternalError msg -> Error.mkErrorNoMeta sub $ PP.pretty msg
   where
@@ -237,7 +243,7 @@ inferTerm (ScalarT source scalar) =
 
 inferTerm (CallT source fun args) = do
     builtins <- view ieBuiltins
-    case (,) <$> HMS.lookup fun builtins <*> HMS.lookup fun Builtin.wipBuiltinSigs of
+    case HMS.lookup fun builtins of
         Nothing -> error $ "TODO: not a builtin: " ++ show fun
         Just b  -> inferBuiltin source fun b args
 
@@ -401,30 +407,50 @@ unifyTypeType (τ, l) (σ, r)
 
 inferBuiltin
     :: SourceSpan
-    -> Function -> (Builtin Proxy, Builtin.BuiltinSig) -> [Term SourceSpan]
+    -> Function -> Builtin Proxy -> [Term SourceSpan]
     -> InferM SourceType
-inferBuiltin source name (builtin, sig) args = case checkArity arity args of
-    ArityBad got         -> throwError $ ArityMismatch source name arity got
-    ArityOk inArgs mbOut -> do
-        inTypes <- mapM inferTerm inArgs
-        env     <- walk HMS.empty (zip inSig inTypes)
-        outTy   <- case outSig of
-            Right σ -> return (σ, NonEmpty.singleton source)
-            Left  i -> maybe
-                (throwError $ InternalError "bad return index")
-                return (HMS.lookup i env)
-        case mbOut of
-            Nothing -> return outTy
-            Just o  -> do
-                unifyTermType source o outTy
-                return (Types.Boolean, NonEmpty.singleton source)
+inferBuiltin
+        source name
+        builtin@(Builtin.Builtin (sig :: Builtin.Sig i o) ty _)
+        args =
+    case checkArity arity args of
+        ArityBad got          -> throwError $ ArityMismatch source name arity got
+        ArityOk inArgs _mbOut -> do
+            inferredArgs <- mapM inferTerm inArgs
+            inTypes <- toInTypes sig $ fmap fst inferredArgs
+            x <- ty checker inTypes
+            return (x, NonEmpty.singleton source)
+
+            -- TODO(jaspervdj): Figure out what happens with outSig!  We may
+            -- need to unify with the last ty, or not.
+
+            {-
+            env     <- walk HMS.empty (zip inSig inTypes)
+            outTy   <- case outSig of
+                Right σ -> return (σ, NonEmpty.singleton source)
+                Left  i -> maybe
+                    (throwError $ InternalError "bad return index")
+                    return (HMS.lookup i env)
+            case mbOut of
+                Nothing -> return outTy
+                Just o  -> do
+                    unifyTermType source o outTy
+                    return (Types.Boolean, NonEmpty.singleton source)
+            -}
   where
-    inSig Builtin.:~> outSig = sig
+    toInTypes :: Builtin.Sig j o -> [Type] -> InferM (B.InTypes j)
+    toInTypes Builtin.Out    _        = pure B.Nil
+    toInTypes (Builtin.In s) (t : ts) = B.Cons t <$> toInTypes s ts
+    toInTypes (Builtin.In _) []       =
+        throwError $ InternalError "internal arity mismatch for inTypes"
+
     arity = Builtin.arity builtin
 
-    walk env []                   = return env
-    walk env ((Left i, τ) : more) = case HMS.lookup i env of
-        Nothing -> walk (HMS.insert i τ env) more
-        Just σ  -> unifyTypeType τ σ >> walk env more
-    walk env ((Right σ, τ) : more) =
-        unifyTypeType (σ, NonEmpty.singleton source) τ >> walk env more
+    checker = B.BuiltinChecker
+        { B.bcUnify = \x y -> do
+            unifyTypeType
+                (x, NonEmpty.singleton source) (y, NonEmpty.singleton source)
+            return x
+        , B.bcError = \err -> throwError $ BuiltinTypeError source err
+        }
+
