@@ -480,8 +480,9 @@ builtin_sort = Builtin (In Out)
     \(Cons (Collection vals) Nil) -> return $! L.sort (vals :: [Value])
 
 builtin_split :: Monad m => Builtin m
-builtin_split = Builtin (In (In Out))
-    undefined $ pure $
+builtin_split = Builtin
+    (In (In Out))
+    (Ty.String .->. Ty.String .->. Ty.out (Ty.Array Ty.String)) $ pure $
     \(Cons str (Cons delim Nil)) -> return $! T.splitOn delim str
 
 builtin_sprintf :: Monad m => Builtin m

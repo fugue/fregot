@@ -414,29 +414,17 @@ inferBuiltin
         builtin@(Builtin.Builtin (sig :: Builtin.Sig i o) ty _)
         args =
     case checkArity arity args of
-        ArityBad got          -> throwError $ ArityMismatch source name arity got
-        ArityOk inArgs _mbOut -> do
+        ArityBad got         -> throwError $ ArityMismatch source name arity got
+        ArityOk inArgs mbOut -> do
             inferredArgs <- mapM inferTerm inArgs
-            inTypes <- toInTypes sig $ fmap fst inferredArgs
-            x <- ty checker inTypes
-            return (x, NonEmpty.singleton source)
+            inTypes      <- toInTypes sig $ fmap fst inferredArgs
+            outTy        <- ty checker inTypes
 
-            -- TODO(jaspervdj): Figure out what happens with outSig!  We may
-            -- need to unify with the last ty, or not.
-
-            {-
-            env     <- walk HMS.empty (zip inSig inTypes)
-            outTy   <- case outSig of
-                Right σ -> return (σ, NonEmpty.singleton source)
-                Left  i -> maybe
-                    (throwError $ InternalError "bad return index")
-                    return (HMS.lookup i env)
             case mbOut of
-                Nothing -> return outTy
+                Nothing -> return (outTy, NonEmpty.singleton source)
                 Just o  -> do
-                    unifyTermType source o outTy
+                    unifyTermType source o (outTy, NonEmpty.singleton source)
                     return (Types.Boolean, NonEmpty.singleton source)
-            -}
   where
     toInTypes :: Builtin.Sig j o -> [Type] -> InferM (B.InTypes j)
     toInTypes Builtin.Out    _        = pure B.Nil

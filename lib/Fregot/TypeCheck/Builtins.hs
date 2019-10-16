@@ -33,3 +33,5 @@ out t = \_ Nil -> pure t
 
 (.->.) :: Type -> BuiltinType i -> BuiltinType (a ': i)
 (.->.) expect f = \c (Cons actual t) -> bcUnify c expect actual >> f c t
+
+infixr 6 .->.
