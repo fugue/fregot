@@ -70,6 +70,7 @@ Library
     Fregot.Sources.SourceSpan
     Fregot.Sugar
     Fregot.Test
+    Fregot.TypeCheck.Builtins
     Fregot.TypeCheck.Infer
     Fregot.TypeCheck.Types
     Fregot.Version

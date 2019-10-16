@@ -13,6 +13,10 @@ module Fregot.TypeCheck.Types
     , RuleType (..), _CompleteRuleType, _GenSetRuleType, _GenObjectRuleType
     , _FunctionType
     , ruleTypeToType
+
+      -- Utilities
+    , objectOf
+    , collectionOf
     ) where
 
 import           Control.Lens        ((&), (.~), (^.))
@@ -151,3 +155,9 @@ ruleTypeToType (GenObjectRuleType oty) = Object oty
 ruleTypeToType (FunctionType _)        = error "ruleTypeToType (FunctionType _)"
 
 $(makePrisms ''RuleType)
+
+objectOf :: Type -> Type -> Type
+objectOf k v = Object (ObjectType HMS.empty (Just (k, v)))
+
+collectionOf :: Type -> Type
+collectionOf x = Array x `Or` Set x `Or` objectOf Any x

@@ -316,8 +316,8 @@ inferTerm (ObjectCompT source keyTerm valueTerm body) = do
     (keyTy, valueTy) <- isolateUnification $ do
         inferRuleBody body
         (,) <$> inferTerm keyTerm <*> inferTerm valueTerm
-    let objTy = Types.ObjectType HMS.empty $ Just (keyTy, valueTy)
-    pure (Types.Object (fmap fst objTy), NonEmpty.singleton source)
+    let objTy = Types.objectOf (fst keyTy) (fst valueTy)
+    pure (objTy, NonEmpty.singleton source)
 
 inferTerm (RefT source lhs rhs) = do
     lhsTy <- inferTerm lhs

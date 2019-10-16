@@ -176,7 +176,7 @@ evalVar _source v = do
         Nothing -> FreeV <$> toInstVar v
 
 evalBuiltin :: SourceSpan -> Builtin Identity -> [Value] -> EvalM Value
-evalBuiltin source (Builtin sig (Identity impl)) args0 = do
+evalBuiltin source (Builtin sig _ (Identity impl)) args0 = do
     -- There are two possible scenarios if we have an N-ary function, e.g.:
     --
     --     add(x, y) = z {
