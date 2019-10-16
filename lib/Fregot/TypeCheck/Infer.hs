@@ -22,7 +22,7 @@ module Fregot.TypeCheck.Infer
     , inferTerm
     ) where
 
-import           Control.Lens                  (view, (&), (.~), (^.))
+import           Control.Lens                  (forOf_, view, (&), (.~), (^.))
 import           Control.Lens.TH               (makeLenses, makePrisms)
 import           Control.Monad                 (forM, join)
 import           Control.Monad.Except.Extended (catching, throwError)
@@ -198,18 +198,23 @@ mergeSourceTypes stys =
 
 inferRuleBody :: RuleBody SourceSpan -> InferM ()
 inferRuleBody body =
-    -- TODO(jaspervdj): propagating the bound variables is really all that
-    -- matters here.
+    -- Propagating the bound variables is really all that matters here.
     for_ body inferLiteral
 
 inferLiteral
     :: Literal SourceSpan -> InferM ()
 inferLiteral lit = do
-    -- TODO(jaspervdj): In case we have a negative literal here, what we want to
-    -- do is throw away the variables that were bound by it.
-    _ <- inferStatement (lit ^. literalStatement)
+    -- TODO(jaspervdj): Can the with parts decide what e.g. `input` looks like?
+    -- It sounds possible...
+    forOf_ (literalWith . traverse . withAs) lit
+        (isolateUnification . inferTerm)
+
+    -- In case we have a negative literal here, what we want to do is throw away
+    -- the variables that were bound by it.
+    _ <- (if lit ^.literalNegation then isolateUnification else id) $
+        inferStatement (lit ^. literalStatement)
+
     return ()
-    -- TODO(jaspervdj): infer `with` parts.
 
 inferStatement
     :: Statement SourceSpan -> InferM ()
