@@ -12,8 +12,8 @@ module Fregot.Repl
     , metaCommands
     ) where
 
-import           Control.Lens                      (preview, review, view, (^.),
-                                                    (^?), _1)
+import           Control.Lens                      (maximumOf, preview, review,
+                                                    to, view, (^.), (^?), _1)
 import           Control.Lens.TH                   (makeLenses)
 import           Control.Monad                     (unless)
 import           Control.Monad.Extended            (foldMapM, forM_, guard,
@@ -356,6 +356,8 @@ metaCommands =
             return True
 
     , MetaCommand ":help" "show this info" $ \_ _ -> do
+        let width   = maximumOf (traverse . metaName . to T.length) metaCommands
+            justify = T.justifyLeft (fromMaybe 0 width + 2) ' '
         liftIO $ PP.hPutSemDoc IO.stderr $
             "Enter an expression to evaluate it." <$$>
             "Enter a rule to add it to the current package." <$$>
@@ -363,7 +365,7 @@ metaCommands =
             "Other commands:" <$$>
             (PP.ind $ PP.vcat $ do
                 MetaCommand {..} <- metaCommands
-                return $ PP.pretty _metaName <> "  " <>
+                return $ PP.code (PP.pretty $ justify _metaName) <>
                     PP.pretty _metaDescription) <$$>
             mempty <$$>
             "Shortcuts are supported for commands, e.g. `:l` for `:load`."
