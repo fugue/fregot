@@ -21,7 +21,7 @@ module Fregot.Prepare.Ast
     , Sugar.varToString, Sugar.varToText
 
     , Imports
-    , RuleBody
+    , RuleBody, Query
     , Literal (..), literalAnn, literalNegation, literalStatement, literalWith
     , Statement (..)
     , Term (..)
@@ -79,6 +79,8 @@ data RuleDefinition a = RuleDefinition
     } deriving (Show)
 
 type RuleBody a = [Literal a]
+
+type Query a = [Literal a]
 
 data RuleElse a = RuleElse
     { _ruleElseAnn   :: !a

@@ -11,6 +11,7 @@ module Fregot.Names.Renamer
     , reDependencies
     , RenamerM
     , renameModule
+    , renameQuery
     , renameExpr
     ) where
 
@@ -94,6 +95,9 @@ renameRuleHead rh = RuleHead
 
 renameRuleBody :: RuleBody SourceSpan Var -> RenamerM (RuleBody SourceSpan Name)
 renameRuleBody = traverse renameRuleStatement
+
+renameQuery :: Query SourceSpan Var -> RenamerM (Query SourceSpan Name)
+renameQuery = renameRuleBody
 
 renameRuleElse :: Rename RuleElse
 renameRuleElse re = RuleElse

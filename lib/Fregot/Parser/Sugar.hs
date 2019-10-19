@@ -7,6 +7,7 @@ module Fregot.Parser.Sugar
 
     , parseModule
     , rule
+    , query
     , expr
     ) where
 
@@ -103,7 +104,7 @@ parseRuleHead = withSourceSpan $ do
 parseRuleBody :: FregotParser (RuleBody SourceSpan Var)
 parseRuleBody = do
     Tok.symbol Tok.TLBrace
-    body <- parseUnbracedRuleBody
+    body <- query
     Tok.symbol Tok.TRBrace
     return body
 
@@ -116,8 +117,8 @@ parseRuleElse = withSourceSpan $ do
     _ruleElseBody <- parseRuleBody
     return $ \_ruleElseAnn -> RuleElse {..}
 
-parseUnbracedRuleBody :: FregotParser (RuleBody SourceSpan Var)
-parseUnbracedRuleBody = blockOrSemi ruleStatement
+query :: FregotParser (RuleBody SourceSpan Var)
+query = blockOrSemi ruleStatement
 
 -- | Parse either a block of lines, or lines separated by a semicolon, or both.
 blockOrSemi :: FregotParser a -> FregotParser [a]
@@ -327,7 +328,7 @@ comprehension open close phead = do
         x <- phead
         Tok.symbol Tok.TPipe
         return x
-    cbody <- parseUnbracedRuleBody
+    cbody <- query
     Tok.symbol close
     return (chead, cbody)
 

@@ -5,6 +5,7 @@ module Fregot.Prepare
     , mergeRules
 
     , prepareImports
+    , prepareQuery
     , prepareExpr
     ) where
 
@@ -189,6 +190,11 @@ prepareRuleBody
     => Sugar.RuleBody SourceSpan Name
     -> ParachuteT Error m (RuleBody SourceSpan)
 prepareRuleBody = fmap catMaybes . mapM prepareRuleStatement
+
+prepareQuery
+    :: Monad m
+    => Sugar.Query SourceSpan Name -> ParachuteT Error m (Query SourceSpan)
+prepareQuery = prepareRuleBody
 
 prepareRuleElse
     :: Monad m
