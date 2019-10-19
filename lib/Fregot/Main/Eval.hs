@@ -23,9 +23,10 @@ import qualified Fregot.Find                  as Find
 import qualified Fregot.Interpreter           as Interpreter
 import           Fregot.Main.GlobalOptions
 import qualified Fregot.Parser                as Parser
+import qualified Fregot.PrettyPrint           as PP
 import           Fregot.Repl.Parse
 import qualified Fregot.Sources               as Sources
-import           Fregot.Sugar                 (exprAnn, ruleAnn, ruleHead)
+import           Fregot.Sugar                 (ruleAnn, ruleHead)
 import qualified Options.Applicative.Extended as OA
 import           System.Exit                  (ExitCode (..))
 import qualified System.IO                    as IO
@@ -63,18 +64,18 @@ main gopts opts = do
 
         traverse_ (Interpreter.setInputFile interpreter) (opts ^. input)
 
-        ruleOrExpr <- parseRuleOrExpr Sources.CliInput (opts ^. expression)
+        ruleOrExpr <- parseRuleOrQuery Sources.CliInput (opts ^. expression)
         expr <- case ruleOrExpr of
             Right e -> return e
             Left r  -> Parachute.fatal $ Error.mkError
                 "eval" (r ^. ruleHead . ruleAnn) "unexpected rule"
                 "Need an expression to evaluate, not a rule"
 
-        val <- Interpreter.evalExpr interpreter Nothing "cli" expr
+        val <- Interpreter.evalQuery interpreter Nothing "cli" expr
         case traverse (Json.fromValue . view rowValue) val of
             Right js -> return $ A.toJSON js
-            Left  e  -> Parachute.fatal $ Error.mkError
-                "eval" (expr ^. exprAnn) "invalid json" e
+            Left  e  -> Parachute.fatal $ Error.mkErrorNoMeta
+                "eval" $ "invalid json:" PP.<+> e
 
     sources' <- IORef.readIORef sources
     Error.hPutErrors IO.stderr sources' (gopts ^. format) errors

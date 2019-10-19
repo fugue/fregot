@@ -21,6 +21,7 @@ import           Control.Monad.Extended            (foldMapM, forM_, guard,
 import           Control.Monad.Parachute
 import           Control.Monad.Trans               (liftIO)
 import           Data.Bifunctor                    (bimap)
+import           Data.Char                         (isSpace)
 import           Data.Functor                      (($>))
 import qualified Data.HashMap.Strict.Extended      as HMS
 import qualified Data.HashSet                      as HS
@@ -140,7 +141,7 @@ processInput h input = do
     let sourcep = Sources.ReplInput replNum input
     IORef.atomicModifyIORef_ (h ^. sources) $ Sources.insert sourcep input
 
-    (parseErrs, mbRuleOrTerm) <- runParachuteT $ parseRuleOrExpr sourcep input
+    (parseErrs, mbRuleOrTerm) <- runParachuteT $ parseRuleOrQuery sourcep input
     sauce <- IORef.readIORef (h ^. sources)
     Error.hPutErrors IO.stderr sauce Error.Text parseErrs
 
@@ -178,7 +179,7 @@ processInput h input = do
                         Errored ec _ _                -> Just ec
                         _                             -> Nothing
 
-                Interpreter.evalExpr i envctx pkgname expr
+                Interpreter.evalQuery i envctx pkgname expr
             forM_ mbRows $ \rows -> case rows of
                 [] -> PP.hPutSemDoc IO.stderr $ PP.pretty Eval.emptyObject
                 _  -> forM_ rows $ \row ->
@@ -283,6 +284,8 @@ run h = do
                 addHistory input
                 cont <- (cmd ^. metaRun) h args
                 when cont loop
+            Just input | T.all isSpace input ->
+                loop
             Just input   -> do
                 addHistory input
                 liftIO $ processInput h input

@@ -10,6 +10,7 @@ module Fregot.Compile.Package
     , lookup
     , rules
     , compilePackage
+    , compileQuery
     , compileTerm
     ) where
 
@@ -145,6 +146,16 @@ compilePackage builtins dependencies prep = do
         arities = \f ->
             selfArities f <|>
             aritiesFromDependencies dependencies f
+
+compileQuery
+    :: Monad m
+    => Builtins f -> PreparedPackage -> Safe Var -> Query SourceSpan
+    -> ParachuteT Error m (Query SourceSpan)
+compileQuery builtins pkg safeLocals query0 =
+    runOrder $ orderForSafety arities safe0 query0
+  where
+    safe0   = safeGlobals pkg <> safeLocals
+    arities = aritiesFromPackage builtins pkg
 
 compileTerm
     :: Monad m

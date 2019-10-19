@@ -28,6 +28,7 @@ module Fregot.Eval
 
     , evalVar
     , evalTerm
+    , evalQuery
     ) where
 
 import           Control.Exception         (try)
@@ -418,19 +419,33 @@ evalUserFunction callerSource crule callerArgs =
 evalRuleBody :: RuleBody SourceSpan -> EvalM a -> EvalM a
 evalRuleBody lits0 final = go lits0
   where
-    go [] = final
+    go []           = final
+    go (lit : lits) = evalLiteral lit $ \val ->
+        if trueish val then go lits else cut
 
-    go (lit : lits)
-        | lit ^. literalNegation = localWiths (lit ^. literalWith) $ do
-            negation trueish $
-                evalStatement (lit ^. literalStatement) >>=
-                ground (lit ^. literalAnn)
-            go lits
-        | otherwise = localWiths (lit ^. literalWith) $ do
-            v <- evalStatement $ lit ^. literalStatement
-            r <- ground (lit ^. literalAnn) v
-            if trueish r then go lits else cut
+-- | Evaluate the statements in the query and return the value returned by the
+-- last statement.
+evalQuery :: Query SourceSpan -> EvalM Value
+evalQuery lits0 = case reverse lits0 of
+    -- Watch out for the double 'reverse'.
+    (lit : lits) -> evalRuleBody (reverse lits) (evalLiteral lit return)
+    []           -> return (BoolV True)
 
+-- | Evaluate a literal.  If the literal does not shortcut, evaluate the next
+-- evaluation using the value returned from the literal.  This will be True
+-- if the literal was a negation that passed.
+evalLiteral :: Literal SourceSpan -> (Value -> EvalM a) -> EvalM a
+evalLiteral lit next
+    | lit ^. literalNegation = localWiths (lit ^. literalWith) $ do
+        negation trueish $
+            evalStatement (lit ^. literalStatement) >>=
+            ground (lit ^. literalAnn)
+        next (BoolV True)
+    | otherwise = localWiths (lit ^. literalWith) $ do
+        v <- evalStatement $ lit ^. literalStatement
+        r <- ground (lit ^. literalAnn) v
+        next r
+  where
     localWiths []    mx = mx
     localWiths withs mx = do
         -- Since we changed the input, we need to bump up the cache.  This will
@@ -450,6 +465,7 @@ evalRuleBody lits0 final = go lits0
 
         input <- view inputDoc
         updateInput input withs
+{-# INLINE evalLiteral #-}
 
 evalStatement :: Statement SourceSpan -> EvalM Value
 evalStatement (UnifyS source x y) = suspend source $ do

@@ -27,9 +27,9 @@ tests = Tasty.testGroup "Fregot.Interpreter.Tests"
         (errs, mbResult) <- runParachuteT $ do
             Interpreter.insertBuiltin interpreter magicName magicImpl
             let input = "test.magic()"
-            expr <- Repl.parseRuleOrExpr Sources.TestInput input >>=
+            query <- Repl.parseRuleOrQuery Sources.TestInput input >>=
                 either (const $ error "expected expression") return
-            Interpreter.evalExpr interpreter Nothing "testy" expr
+            Interpreter.evalQuery interpreter Nothing "testy" query
 
         Tasty.assertBool "No errors" $ null errs
         map (view Eval.rowValue) <$> mbResult @?=

@@ -25,7 +25,7 @@ module Fregot.Interpreter
     , compilePackages
 
     , Eval.EnvContext (..), Eval.ecEnvironment, Eval.ecContext
-    , evalExpr
+    , evalQuery
     , evalVar
 
     , Eval.ResumeStep
@@ -38,8 +38,8 @@ module Fregot.Interpreter
     ) where
 
 import qualified Codec.Compression.GZip          as GZip
-import           Control.Lens                    (forOf_, ifor_, to, (^.),
-                                                  (^..), _2)
+import           Control.Lens                    (forOf_, ifor_, review, to,
+                                                  (^.), (^..), _2)
 import           Control.Lens.TH                 (makeLenses)
 import           Control.Monad                   (foldM, unless)
 import           Control.Monad.Identity          (Identity (..))
@@ -327,10 +327,10 @@ eval h mbEvalEnvCtx _pkgname mx = do
     envctx <- maybe (newEvalContext h) return mbEvalEnvCtx
     either fatal return =<< liftIO (Eval.runEvalM envctx mx)
 
-evalExpr
+evalQuery
     :: Handle -> Maybe Eval.EnvContext -> PackageName
-    -> Sugar.Expr SourceSpan Var -> InterpreterM (Eval.Document Eval.Value)
-evalExpr h mbEvalEnvCtx pkgname expr = do
+    -> Sugar.Query SourceSpan Var -> InterpreterM (Eval.Document Eval.Value)
+evalQuery h mbEvalEnvCtx pkgname query = do
     comp    <- liftIO $ IORef.readIORef (h ^. compiled)
     pkg     <- readCompiledPackage h pkgname
     builtin <- liftIO $ IORef.readIORef (h ^. builtins)
@@ -343,12 +343,12 @@ evalExpr h mbEvalEnvCtx pkgname expr = do
             (HS.fromList $ Compile.rules pkg)
             comp
             HS.empty
-    rterm <- runRenamerT renamerEnv $ Renamer.renameExpr expr
+    rquery <- runRenamerT renamerEnv $ Renamer.renameQuery query
 
-    pterm <- Prepare.prepareExpr rterm
-    cterm <- Compile.compileTerm builtin pkg safeLocals pterm
+    pquery <- Prepare.prepareQuery rquery
+    cquery  <- Compile.compileQuery builtin pkg safeLocals pquery
     dieIfErrors
-    eval h mbEvalEnvCtx pkgname (Eval.evalTerm cterm)
+    eval h mbEvalEnvCtx pkgname (Eval.evalQuery cquery)
   where
     safeLocals = Compile.Safe $ HS.fromList $ case mbEvalEnvCtx of
         Nothing -> mempty
@@ -359,12 +359,13 @@ evalVar
     -> InterpreterM (Eval.Document Eval.Value)
 evalVar h mbEvalEnvCtx source pkgname var = do
     let expr = Sugar.TermE source (Sugar.VarT source var)
-    evalExpr h mbEvalEnvCtx pkgname expr
+    evalQuery h mbEvalEnvCtx pkgname $
+        review (Sugar.literalFromQuery . Sugar.exprFromLiteral) expr
 
 newResumeStep
-    :: Handle -> PackageName -> Sugar.Expr SourceSpan Var
+    :: Handle -> PackageName -> Sugar.Query SourceSpan Var
     -> InterpreterM (Eval.ResumeStep Eval.Value)
-newResumeStep h pkgname expr = do
+newResumeStep h pkgname query = do
     envctx <- newEvalContext h
     pkg    <- readCompiledPackage h pkgname
 
@@ -377,13 +378,13 @@ newResumeStep h pkgname expr = do
             (HS.fromList $ Compile.rules pkg)
             (envctx ^. Eval.ecEnvironment . Eval.packages)
             HS.empty
-    rexpr <- runRenamerT renamerEnv $ Renamer.renameExpr expr
+    rquery <- runRenamerT renamerEnv $ Renamer.renameQuery query
 
-    pterm  <- Prepare.prepareExpr rexpr
-    cterm  <- Compile.compileTerm builtin pkg mempty pterm
+    pquery <- Prepare.prepareQuery rquery
+    cquery <- Compile.compileQuery builtin pkg mempty pquery
 
     dieIfErrors
-    return $ Eval.newResumeStep envctx (Eval.evalTerm cterm)
+    return $ Eval.newResumeStep envctx (Eval.evalQuery cquery)
 
 step
     :: Handle -> Eval.ResumeStep Eval.Value
