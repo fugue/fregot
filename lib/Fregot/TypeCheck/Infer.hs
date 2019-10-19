@@ -20,6 +20,7 @@ module Fregot.TypeCheck.Infer
     , runInfer
 
     , inferRule
+    , inferQuery
     , inferTerm
     ) where
 
@@ -210,6 +211,9 @@ inferRuleBody :: RuleBody SourceSpan -> InferM ()
 inferRuleBody body =
     -- Propagating the bound variables is really all that matters here.
     for_ body inferLiteral
+
+inferQuery :: Query SourceSpan -> InferM ()
+inferQuery = inferRuleBody
 
 inferLiteral
     :: Literal SourceSpan -> InferM ()

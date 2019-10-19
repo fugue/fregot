@@ -4,18 +4,18 @@ Enter an expression to evaluate it.
 Enter a rule to add it to the current package.
 
 Other commands:
-  :break  Set a breakpoint
-  :help  show this info
-  :input  set the input document
-  :load  load a rego file, e.g. `:load foo.rego`
-  :open  open a different package, e.g. `:open foo`
-  :quit  exit the repl
-  :reload  reload the file from the last `:load`
-  :continue  continue running the debugged program
-  :step  step (into) the next rule in the debugged program
-  :next  step (over) the next rule in the debugged program
-  :rewind  go back to the previous debug suspension
-  :test  run tests in the current package
-  :where  print your location
+  [33m:break     [0mSet a breakpoint
+  [33m:help      [0mshow this info
+  [33m:input     [0mset the input document
+  [33m:load      [0mload a rego file, e.g. `:load foo.rego`
+  [33m:open      [0mopen a different package, e.g. `:open foo`
+  [33m:quit      [0mexit the repl
+  [33m:reload    [0mreload the file from the last `:load`
+  [33m:continue  [0mcontinue running the debugged program
+  [33m:step      [0mstep (into) the next rule in the debugged program
+  [33m:next      [0mstep (over) the next rule in the debugged program
+  [33m:rewind    [0mgo back to the previous debug suspension
+  [33m:test      [0mrun tests in the current package
+  [33m:where     [0mprint your location
 
 Shortcuts are supported for commands, e.g. `:l` for `:load`.

@@ -11,6 +11,7 @@ module Fregot.Compile.Package
     , lookup
     , rules
     , compilePackage
+    , compileQuery
     , compileTerm
     ) where
 
@@ -182,6 +183,30 @@ compilePackage builtins dependencies prep = do
         arities = \f ->
             selfArities f <|>
             aritiesFromDependencies dependencies f
+
+compileQuery
+    :: Monad m
+    => Builtins f
+    -> Dependencies
+    -> Package ty
+    -> Safe Var
+    -> Query SourceSpan
+    -> ParachuteT Error m (Query SourceSpan)
+compileQuery builtins dependencies pkg safeLocals query0 = do
+    query1 <- runOrder $ orderForSafety arities safe0 query0
+    let inferEnv = Infer.InferEnv
+            -- TODO(jaspervdj): Builtins Proxy works quite well, we should move
+            -- it up in the call stack.
+            { Infer._ieBuiltins = runIdentity $
+                traverse (htraverse $ \_ -> pure Proxy) builtins
+            , Infer._ieDependencies = dependencies
+            }
+
+    Infer.runInfer inferEnv $ Infer.inferQuery query1
+    return query1
+  where
+    safe0   = safeGlobals pkg <> safeLocals
+    arities = aritiesFromPackage builtins pkg
 
 compileTerm
     :: Monad m

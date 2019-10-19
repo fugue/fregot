@@ -12,8 +12,8 @@ module Fregot.Repl
     , metaCommands
     ) where
 
-import           Control.Lens                      (preview, review, view, (^.),
-                                                    (^?), _1)
+import           Control.Lens                      (maximumOf, preview, review,
+                                                    to, view, (^.), (^?), _1)
 import           Control.Lens.TH                   (makeLenses)
 import           Control.Monad                     (unless)
 import           Control.Monad.Extended            (foldMapM, forM_, guard,
@@ -21,6 +21,7 @@ import           Control.Monad.Extended            (foldMapM, forM_, guard,
 import           Control.Monad.Parachute
 import           Control.Monad.Trans               (liftIO)
 import           Data.Bifunctor                    (bimap)
+import           Data.Char                         (isSpace)
 import           Data.Functor                      (($>))
 import qualified Data.HashMap.Strict.Extended      as HMS
 import qualified Data.HashSet                      as HS
@@ -152,7 +153,7 @@ readEvalContext h = do
 processInput :: Handle -> T.Text -> IO ()
 processInput h input = do
     sourcep                   <- freshReplInput h input
-    (parseErrs, mbRuleOrTerm) <- runParachuteT $ parseRuleOrExpr sourcep input
+    (parseErrs, mbRuleOrTerm) <- runParachuteT $ parseRuleOrQuery sourcep input
     sauce <- IORef.readIORef (h ^. sources)
     Error.hPutErrors IO.stderr sauce Error.Text parseErrs
 
@@ -186,7 +187,7 @@ processInput h input = do
             envctx <- readEvalContext h
             mbRows <- runInterpreter h $ \i -> do
                 -- Figure out what environment we want to eval in.
-                Interpreter.evalExpr i envctx pkgname expr
+                Interpreter.evalQuery i envctx pkgname expr
             forM_ mbRows $ \rows -> case rows of
                 [] -> PP.hPutSemDoc IO.stderr $ PP.pretty Eval.emptyObject
                 _  -> forM_ rows $ \row ->
@@ -291,6 +292,8 @@ run h = do
                 addHistory input
                 cont <- (cmd ^. metaRun) h args
                 when cont loop
+            Just input | T.all isSpace input ->
+                loop
             Just input   -> do
                 addHistory input
                 liftIO $ processInput h input
@@ -364,6 +367,8 @@ metaCommands =
             return True
 
     , MetaCommand ":help" "show this info" $ \_ _ -> do
+        let width   = maximumOf (traverse . metaName . to T.length) metaCommands
+            justify = T.justifyLeft (fromMaybe 0 width + 2) ' '
         liftIO $ PP.hPutSemDoc IO.stderr $
             "Enter an expression to evaluate it." <$$>
             "Enter a rule to add it to the current package." <$$>
@@ -371,7 +376,7 @@ metaCommands =
             "Other commands:" <$$>
             (PP.ind $ PP.vcat $ do
                 MetaCommand {..} <- metaCommands
-                return $ PP.pretty _metaName <> "  " <>
+                return $ PP.code (PP.pretty $ justify _metaName) <>
                     PP.pretty _metaDescription) <$$>
             mempty <$$>
             "Shortcuts are supported for commands, e.g. `:l` for `:load`."

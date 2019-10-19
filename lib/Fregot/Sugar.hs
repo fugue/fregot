@@ -22,7 +22,7 @@ module Fregot.Sugar
     , Rule (..), ruleHead, ruleBodies
     , RuleHead (..), ruleAnn, ruleDefault, ruleName, ruleArgs, ruleIndex
     , ruleValue, ruleElses
-    , RuleBody
+    , RuleBody, Query
     , RuleElse (..), ruleElseAnn, ruleElseValue, ruleElseBody
     , RuleStatement (..), _VarDeclS, _LiteralS
     , Literal (..), literalAnn, literalNegation, literalExpr, literalWith
@@ -40,11 +40,14 @@ module Fregot.Sugar
     , nestedToString
 
     , termFromExpr
+    , exprFromLiteral
+    , literalFromQuery
     ) where
 
 import           Control.Lens       (Lens', lens, preview, (^.), _2)
 import           Control.Lens.Prism (Prism', prism')
 import           Control.Lens.TH    (makeLenses, makePrisms)
+import           Control.Monad      (guard)
 import           Data.Binary        (Binary)
 import           Data.Hashable      (Hashable)
 import qualified Data.List          as L
@@ -91,6 +94,8 @@ data RuleHead a n = RuleHead
 instance (Binary a, Binary n) => Binary (RuleHead a n)
 
 type RuleBody a n = [RuleStatement a n]
+
+type Query a n = RuleBody a n
 
 data RuleElse a n = RuleElse
     { _ruleElseAnn   :: !a
@@ -402,3 +407,26 @@ termAnn = lens getAnn setAnn
 
 termFromExpr :: Prism' (Expr a n) (Term a n)
 termFromExpr = prism' (\t -> TermE (t ^. termAnn) t) (preview (_TermE . _2))
+
+exprFromLiteral :: Prism' (Literal a n) (Expr a n)
+exprFromLiteral = prism' fromExpr toExpr
+  where
+    toExpr lit = do
+        guard $ lit ^. literalNegation == False
+        guard $ null $ lit ^. literalWith
+        pure $ lit ^. literalExpr
+
+    fromExpr e = Literal
+        { _literalAnn      = e ^. exprAnn
+        , _literalNegation = False
+        , _literalExpr     = e
+        , _literalWith     = []
+        }
+
+literalFromQuery :: Prism' (Query a n) (Literal a n)
+literalFromQuery = prism' toLiteral fromLiteral
+  where
+    toLiteral lit = [LiteralS lit]
+    fromLiteral query = case query of
+        [LiteralS lit] -> Just lit
+        _              -> Nothing
