@@ -7,10 +7,10 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE MultiWayIf            #-}
 {-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TemplateHaskell       #-}
 {-# LANGUAGE TupleSections         #-}
 {-# LANGUAGE TypeSynonymInstances  #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
 module Fregot.TypeCheck.Infer
     ( TypeError (..)
     , SourceType
@@ -24,9 +24,10 @@ module Fregot.TypeCheck.Infer
     , inferTerm
     ) where
 
-import           Control.Lens                  (forOf_, view, (&), (.~), (^.))
+import           Control.Lens                  (forOf_, view, (&), (.~), (^.),
+                                                (^?))
 import           Control.Lens.TH               (makeLenses, makePrisms)
-import           Control.Monad                 (forM, join)
+import           Control.Monad                 (forM, join, zipWithM_)
 import           Control.Monad.Except.Extended (catching, throwError)
 import           Control.Monad.Parachute       (ParachuteT, fatal)
 import           Control.Monad.Reader          (ReaderT, ask, runReaderT)
@@ -51,7 +52,7 @@ import qualified Fregot.Eval.Builtins          as Builtin
 import           Fregot.Names
 import           Fregot.Prepare.Ast
 import           Fregot.Prepare.Package        (Package)
-import           qualified Fregot.Prepare.Package        as Package
+import qualified Fregot.Prepare.Package        as Package
 import           Fregot.PrettyPrint            ((<+>), (<+>?))
 import qualified Fregot.PrettyPrint            as PP
 import           Fregot.Sources.SourceSpan     (SourceSpan)
@@ -67,8 +68,9 @@ data TypeError
     | NoUnify (Maybe SourceSpan) SourceType SourceType
     | ArityMismatch SourceSpan Function Int Int
     | CannotRef SourceSpan SourceType
+    | CannotCall SourceSpan Function
     | BuiltinTypeError SourceSpan PP.SemDoc
-    | InternalError String
+    | InternalError PP.SemDoc
 
 data InferEnv = InferEnv
     { _ieBuiltins     :: Builtins Proxy
@@ -116,20 +118,41 @@ fromTypeError = \case
             Types.Object _ -> Just $ "with the given key"
             _              -> Nothing)
 
+    CannotCall source fun -> Error.mkError sub source
+        "Not a function" $
+        PP.code (PP.pretty fun) <+> "cannot be called as a function"
+
     BuiltinTypeError source doc -> Error.mkError sub source
         "Builtin type error" doc
 
-    InternalError msg -> Error.mkErrorNoMeta sub $ PP.pretty msg
+    InternalError msg -> Error.mkErrorNoMeta sub msg
   where
     sub = "typecheck"
 
--- | Run some code, but then discard the additional results of the unification.
+-- | Run some code, but then discard the additional results of the unification
+-- and restore the original state.
 isolateUnification :: InferM a -> InferM a
 isolateUnification mx = do
     state <- get
     x     <- mx
     put state
     return x
+
+-- | Run the unification in a completely empty state, and then restore the
+-- original state.
+blankUnification :: InferM a -> InferM a
+blankUnification mx = isolateUnification (put Unify.empty >> mx)
+
+getRule
+    :: SourceSpan -> PackageName -> Var
+    -> InferM (Rule Types.RuleType SourceSpan)
+getRule source pkg var = do
+    env <- ask
+    maybe
+        (throwError $ UnboundName (QualifiedName pkg var) source)
+        return $ do
+        package <- HMS.lookup pkg (env ^. ieDependencies)
+        Package.lookup var package
 
 runInfer :: Monad m => InferEnv -> InferM a -> ParachuteT Error m a
 runInfer env mx =
@@ -139,8 +162,10 @@ runInfer env mx =
 inferRule :: Rule' -> InferM (Rule Types.RuleType SourceSpan)
 inferRule rule = case rule ^. ruleKind of
     FunctionRule arity ->
-        -- TODO (jaspervdj): According to the current plan, functions will be
+        -- TODO(jaspervdj): According to the current plan, functions will be
         -- skipped right now and inferred in an "inlined" way.
+        --
+        -- TODO(jaspervdj): We also want to do a pre-flight check using Any.
         pure $ rule & ruleInfo .~ Types.FunctionType arity
 
     -- TODO(jaspervdj): Here, we need to assign types to the arguments as well
@@ -246,10 +271,19 @@ inferTerm (ScalarT source scalar) =
     return $ (, NonEmpty.singleton source) $ inferScalar scalar
 
 inferTerm (CallT source fun args) = do
+    let cannotCall = throwError $ CannotCall source fun
     builtins <- view ieBuiltins
     case HMS.lookup fun builtins of
-        Nothing -> error $ "TODO: not a builtin: " ++ show fun
         Just b  -> inferBuiltin source fun b args
+        Nothing -> case fun of
+            OperatorFunction o -> throwError $ InternalError $
+                "builtin for operator" <+> PP.pretty o <+> "not found"
+            NamedFunction (QualifiedName pkg var) -> do
+                rule <- getRule source pkg var
+                inferUserFunction source fun rule args
+            NamedFunction WildcardName    -> cannotCall
+            NamedFunction (LocalName _)   -> cannotCall
+            NamedFunction (BuiltinName _) -> cannotCall
 
 inferTerm (NameT source WildcardName) =
     pure (Types.Any, NonEmpty.singleton source)
@@ -265,12 +299,9 @@ inferTerm (NameT source (LocalName var)) = do
         Nothing -> throwError $ UnboundVars (HMS.singleton var source)
         Just ty -> return ty
 
-inferTerm (NameT source name@(QualifiedName pkg var)) = do
-    env <- ask
-    if  | Just package <- HMS.lookup pkg (env ^. ieDependencies)
-        , Just rule <- Package.lookup var package -> pure
-            (Types.ruleTypeToType (rule ^. ruleInfo), NonEmpty.singleton source)
-        | otherwise -> throwError $ UnboundName name source
+inferTerm (NameT source (QualifiedName pkg var)) = do
+    rule <- getRule source pkg var
+    pure (Types.ruleTypeToType (rule ^. ruleInfo), NonEmpty.singleton source)
 
 inferTerm (ArrayT source items) = do
     tys <- traverse inferTerm items
@@ -417,18 +448,9 @@ inferBuiltin
         source name
         builtin@(Builtin.Builtin (sig :: Builtin.Sig i o) ty _)
         args =
-    case checkArity arity args of
-        ArityBad got         -> throwError $ ArityMismatch source name arity got
-        ArityOk inArgs mbOut -> do
-            inferredArgs <- mapM inferTerm inArgs
-            inTypes      <- toInTypes sig $ fmap fst inferredArgs
-            outTy        <- ty checker inTypes
-
-            case mbOut of
-                Nothing -> return (outTy, NonEmpty.singleton source)
-                Just o  -> do
-                    unifyTermType source o (outTy, NonEmpty.singleton source)
-                    return (Types.Boolean, NonEmpty.singleton source)
+    inferCall source name arity args $ \inferredArgs -> do
+        inTypes <- toInTypes sig $ fmap fst inferredArgs
+        ty checker inTypes
   where
     toInTypes :: Builtin.Sig j o -> [Type] -> InferM (B.InTypes j)
     toInTypes Builtin.Out    _        = pure B.Nil
@@ -446,3 +468,37 @@ inferBuiltin
         , B.bcError = \err -> throwError $ BuiltinTypeError source err
         }
 
+inferUserFunction
+    :: SourceSpan
+    -> Function -> Rule Types.RuleType SourceSpan -> [Term SourceSpan]
+    -> InferM SourceType
+inferUserFunction source name rule args = do
+    arity <- maybe
+        (throwError $ CannotCall source name) return
+        (rule ^? ruleInfo . Types._FunctionType)
+
+    inferCall source name arity args $ \inferredArgs -> do
+        -- Go through all rule definitions, and infer them in an environment
+        -- where we have assigned the arguments types.
+        outTys <- forM (rule ^. ruleDefs) $ \rdef -> blankUnification $ do
+            let argTerms = fromMaybe [] $ rdef ^. ruleArgs
+            zipWithM_ (unifyTermType source) argTerms inferredArgs
+            inferRuleDefinition rdef
+
+        return $ Types.mergeTypes $ map (fst . snd) outTys
+
+inferCall
+    :: SourceSpan -> Function -> Int -> [Term SourceSpan]
+    -> ([SourceType] -> InferM Type)
+    -> InferM SourceType
+inferCall source name arity args check =
+    case checkArity arity args of
+        ArityBad got         -> throwError $ ArityMismatch source name arity got
+        ArityOk inArgs mbOut -> do
+            inferredArgs <- mapM inferTerm inArgs
+            outTy        <- check inferredArgs
+            case mbOut of
+                Nothing -> return (outTy, NonEmpty.singleton source)
+                Just o  -> do
+                    unifyTermType source o (outTy, NonEmpty.singleton source)
+                    return (Types.Boolean, NonEmpty.singleton source)
