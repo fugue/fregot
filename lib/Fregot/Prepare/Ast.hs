@@ -28,7 +28,7 @@ module Fregot.Prepare.Ast
     , Statement (..)
     , Term (..)
     , Object
-    , Function (..)
+    , Function (..), _OperatorFunction, _NamedFunction
     , BinOp (..)
 
     , With (..), withAnn, withPath, withAs
@@ -153,6 +153,7 @@ data With a = With
     } deriving (Eq, Show)
 
 $(makePrisms ''RuleKind)
+$(makePrisms ''Function)
 $(makeLenses ''Rule)
 $(makeLenses ''RuleDefinition)
 $(makeLenses ''RuleElse)
