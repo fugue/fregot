@@ -84,7 +84,7 @@ prepareRule pkgname imports rule
             , _ruleName    = head ^. Sugar.ruleName
             , _ruleAnn     = head ^. Sugar.ruleAnn
             , _ruleDefault = Nothing
-            , _ruleKind    = FunctionRule (length args)
+            , _ruleKind    = FunctionRule (maybe 0 length args)
             , _ruleInfo    = ()
             , _ruleDefs    =
                 [ RuleDefinition

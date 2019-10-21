@@ -1,5 +1,8 @@
+{-# LANGUAGE DeriveFunctor          #-}
+{-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
+{-# LANGUAGE OverloadedStrings      #-}
 module Data.Unification
     ( MonadUnify (..)
 
@@ -13,6 +16,7 @@ module Data.Unification
 
 import           Data.Hashable       (Hashable (..))
 import qualified Data.HashMap.Strict as HMS
+import qualified Fregot.PrettyPrint  as PP
 import           Prelude             hiding (lookup)
 
 class Monad m => MonadUnify v t m | m -> v, m -> t where
@@ -60,10 +64,10 @@ bindTerm v term = do
         (r, Nothing) -> modifyUnification $ unsafeInsert r term
         (_, Just t)  -> unify term t
 
-data Node k a = Ref !k | Root !a deriving (Show)
+data Node k a = Ref !k | Root !a deriving (Functor, Show)
 
 newtype Unification k a = Unification (HMS.HashMap k (Node k a))
-    deriving (Show)
+    deriving (Functor, Show)
 
 empty :: Unification k a
 empty = Unification HMS.empty
@@ -80,3 +84,14 @@ unsafeInsert
     :: (Eq k, Hashable k)
     => k -> t -> Unification k t -> Unification k t
 unsafeInsert k t (Unification m) = Unification (HMS.insert k (Root t) m)
+
+instance (PP.Pretty PP.Sem k, PP.Pretty PP.Sem a) =>
+        PP.Pretty PP.Sem (Unification k a) where
+    pretty (Unification m) = PP.object
+        [ ( k
+          , case node of
+                Root a -> PP.pretty' a
+                Ref  r -> "->" <> PP.pretty' r
+          )
+        | (k, node) <- HMS.toList m
+        ]
