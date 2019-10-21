@@ -409,6 +409,7 @@ inferScalar = \case
     Bool   _ -> Types.Boolean
     Null     -> Types.Null
 
+
 unifyTermTerm
     :: SourceSpan -> Term SourceSpan -> Term SourceSpan -> InferM ()
 unifyTermTerm _ (NameT _ WildcardName)  _                       = return ()
@@ -424,18 +425,35 @@ unifyTermTerm source lhs rhs = catching _UnboundVars
         lhsty <- inferTerm lhs
         unifyTermType source rhs lhsty)
 
+
 unifyTermType
     :: SourceSpan -> Term SourceSpan -> SourceType -> InferM ()
-unifyTermType _source (NameT _ WildcardName)  _ = return ()
+
+unifyTermType _source (NameT _ WildcardName) _ = return ()
+
 unifyTermType _source (NameT _ (LocalName α)) σ = Unify.bindTerm α σ
-unifyTermType _source term                    σ = do
+
+unifyTermType source (ArrayT _ arr) (Types.Array σ, s) =
+    for_ arr $ \t -> unifyTermType source t (σ, s)
+
+unifyTermType source (SetT _ set) (Types.Set σ, s) =
+    for_ set $ \t -> unifyTermType source t (σ, s)
+
+unifyTermType _source term σ = do
     τ <- inferTerm term
     unifyTypeType τ σ
 
+
 unifyTypeType :: SourceType -> SourceType -> InferM ()
+
+unifyTypeType (Types.Array τ, l) (Types.Array σ, r) =
+    unifyTypeType (τ, l) (σ, r)
+
 unifyTypeType (Types.Set τ, l) (Types.Set σ, r) = unifyTypeType (τ, l) (σ, r)
-unifyTypeType (Types.Any, _)   (_, _)           = return ()
-unifyTypeType (_, _)           (Types.Any, _)   = return ()
+
+unifyTypeType (Types.Any, _) (_, _)         = return ()
+unifyTypeType (_, _)         (Types.Any, _) = return ()
+
 unifyTypeType (τ, l) (σ, r)
     | τ == σ    = return ()
     | otherwise = throwError $ NoUnify Nothing (τ, l) (σ, r)

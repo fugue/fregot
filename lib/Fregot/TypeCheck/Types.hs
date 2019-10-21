@@ -47,7 +47,7 @@ data Type
     -- | 'Empty' should not actually appear in programs but is useful to have as
     -- identity element for 'Or'.
     | Empty
-    deriving (Eq)
+    deriving (Eq, Show)
 
 instance PP.Pretty PP.Sem ty => PP.Pretty PP.Sem (ObjectType ty) where
     pretty ObjectType {..} = PP.object $
