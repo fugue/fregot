@@ -29,8 +29,8 @@ import           Text.Read                 (readMaybe)
 type Suspension = (SourceSpan, Stack.StackTrace)
 
 data Breakpoint
-    = NameBreakpoint   Name
-    | SourceBreakpoint FilePath Int  -- Make sure to 'normalise' the file path!
+    = NameBreak   Bool Name
+    | SourceBreak FilePath Int  -- Make sure to 'normalise' the file path!
     deriving (Eq, Generic)
 
 instance Hashable Breakpoint
@@ -38,19 +38,22 @@ instance Hashable Breakpoint
 breakpointFromText :: Prism' T.Text Breakpoint
 breakpointFromText = prism'
     (\case
-        NameBreakpoint  n     -> nameToText n
-        SourceBreakpoint fp l -> T.pack $ fp ++ ":" ++ show l)
+        NameBreak   d n  -> (if d then "data." else "") <> nameToText n
+        SourceBreak fp l -> T.pack $ fp ++ ":" ++ show l)
     (\txt -> case T.split (== ':') txt of
-        [path, line] -> SourceBreakpoint
+        [path, line] -> SourceBreak
             <$> pure (normalise $ T.unpack path)
             <*> readMaybe (T.unpack line)
-        _ -> NameBreakpoint <$> nameFromText txt)
+        _ -> case T.stripPrefix "data." txt of
+            Nothing -> NameBreak False <$> nameFromText txt
+            Just dt -> NameBreak True  <$> nameFromText dt)
 
 -- | We can only break on fully qualified names.  If the user entered a local
 -- variable, we want to qualify it using the currently open package.
 qualifyBreakpoint :: PackageName -> Breakpoint -> Breakpoint
 qualifyBreakpoint pkg = \case
-    NameBreakpoint (LocalName v) -> NameBreakpoint (QualifiedName pkg v)
+    NameBreak True (LocalName v) -> NameBreak False (QualifiedName pkg v)
+    NameBreak _    name          -> NameBreak False name
     bpt                          -> bpt
 
 isBreakpoint :: Suspension -> HS.HashSet Breakpoint -> Bool
@@ -59,11 +62,11 @@ isBreakpoint (sourcespan, stack) bkpnts = nameBreak || sourceBreak
     nameBreak = case Stack.peek stack of
         Nothing                                -> False
         Just (Stack.RuleStackFrame name _)     ->
-            NameBreakpoint name `HS.member` bkpnts
+            NameBreak False name `HS.member` bkpnts
         Just (Stack.FunctionStackFrame name _) ->
-            NameBreakpoint name `HS.member` bkpnts
+            NameBreak False name `HS.member` bkpnts
 
     sourceBreak = fromMaybe False $ do
         let line = sourcespan ^. SourceSpan.start . SourceSpan.line
         path <- sourcespan ^? SourceSpan.sourcePointer . Sources._FileInput
-        return $ SourceBreakpoint (normalise path) line `HS.member` bkpnts
+        return $ SourceBreak (normalise path) line `HS.member` bkpnts
