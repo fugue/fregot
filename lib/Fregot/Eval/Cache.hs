@@ -13,6 +13,7 @@ module Fregot.Eval.Cache
     , Cache
     , new
     , bump
+    , disable
     , insert
     , lookup
     ) where
@@ -38,23 +39,34 @@ data Cache k v = Cache
     { _cache   :: !(IORef (C.Cache (Versioned k) v))
     , _next    :: !(IORef Version)
     , _version :: !Version
+    , _enabled :: !Bool
     }
 
 $(makeLenses ''Cache)
 
 new :: IO (Cache k v)
-new = Cache <$> IORef.newIORef (C.empty 100) <*> IORef.newIORef 1 <*> pure 0
+new = Cache
+    <$> IORef.newIORef (C.empty 100)
+    <*> IORef.newIORef 1
+    <*> pure 0
+    <*> pure True
 
 -- | Obtain a new cache version.
 bump :: Cache k v -> IO (Cache k v)
 bump c = IORef.atomicModifyIORef' (c ^. next) $ \n -> (succ n, c & version .~ n)
 
+-- | Disable the cache.  Used during debugging.
+disable :: Cache k v -> Cache k v
+disable = enabled .~ False
+
 -- | Add a new row.
 insert :: (Hashable k, Ord k) => Cache k v -> k -> v -> IO ()
+insert c _ _ | not (c ^. enabled) = pure ()
 insert c k val = IORef.atomicModifyIORef_ (c ^. cache) $
     C.insert (Versioned (c ^. version) k) val
 
 lookup :: (Hashable k, Ord k) => Cache k v -> k -> IO (Maybe v)
+lookup c _ | not (c ^. enabled) = pure Nothing
 lookup c k = IORef.atomicModifyIORef' (c ^. cache) $ \c0 ->
     case C.lookup (Versioned (c ^. version) k) c0 of
         Just (v, c1) -> (c1, Just v)
