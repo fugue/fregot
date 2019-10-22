@@ -52,9 +52,9 @@ breakpointFromText = prism'
 -- variable, we want to qualify it using the currently open package.
 qualifyBreakpoint :: PackageName -> Breakpoint -> Breakpoint
 qualifyBreakpoint pkg = \case
-    NameBreak True (LocalName v) -> NameBreak False (QualifiedName pkg v)
-    NameBreak _    name          -> NameBreak False name
-    bpt                          -> bpt
+    NameBreak _ (LocalName v) -> NameBreak False (QualifiedName pkg v)
+    NameBreak _ name          -> NameBreak False name
+    bpt                       -> bpt
 
 isBreakpoint :: Suspension -> HS.HashSet Breakpoint -> Bool
 isBreakpoint (sourcespan, stack) bkpnts = nameBreak || sourceBreak

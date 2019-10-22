@@ -38,8 +38,8 @@ module Fregot.Interpreter
     ) where
 
 import qualified Codec.Compression.GZip          as GZip
-import           Control.Lens                    (forOf_, ifor_, review, to,
-                                                  (^.), (^..), _2)
+import           Control.Lens                    (forOf_, ifor_, over, review,
+                                                  to, (^.), (^..), _2)
 import           Control.Lens.TH                 (makeLenses)
 import           Control.Monad                   (foldM, unless)
 import           Control.Monad.Identity          (Identity (..))
@@ -366,7 +366,9 @@ newResumeStep
     :: Handle -> PackageName -> Sugar.Query SourceSpan Var
     -> InterpreterM (Eval.ResumeStep Eval.Value)
 newResumeStep h pkgname query = do
-    envctx <- newEvalContext h
+    -- Disable the cache for evaluating queries in resume steps.
+    envctx <- over (Eval.ecEnvironment . Eval.cache) Cache.disable <$>
+                newEvalContext h
     pkg    <- readCompiledPackage h pkgname
 
     -- Rename expression.
