@@ -3,6 +3,7 @@ module Data.List.NonEmpty.Extended
     , singleton
     , fromList
     , catMaybes
+    , (++:)
     ) where
 
 import           Data.List.NonEmpty hiding (fromList)
@@ -17,3 +18,6 @@ fromList (x : xs) = Just (x :| xs)
 
 catMaybes :: NonEmpty (Maybe a) -> Maybe (NonEmpty a)
 catMaybes = fromList . Maybe.catMaybes . toList
+
+(++:) :: NonEmpty a -> [a] -> NonEmpty a
+(++:) (x :| xs) ys = x :| (xs ++ ys)

@@ -195,35 +195,53 @@ inferRule rule = case rule ^. ruleKind of
                 _  -> Just (idxType, valType)
         pure $ rule & ruleInfo .~ Types.GenObjectRuleType objType
 
+-- | Ad-hoc datatype for the branches in 'inferRuleDefinition'.
+data RuleDefBranch = RuleDefBranch
+    { rdbBody  :: !(Maybe (RuleBody SourceSpan))
+    , rdbIndex :: !(Maybe (Term SourceSpan))
+    , rdbValue :: !(Maybe (Term SourceSpan))
+    }
+
 -- | Infer a rule definition and return the type of the index as well as the
 -- return type.
 inferRuleDefinition
     :: RuleDefinition SourceSpan -> InferM (Maybe SourceType, SourceType)
-inferRuleDefinition rdef = do
-    valueType <- case NonEmpty.fromList (rdef ^. ruleBodies) of
-        Nothing     -> inferReturns
-        Just bodies ->
-            fmap mergeReturns $
-            traverse (\body -> isolateUnification $ do
-                inferRuleBody body
-                inferReturns)
-                bodies
-
-    -- TODO(jaspervdj): Deal with elses, values, etc.
-    pure valueType
+inferRuleDefinition rdef =
+    fmap mergeBranchReturns $
+    traverse inferBranch branches
   where
     bool = (Types.Boolean, NonEmpty.singleton (rdef ^. ruleDefAnn))
 
-    inferReturns :: InferM (Maybe SourceType, SourceType)
-    inferReturns = do
-        valTy   <- maybe (pure bool) inferTerm (rdef ^. ruleValue)
-        indexTy <- traverse inferTerm (rdef ^. ruleIndex)
+    -- This constructs a list of ALL rule bodies (normal as well as 'else' and
+    -- their respective return values).
+    branches :: NonEmpty RuleDefBranch
+    branches = case NonEmpty.fromList (rdef ^. ruleBodies) of
+        Nothing -> NonEmpty.singleton $
+            RuleDefBranch Nothing (rdef ^. ruleIndex) (rdef ^. ruleValue)
+        Just bodies ->
+            (do
+                body <- bodies
+                pure $ RuleDefBranch
+                    (Just body) (rdef ^. ruleIndex) (rdef ^. ruleValue))
+            NonEmpty.++:
+            (do
+                els <- rdef ^. ruleElses
+                pure $ RuleDefBranch (Just (els ^. ruleElseBody))
+                    (rdef ^. ruleIndex) (els ^. ruleElseValue))
+
+    -- Infer a single branch.
+    inferBranch :: RuleDefBranch -> InferM (Maybe SourceType, SourceType)
+    inferBranch rdb = isolateUnification $ do
+        for_ (rdbBody rdb) inferRuleBody
+        valTy   <- maybe (pure bool) inferTerm (rdbValue rdb)
+        indexTy <- traverse inferTerm (rdbIndex rdb)
         return (indexTy, valTy)
 
-    mergeReturns
+    -- Merge branches.
+    mergeBranchReturns
         :: NonEmpty (Maybe SourceType, SourceType)
         -> (Maybe SourceType, SourceType)
-    mergeReturns rets =
+    mergeBranchReturns rets =
         bimap (fmap mergeSourceTypes . NonEmpty.catMaybes) mergeSourceTypes $
         NonEmpty.unzip rets
 
