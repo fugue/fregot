@@ -262,7 +262,9 @@ inferLiteral
     :: Literal SourceSpan -> InferM ()
 inferLiteral lit = do
     -- TODO(jaspervdj): Can the with parts decide what e.g. `input` looks like?
-    -- It sounds possible...
+    -- It sounds possible...  However, it requires to also check the rules we
+    -- call using this 'with' in an "inlined" manner, just like we currently do
+    -- functions.
     forOf_ (literalWith . traverse . withAs) lit
         (isolateUnification . inferTerm)
 
