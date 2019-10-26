@@ -423,12 +423,7 @@ inferTerm (RefT source lhs rhs) = do
         (Types.Empty,   _) -> throwError $ CannotRef source lhsTy
 
 inferScalar :: Scalar -> Type
-inferScalar = \case
-    String _ -> Types.String
-    Number _ -> Types.Number
-    Bool   _ -> Types.Boolean
-    Null     -> Types.Null
-
+inferScalar = Types.scalarType
 
 unifyTermTerm
     :: SourceSpan -> Term SourceSpan -> Term SourceSpan -> InferM ()

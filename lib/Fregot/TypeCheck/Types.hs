@@ -9,6 +9,7 @@ module Fregot.TypeCheck.Types
     ( ObjectType (..), otStatic, otDynamic
     , Type (..)
     , mergeTypes
+    , intersectType
 
     , RuleType (..), _CompleteRuleType, _GenSetRuleType, _GenObjectRuleType
     , _FunctionType
@@ -17,12 +18,14 @@ module Fregot.TypeCheck.Types
       -- Utilities
     , objectOf
     , collectionOf
+    , scalarType
     ) where
 
 import           Control.Lens        ((&), (.~), (^.))
 import           Control.Lens.TH     (makeLenses, makePrisms)
+import           Control.Monad       (guard)
 import qualified Data.HashMap.Strict as HMS
-import           Data.Maybe          (maybeToList)
+import           Data.Maybe          (isNothing, maybeToList)
 import qualified Fregot.Prepare.Ast  as Ast
 import           Fregot.PrettyPrint  ((<+>))
 import qualified Fregot.PrettyPrint  as PP
@@ -71,16 +74,16 @@ instance PP.Pretty PP.Sem Type where
       where
         ho t a = PP.keyword t <> PP.punctuation "<" <> a <> PP.punctuation ">"
 
-data MergeType
-    = MergeAny
-    | MergeOr
-        { moArray   :: Maybe MergeType
-        , moSet     :: Maybe MergeType
-        , moObject  :: Maybe (ObjectType MergeType)
-        , moNumber  :: Bool
-        , moString  :: Bool
-        , moBoolean :: Bool
-        , moNull    :: Bool
+data Reify
+    = RAny
+    | RUnion
+        { ruArray   :: Maybe Reify
+        , ruSet     :: Maybe Reify
+        , ruObject  :: Maybe (ObjectType Reify)
+        , ruNumber  :: Bool
+        , ruString  :: Bool
+        , ruBoolean :: Bool
+        , ruNull    :: Bool
         }
     deriving (Show)
 
@@ -92,51 +95,122 @@ instance Semigroup ty => Semigroup (ObjectType ty) where
 instance Semigroup ty => Monoid (ObjectType ty) where
     mempty = ObjectType HMS.empty Nothing
 
-instance Semigroup MergeType where
-    MergeAny       <> _              = MergeAny
-    _              <> MergeAny       = MergeAny
-    l@(MergeOr {}) <> r@(MergeOr {}) = MergeOr
-        { moArray   = moArray   l <> moArray   r
-        , moSet     = moSet     l <> moSet     r
-        , moObject  = moObject  l <> moObject  r
-        , moNumber  = moNumber  l || moNumber  r
-        , moString  = moString  l || moString  r
-        , moBoolean = moBoolean l || moBoolean r
-        , moNull    = moNull    l || moNull    r
+instance Semigroup Reify where
+    RAny          <> _             = RAny
+    _             <> RAny          = RAny
+    l@(RUnion {}) <> r@(RUnion {}) = RUnion
+        { ruArray   = ruArray   l <> ruArray   r
+        , ruSet     = ruSet     l <> ruSet     r
+        , ruObject  = ruObject  l <> ruObject  r
+        , ruNumber  = ruNumber  l || ruNumber  r
+        , ruString  = ruString  l || ruString  r
+        , ruBoolean = ruBoolean l || ruBoolean r
+        , ruNull    = ruNull    l || ruNull    r
         }
 
-instance Monoid MergeType where
-    mempty = MergeOr Nothing Nothing Nothing False False False False
+instance Monoid Reify where
+    mempty = RUnion Nothing Nothing Nothing False False False False
 
-toMergeType :: Type -> MergeType
-toMergeType Any        = MergeAny
-toMergeType (Or x y)   = toMergeType x <> toMergeType y
-toMergeType (Array x)  = mempty {moArray   = Just (toMergeType x)}
-toMergeType (Set x)    = mempty {moSet     = Just (toMergeType x)}
-toMergeType (Object o) = mempty {moObject  = Just (fmap toMergeType o)}
-toMergeType Number     = mempty {moNumber  = True}
-toMergeType String     = mempty {moString  = True}
-toMergeType Boolean    = mempty {moBoolean = True}
-toMergeType Null       = mempty {moNull    = True}
-toMergeType Empty      = mempty
+reify :: Type -> Reify
+reify Any        = RAny
+reify (Or x y)   = reify x <> reify y
+reify (Array x)  = mempty {ruArray   = Just (reify x)}
+reify (Set x)    = mempty {ruSet     = Just (reify x)}
+reify (Object o) = mempty {ruObject  = Just (fmap reify o)}
+reify Number     = mempty {ruNumber  = True}
+reify String     = mempty {ruString  = True}
+reify Boolean    = mempty {ruBoolean = True}
+reify Null       = mempty {ruNull    = True}
+reify Empty      = mempty
 
-fromMergeType :: MergeType -> Type
-fromMergeType MergeAny     = Any
-fromMergeType MergeOr {..} =
+abstract :: Reify -> Type
+abstract RAny        = Any
+abstract RUnion {..} =
     let list =
-            [Array x  | x <- maybeToList $ fromMergeType <$> moArray] ++
-            [Set x    | x <- maybeToList $ fromMergeType <$> moSet] ++
-            [Object o | o <- maybeToList $ fmap fromMergeType <$> moObject] ++
-            [Number   | moNumber]  ++
-            [String   | moString]  ++
-            [Boolean  | moBoolean] ++
-            [Null     | moNull] in
+            [Array x  | x <- maybeToList $ abstract <$> ruArray] ++
+            [Set x    | x <- maybeToList $ abstract <$> ruSet] ++
+            [Object o | o <- maybeToList $ fmap abstract <$> ruObject] ++
+            [Number   | ruNumber]  ++
+            [String   | ruString]  ++
+            [Boolean  | ruBoolean] ++
+            [Null     | ruNull] in
     case list of
         []       -> Empty
         (x : xs) -> foldr Or x xs
 
+empty :: Reify -> Bool
+empty RAny        = False
+empty RUnion {..} =
+    isNothing ruArray  &&
+    isNothing ruSet    &&
+    isNothing ruObject &&
+    not ruNumber       &&
+    not ruString       &&
+    not ruBoolean      &&
+    not ruNull
+
+emptyObject :: ObjectType Reify -> Bool
+emptyObject obj = HMS.null (obj ^. otStatic) && isNothing (obj ^. otDynamic)
+
+intersection :: Reify -> Reify -> Reify
+intersection RAny          y             = y
+intersection x             RAny          = x
+intersection l@(RUnion {}) r@(RUnion {}) = RUnion
+    { ruArray   = do
+        array <- intersection <$> ruArray  l <*> ruArray  r
+        guard $ not $ empty array
+        pure array
+    , ruSet     = do
+        set <- intersection <$> ruSet l <*> ruSet r
+        guard $ not $ empty set
+        pure set
+    , ruObject  = do
+        obj <- intersectObjects <$> ruObject l <*> ruObject r
+        guard $ not $ emptyObject obj
+        pure obj
+    , ruNumber  = ruNumber  l && ruNumber  r
+    , ruString  = ruString  l && ruString  r
+    , ruBoolean = ruBoolean l && ruBoolean r
+    , ruNull    = ruNull    l && ruNull    r
+    }
+
+intersectObjects :: ObjectType Reify -> ObjectType Reify -> ObjectType Reify
+intersectObjects l r = ObjectType
+    { _otStatic = HMS.filter (not . empty) $
+        (HMS.intersectionWith intersection (l ^. otStatic) (r ^. otStatic)) <.>
+        ((l ^. otStatic) `diffStaticDynamic` (r ^. otDynamic)) <.>
+        ((r ^. otStatic) `diffStaticDynamic` (l ^. otDynamic))
+    , _otDynamic = do
+        (lk, lv) <- l ^. otDynamic
+        (rk, rv) <- r ^. otDynamic
+        let k = intersection lk rk
+            v = intersection lv rv
+        guard $ not $ empty k
+        guard $ not $ empty v
+        pure (k, v)
+    }
+  where
+    (<.>) = HMS.unionWith (<>)
+
+    diffStaticDynamic _      Nothing             = HMS.empty
+    diffStaticDynamic static (Just (dynk, dynv)) = HMS.mapMaybeWithKey
+        (\statk statv -> do
+            guard $ containsScalarType statk dynk
+            pure $ intersection statv dynv)
+        static
+
+    containsScalarType :: Ast.Scalar -> Reify -> Bool
+    containsScalarType (Ast.String _) = ruString
+    containsScalarType (Ast.Number _) = ruNumber
+    containsScalarType (Ast.Bool _)   = ruBoolean
+    containsScalarType Ast.Null       = ruNull
+
+
 mergeTypes :: [Type] -> Type
-mergeTypes = fromMergeType . foldMap toMergeType
+mergeTypes = abstract . foldMap reify
+
+intersectType :: Type -> Type -> Type
+intersectType x y = abstract $ intersection (reify x) (reify y)
 
 data RuleType
     = CompleteRuleType Type
@@ -161,3 +235,10 @@ objectOf k v = Object (ObjectType HMS.empty (Just (k, v)))
 
 collectionOf :: Type -> Type
 collectionOf x = Array x `Or` Set x `Or` objectOf Any x
+
+scalarType :: Ast.Scalar -> Type
+scalarType = \case
+    Ast.String _ -> String
+    Ast.Number _ -> Number
+    Ast.Bool   _ -> Boolean
+    Ast.Null     -> Null

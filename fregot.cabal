@@ -183,6 +183,7 @@ Test-suite fregot-tests
     Fregot.Prepare.Dsl
     Fregot.Prepare.Lens.Tests
     Fregot.Prepare.Vars.Tests
+    Fregot.TypeCheck.Types.Tests
     System.Console.Haskeline.Tests
     Test.Tasty.Extended
 
