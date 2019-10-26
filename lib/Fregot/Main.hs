@@ -6,6 +6,7 @@ import           Data.Version                 (showVersion)
 import qualified Fregot.Main.Bundle           as Main.Bundle
 import qualified Fregot.Main.Eval             as Main.Eval
 import           Fregot.Main.GlobalOptions
+import qualified Fregot.Main.Lsp              as Main.Lsp
 import qualified Fregot.Main.Repl             as Main.Repl
 import qualified Fregot.Main.Test             as Main.Test
 import           Fregot.Version               (version)
@@ -13,10 +14,11 @@ import qualified Options.Applicative.Extended as OA
 import           System.Exit                  (exitWith)
 
 data Command
-    = Test Main.Test.Options
-    | Repl Main.Repl.Options
+    = Test   Main.Test.Options
+    | Repl   Main.Repl.Options
     | Bundle Main.Bundle.Options
-    | Eval Main.Eval.Options
+    | Eval   Main.Eval.Options
+    | Lsp    ()
     deriving (Show)
 
 type Options = (GlobalOptions, Command)
@@ -27,6 +29,7 @@ parseCommand = OA.subparser $ mconcat
     , cmd "test"   Test   Main.Test.parseOptions   "Run tests in .rego files"
     , cmd "bundle" Bundle Main.Bundle.parseOptions "Bundle .rego files"
     , cmd "eval"   Eval   Main.Eval.parseOptions   "Evaluate a rego expression"
+    , cmd "lsp"    Lsp    (pure ())                "Start the LSP server"
     ]
   where
     cmd name con p descr =
@@ -46,7 +49,8 @@ main :: IO ()
 main = do
     (goptions, cmd) <- OA.customExecParser parseOptionsPrefs parseOptionsInfo
     exitWith =<< case cmd of
-        Repl   o -> Main.Repl.main   goptions o
-        Test   o -> Main.Test.main   goptions o
-        Bundle o -> Main.Bundle.main goptions o
-        Eval   o -> Main.Eval.main   goptions o
+        Repl   o  -> Main.Repl.main   goptions o
+        Test   o  -> Main.Test.main   goptions o
+        Bundle o  -> Main.Bundle.main goptions o
+        Eval   o  -> Main.Eval.main   goptions o
+        Lsp    () -> Main.Lsp.main
