@@ -1,0 +1,18 @@
+{
+   "resource_changes": [
+      {
+         "change": {
+            "after": {
+               "ami": "ami-04b762b4289fba92b"
+               }
+         }
+      },
+      {
+         "change": {
+            "after": {
+               "ami": "ami-0b69ea66ff7391e80"
+               }
+         }
+      }
+   ]
+} 
