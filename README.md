@@ -307,7 +307,50 @@ You'll see output like this:
 
 See [Step 1: Set breakpoint](#step-1-set-breakpoint) for more info.
 
+#### Evaluating local variables
+
+Once you've activated a breakpoint and are in debugging mode, you can evaluate queries in the current context -- including printing and evaluating local variables.
+
+For example, if you look at [break_example.rego](./examples/break_example/break_example.rego), you'll see that `function_a` has the local variable `a`:
+
+    function_a {
+      a = "Welcome to function a!"
+      true
+    }
+
+If you load the Rego file and try to evaluate `a` without setting a breakpoint first, you'll get an error message that the variable is not in scope:
+
+    fregot.examples.break_example% a
+
+    fregot (compile error):
+      "a" (line 1, column 1):
+      unknown variable:
+
+        1| a
+           ^
+
+      Undefined variable: a
+
+However, if you set a breakpoint at `function_a`, activate it, and [:step](#step) into it, you can see the value of `a`:
+
+    fregot.examples.break_example% :break function_a
+
+    fregot.examples.break_example% function_a
+
+    4|   a = "Welcome to function a!"
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+    fregot.examples.break_example(debug)% :step
+
+    5|   true
+         ^^^^
+
+    fregot.examples.break_example(debug)% a
+    = "Welcome to function a!"
+
 ### :help
+
+**Shortcut** `:h`
 
 `:help` displays help text for the REPL. See [REPL](#repl) for more information.
 
@@ -331,6 +374,8 @@ Two things to note:
 
 ### :load
 
+**Shortcut** `:l`
+
 `:load [PATH]` loads a Rego file. For example:
 
     repl% :load examples/ami_id/ami_id.rego
@@ -351,6 +396,8 @@ _Note: If you change the Rego file after you've loaded it, you'll need to [:relo
 
 ### :open
 
+**Shortcut** `:o`
+
 By default, you start in the `repl` package when you run `fregot repl`. `:open` opens a different package. For example, you can switch to `fregot.examples.ami_id` like so:
 
     repl% :open fregot.examples.ami_id
@@ -365,6 +412,8 @@ For more information, see [The open package](#the-open-package).
 
 ### :quit
 
+**Shortcut** `:q`
+
 `:quit` exits debugging mode if you're in debugging mode, and exits the REPL if you're not:
 
     repl(debug)% :quit
@@ -372,6 +421,8 @@ For more information, see [The open package](#the-open-package).
     repl% :quit
 
 ### :reload
+
+**Shortcut** `:r`
 
 `:reload` reloads the file from the last `:load`. If you make changes to the loaded file, you'll need to `:reload` it to update it in the REPL.
 
@@ -389,7 +440,7 @@ You'll see output like this:
 
 The REPL displays the code at the next breakpoint, along with the line number.
 
-In the following example, we set a breakpoint at `test_step` (see [breakpoint_example.rego](./examples/breakpoint_example/breakpoint_example.rego), activate the breakpoint, then use the `:continue` command:
+In the following example, we set a breakpoint at `test_step` (see [break_example.rego](./examples/break_example/break_example.rego), activate the breakpoint, then use the `:continue` command:
 
     fregot.examples.break_example% :break test_step
     fregot.examples.break_example% test_step
@@ -402,6 +453,8 @@ In the following example, we set a breakpoint at `test_step` (see [breakpoint_ex
 If there are no more breakpoints, you'll see the output `(debug) finished`.
 
 ### :step
+
+**Shortcut** `:s`
 
 `:step` steps _into_ the next rule in the debugged program:
 
@@ -424,6 +477,8 @@ In the following example, we activate the breakpoint `test_step`, then use the `
 If there are no more queries, you'll see the output `(debug) finished`.
 
 ### :next
+
+**Shortcut** `:n`
 
 `:next` steps _over_ the next rule in the debugged program:
 
@@ -459,6 +514,8 @@ In the following example, we `:step` into `function_a`, `:step` into the next qu
          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 ### :test
+
+**Shortcut** `:t`
 
 `:test` runs tests in the current package. This is similar to the `fregot test` command, but is scoped to a package rather than recursive directories. For example, 
 
