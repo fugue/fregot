@@ -80,7 +80,7 @@ import           Fregot.Prepare.Ast
 import           Fregot.PrettyPrint        ((<$$>))
 import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources.SourceSpan (SourceSpan)
-import           Fregot.TypeCheck.Types    (RuleType)
+import           Fregot.Types.Internal     (RuleType)
 
 data Context = Context
     { _unification :: !(Unification InstVar Value)

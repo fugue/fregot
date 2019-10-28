@@ -5,7 +5,7 @@
 {-# LANGUAGE PolyKinds      #-}
 {-# LANGUAGE Rank2Types     #-}
 {-# LANGUAGE TypeOperators  #-}
-module Fregot.TypeCheck.Builtins
+module Fregot.Types.Builtins
     ( InTypes (..)
     , BuiltinChecker (..)
     , BuiltinType
@@ -13,8 +13,8 @@ module Fregot.TypeCheck.Builtins
     , (.->.)
     ) where
 
-import qualified Fregot.PrettyPrint     as PP
-import           Fregot.TypeCheck.Types
+import qualified Fregot.PrettyPrint    as PP
+import           Fregot.Types.Internal
 
 data InTypes (i :: [t]) where
     Nil  :: InTypes '[]

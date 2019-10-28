@@ -5,7 +5,7 @@
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE RecordWildCards       #-}
 {-# LANGUAGE TemplateHaskell       #-}
-module Fregot.TypeCheck.Types
+module Fregot.Types.Internal
     ( ObjectType (..), otStatic, otDynamic
     , Type (..)
     , mergeTypes

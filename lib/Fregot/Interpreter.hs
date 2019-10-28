@@ -85,7 +85,7 @@ import           Fregot.Sources                  (SourcePointer)
 import qualified Fregot.Sources                  as Sources
 import           Fregot.Sources.SourceSpan       (SourceSpan)
 import qualified Fregot.Sugar                    as Sugar
-import qualified Fregot.TypeCheck.Types          as Types
+import qualified Fregot.Types.Internal           as Types
 import           System.FilePath.Extended        (listExtensions)
 
 type InterpreterM a = ParachuteT Error IO a

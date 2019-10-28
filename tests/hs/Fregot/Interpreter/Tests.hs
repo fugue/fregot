@@ -4,22 +4,22 @@ module Fregot.Interpreter.Tests
     ( tests
     ) where
 
-import           Control.Lens              (review, view)
-import           Control.Monad.Identity    (Identity)
-import           Control.Monad.Parachute   (runParachuteT)
-import qualified Fregot.Eval               as Eval
-import qualified Fregot.Eval.Builtins      as B
-import qualified Fregot.Eval.Number        as Number
-import qualified Fregot.Eval.Value         as Eval
-import qualified Fregot.Interpreter        as Interpreter
-import           Fregot.Names              (Name (..))
-import qualified Fregot.Repl.Parse         as Repl
-import qualified Fregot.Sources            as Sources
-import qualified Fregot.TypeCheck.Builtins as Types
-import qualified Fregot.TypeCheck.Types    as Types
-import qualified Test.Tasty                as Tasty
-import           Test.Tasty.HUnit          ((@?=))
-import qualified Test.Tasty.HUnit          as Tasty
+import           Control.Lens            (review, view)
+import           Control.Monad.Identity  (Identity)
+import           Control.Monad.Parachute (runParachuteT)
+import qualified Fregot.Eval             as Eval
+import qualified Fregot.Eval.Builtins    as B
+import qualified Fregot.Eval.Number      as Number
+import qualified Fregot.Eval.Value       as Eval
+import qualified Fregot.Interpreter      as Interpreter
+import           Fregot.Names            (Name (..))
+import qualified Fregot.Repl.Parse       as Repl
+import qualified Fregot.Sources          as Sources
+import qualified Fregot.Types.Builtins   as Types
+import qualified Fregot.Types.Internal   as Types
+import qualified Test.Tasty              as Tasty
+import           Test.Tasty.HUnit        ((@?=))
+import qualified Test.Tasty.HUnit        as Tasty
 
 tests :: Tasty.TestTree
 tests = Tasty.testGroup "Fregot.Interpreter.Tests"

@@ -46,8 +46,8 @@ import           Fregot.Prepare.Vars          (Arities, Safe (..), ovRuleBody,
 import           Fregot.PrettyPrint           ((<$$>), (<+>))
 import qualified Fregot.PrettyPrint           as PP
 import           Fregot.Sources.SourceSpan    (SourceSpan)
-import qualified Fregot.TypeCheck.Infer       as Infer
-import           Fregot.TypeCheck.Types
+import qualified Fregot.Types.Infer           as Infer
+import           Fregot.Types.Internal
 import           Prelude                      hiding (head, lookup)
 
 type CompiledPackage = Package RuleType

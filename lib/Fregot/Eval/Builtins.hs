@@ -57,9 +57,9 @@ import qualified Fregot.Eval.Number           as Number
 import           Fregot.Eval.Value
 import           Fregot.Names
 import           Fregot.Prepare.Ast           (BinOp (..), Function (..))
-import           Fregot.TypeCheck.Builtins    ((.->.))
-import qualified Fregot.TypeCheck.Builtins    as Ty
-import qualified Fregot.TypeCheck.Types       as Ty
+import           Fregot.Types.Builtins        ((.->.))
+import qualified Fregot.Types.Builtins        as Ty
+import qualified Fregot.Types.Internal        as Ty
 import           Numeric                      (showIntAtBase)
 import qualified Text.Pcre2                   as Pcre2
 import qualified Text.Printf.Extended         as Printf

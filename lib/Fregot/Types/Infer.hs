@@ -11,7 +11,7 @@
 {-# LANGUAGE TemplateHaskell       #-}
 {-# LANGUAGE TupleSections         #-}
 {-# LANGUAGE TypeSynonymInstances  #-}
-module Fregot.TypeCheck.Infer
+module Fregot.Types.Infer
     ( TypeError (..)
     , SourceType
 
@@ -56,9 +56,9 @@ import qualified Fregot.Prepare.Package        as Package
 import           Fregot.PrettyPrint            ((<+>), (<+>?))
 import qualified Fregot.PrettyPrint            as PP
 import           Fregot.Sources.SourceSpan     (SourceSpan)
-import qualified Fregot.TypeCheck.Builtins     as B
-import           Fregot.TypeCheck.Types        (RuleType (..), Type)
-import qualified Fregot.TypeCheck.Types        as Types
+import qualified Fregot.Types.Builtins         as B
+import           Fregot.Types.Internal         (RuleType (..), Type)
+import qualified Fregot.Types.Internal         as Types
 
 type SourceType = (Type, NonEmpty SourceSpan)
 

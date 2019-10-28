@@ -70,9 +70,9 @@ Library
     Fregot.Sources.SourceSpan
     Fregot.Sugar
     Fregot.Test
-    Fregot.TypeCheck.Builtins
-    Fregot.TypeCheck.Infer
-    Fregot.TypeCheck.Types
+    Fregot.Types.Builtins
+    Fregot.Types.Infer
+    Fregot.Types.Internal
     Fregot.Version
 
     Control.Monad.Parachute
@@ -183,7 +183,7 @@ Test-suite fregot-tests
     Fregot.Prepare.Dsl
     Fregot.Prepare.Lens.Tests
     Fregot.Prepare.Vars.Tests
-    Fregot.TypeCheck.Types.Tests
+    Fregot.Types.Internal.Tests
     System.Console.Haskeline.Tests
     Test.Tasty.Extended
 

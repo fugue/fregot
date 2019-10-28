@@ -1,15 +1,15 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Fregot.TypeCheck.Types.Tests
+module Fregot.Types.Internal.Tests
     ( tests
     ) where
 
-import qualified Data.HashMap.Strict    as HMS
-import qualified Fregot.Prepare.Ast     as Ast
-import           Fregot.TypeCheck.Types
-import qualified Test.Tasty.Extended    as Tasty
+import qualified Data.HashMap.Strict   as HMS
+import qualified Fregot.Prepare.Ast    as Ast
+import           Fregot.Types.Internal
+import qualified Test.Tasty.Extended   as Tasty
 
 tests :: Tasty.TestTree
-tests = Tasty.testGroup "Fregot.TypeCheck.Types.Tests"
+tests = Tasty.testGroup "Fregot.Types.Internal.Tests"
     [ Tasty.simpleTestGroup
         "intersectType"
         (uncurry intersectType)
