@@ -11,10 +11,6 @@ module Fregot.Types.Internal
     , mergeTypes
     , intersectType
 
-    , RuleType (..), _CompleteRuleType, _GenSetRuleType, _GenObjectRuleType
-    , _FunctionType
-    , ruleTypeToType
-
       -- Utilities
     , objectOf
     , collectionOf
@@ -211,24 +207,6 @@ mergeTypes = abstract . foldMap reify
 
 intersectType :: Type -> Type -> Type
 intersectType x y = abstract $ intersection (reify x) (reify y)
-
-data RuleType
-    = CompleteRuleType Type
-    | GenSetRuleType Type
-    | GenObjectRuleType (ObjectType Type)
-    | FunctionType  Int  -- TODO(jaspervdj)
-
-instance PP.Pretty PP.Sem RuleType where
-    pretty = PP.pretty . ruleTypeToType
-
--- | Converts a rule type to a normal type.
-ruleTypeToType :: RuleType -> Type
-ruleTypeToType (CompleteRuleType ty)   = ty
-ruleTypeToType (GenSetRuleType ty)     = Set ty
-ruleTypeToType (GenObjectRuleType oty) = Object oty
-ruleTypeToType (FunctionType _)        = error "ruleTypeToType (FunctionType _)"
-
-$(makePrisms ''RuleType)
 
 objectOf :: Type -> Type -> Type
 objectOf k v = Object (ObjectType HMS.empty (Just (k, v)))

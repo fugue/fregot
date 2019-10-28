@@ -57,8 +57,10 @@ import           Fregot.PrettyPrint            ((<+>), (<+>?))
 import qualified Fregot.PrettyPrint            as PP
 import           Fregot.Sources.SourceSpan     (SourceSpan)
 import qualified Fregot.Types.Builtins         as B
-import           Fregot.Types.Internal         (RuleType (..), Type)
+import           Fregot.Types.Internal         (Type)
 import qualified Fregot.Types.Internal         as Types
+import           Fregot.Types.Rule             (RuleType (..))
+import qualified Fregot.Types.Rule             as Types
 
 type SourceType = (Type, NonEmpty SourceSpan)
 

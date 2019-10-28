@@ -73,6 +73,7 @@ Library
     Fregot.Types.Builtins
     Fregot.Types.Infer
     Fregot.Types.Internal
+    Fregot.Types.Rule
     Fregot.Version
 
     Control.Monad.Parachute

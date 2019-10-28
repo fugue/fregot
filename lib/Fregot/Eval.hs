@@ -56,7 +56,7 @@ import           Fregot.Prepare.Lens
 import           Fregot.PrettyPrint        ((<$$>), (<+>))
 import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources.SourceSpan (SourceSpan)
-import           Fregot.Types.Internal     (RuleType (..))
+import           Fregot.Types.Rule         (RuleType (..))
 
 ground :: SourceSpan -> Value -> EvalM Value
 ground source val = case val of

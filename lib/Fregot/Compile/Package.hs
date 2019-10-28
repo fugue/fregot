@@ -47,7 +47,7 @@ import           Fregot.PrettyPrint           ((<$$>), (<+>))
 import qualified Fregot.PrettyPrint           as PP
 import           Fregot.Sources.SourceSpan    (SourceSpan)
 import qualified Fregot.Types.Infer           as Infer
-import           Fregot.Types.Internal
+import           Fregot.Types.Rule            (RuleType)
 import           Prelude                      hiding (head, lookup)
 
 type CompiledPackage = Package RuleType
