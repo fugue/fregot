@@ -391,13 +391,17 @@ metaCommands =
                 return True
 
     , MetaCommand ":open" "open a different package, e.g. `:open foo`" $
-        \h args -> case args of
-            _ | [Just pkg] <- preview packageNameFromText <$> args ->
-                -- TODO(jaspervdj): Check if exists?
-                liftIO $ IORef.writeIORef (h ^. openPackage) pkg $> True
+        \h args -> liftIO $ case map (preview dataPackageNameFromText) args of
+            [Just (_, pkg)] -> do
+                -- NOTE(jaspervdj): Rather than erroring if it doesn't exist, we
+                -- just make it clear that the user has opened a new package.
+                pkgs <- runInterpreter h Interpreter.readPackages
+                let exists = maybe False (pkg `elem`) pkgs
+                unless exists $ PP.hPutSemDoc IO.stderr $
+                    "Created new package" <+> PP.code (PP.pretty pkg)
+                IORef.writeIORef (h ^. openPackage) pkg $> True
             _ -> do
-                liftIO $ IO.hPutStrLn IO.stderr $
-                    ":open takes a package name as argument"
+                IO.hPutStrLn IO.stderr ":open takes a package name as argument"
                 return True
 
     , MetaCommand ":quit" "exit the repl" $ \h _ -> liftIO $ do
@@ -510,31 +514,26 @@ completeRules h = Hl.completeDictionary completeWhitespace $ do
 completePackages :: Handle -> Hl.CompletionFunc IO
 completePackages h = Hl.completeDictionary completeWhitespace $ do
     pkgs <- fromMaybe [] <$> runInterpreter h Interpreter.readPackages
-    return $
-        map ((<> ".") . review dataPackageNameFromString) pkgs ++
-        map ((<> ".") . review packageNameFromString) pkgs
+    return $ do
+        pkg        <- pkgs
+        dataPrefix <- [True, False]
+        pure $ review dataPackageNameFromString (dataPrefix, pkg) <> "."
 
 completePackageRules :: Handle -> Hl.CompletionFunc IO
 completePackageRules h = Hl.completeWord Nothing completeWhitespace $ \str0 -> do
     let (prefix, pkgname) =
             bimap reverse (reverse . drop 1) $
             break (== '.') (reverse str0)
-        dataPrefix = "data." `L.isPrefixOf` pkgname
-        mbPkgName = pkgname ^?
-            (if dataPrefix
-                then dataPackageNameFromString
-                else packageNameFromString)
+        mbPkgName = pkgname ^? dataPackageNameFromString
     case mbPkgName of
         Nothing      -> return []
-        Just pkg -> do
+        Just (dataPrefix, pkg) -> do
             rules <- runInterpreter h $ \i -> Interpreter.readPackageRules i pkg
             return $ do
                 rule <- fromMaybe [] rules
                 let r = varToString rule
                     text =
-                        review (if dataPrefix
-                                    then dataPackageNameFromString
-                                    else packageNameFromString) pkg <>
+                        review dataPackageNameFromString (dataPrefix, pkg) <>
                         "." <> r
                 guard $ prefix `L.isPrefixOf` r
                 return (Hl.Completion text text False)
