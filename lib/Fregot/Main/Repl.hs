@@ -10,13 +10,15 @@ import           Control.Lens              ((^.))
 import           Control.Lens.TH           (makeLenses)
 import           Control.Monad             (forM_)
 import           Control.Monad.Parachute   (runParachuteT)
+import           Control.Monad.Trans       (liftIO)
 import qualified Data.IORef                as IORef
 import qualified Fregot.Error              as Error
 import qualified Fregot.Find               as Find
 import qualified Fregot.Interpreter        as Interpreter
 import           Fregot.Main.GlobalOptions
-import qualified Fregot.Parser             as Parser
+import           Fregot.Parser             (defaultParserOptions)
 import qualified Fregot.Repl               as Repl
+import qualified Fregot.Repl.MTimes        as MTimes
 import qualified Fregot.Sources            as Sources
 import qualified Options.Applicative       as OA
 import           System.Exit               (ExitCode (..))
@@ -36,14 +38,16 @@ parseOptions = Options
 
 main :: GlobalOptions -> Options -> IO ExitCode
 main _ opts = do
-    sources <- Sources.newHandle
-    interpreter <- Interpreter.newHandle sources
-    regoPaths <- Find.findRegoFiles (opts ^. paths)
-    Repl.withHandle sources interpreter $ \repl -> do
+    sources     <- Sources.newHandle
+    mtimes      <- MTimes.newHandle
+    itpr        <- Interpreter.newHandle sources
+    regoPaths   <- Find.findRegoFiles (opts ^. paths)
+    Repl.withHandle sources mtimes itpr $ \repl -> do
         (lerrs, mbResult) <- runParachuteT $ do
-            forM_ regoPaths $ Interpreter.loadModuleOrBundle
-                interpreter Parser.defaultParserOptions
-            Interpreter.compilePackages interpreter
+            forM_ regoPaths $ \path -> do
+                liftIO $ MTimes.tickle mtimes path
+                Interpreter.loadModuleOrBundle itpr defaultParserOptions path
+            Interpreter.compilePackages itpr
         sauce <- IORef.readIORef sources
         Error.hPutErrors IO.stderr sauce Error.Text lerrs
         case mbResult of
