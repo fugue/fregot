@@ -7,13 +7,14 @@ module Fregot.Types.Rule
     ) where
 
 import           Control.Lens.TH       (makePrisms)
+import qualified Fregot.Prepare.Ast    as Ast
 import qualified Fregot.PrettyPrint    as PP
 import           Fregot.Types.Internal
 
 data RuleType
     = CompleteRuleType Type
     | GenSetRuleType Type
-    | GenObjectRuleType (ObjectType Type)
+    | GenObjectRuleType (Object Ast.Scalar Type)
     | FunctionType  Int  -- TODO(jaspervdj)
 
 instance PP.Pretty PP.Sem RuleType where
@@ -22,8 +23,8 @@ instance PP.Pretty PP.Sem RuleType where
 -- | Converts a rule type to a normal type.
 ruleTypeToType :: RuleType -> Type
 ruleTypeToType (CompleteRuleType ty)   = ty
-ruleTypeToType (GenSetRuleType ty)     = Set ty
-ruleTypeToType (GenObjectRuleType oty) = Object oty
+ruleTypeToType (GenSetRuleType ty)     = setOf ty
+ruleTypeToType (GenObjectRuleType oty) = object oty
 ruleTypeToType (FunctionType _)        = error "ruleTypeToType (FunctionType _)"
 
 $(makePrisms ''RuleType)

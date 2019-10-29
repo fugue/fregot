@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveFunctor         #-}
+{-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -6,217 +7,224 @@
 {-# LANGUAGE RecordWildCards       #-}
 {-# LANGUAGE TemplateHaskell       #-}
 module Fregot.Types.Internal
-    ( ObjectType (..), otStatic, otDynamic
+    ( Object (..)
+    , Elem (..), _String, _Number, _Boolean, _Null, _Scalar, _Object, _Array
+    , _Set
     , Type (..)
-    , mergeTypes
-    , intersectType
+    , union, (∪)
+    , unions
 
       -- Utilities
+    , singleton
+    , any
+    , boolean
+    , number
+    , string
+    , null
+    , object
     , objectOf
+    , setOf
+    , arrayOf
     , collectionOf
     , scalarType
     ) where
 
-import           Control.Lens        ((&), (.~), (^.))
-import           Control.Lens.TH     (makeLenses, makePrisms)
-import           Control.Monad       (guard)
+import           Control.Lens        (Prism', prism', review)
+import           Control.Lens.TH     (makePrisms)
+import           Data.Hashable       (Hashable)
 import qualified Data.HashMap.Strict as HMS
-import           Data.Maybe          (isNothing, maybeToList)
+import qualified Data.HashSet        as HS
+import           Data.List           (foldl', intersperse)
+import           Data.Maybe          (maybeToList)
 import qualified Fregot.Prepare.Ast  as Ast
-import           Fregot.PrettyPrint  ((<+>))
 import qualified Fregot.PrettyPrint  as PP
+import           GHC.Generics        (Generic)
+import           Prelude             hiding (any, null)
+import qualified Prelude             as Prelude
 
-data ObjectType ty = ObjectType
-    { _otStatic  :: HMS.HashMap Ast.Scalar ty
-    , _otDynamic :: Maybe (ty, ty)
-    } deriving (Eq, Functor, Show)
+data Object k ty = Obj
+    { objStatic  :: HMS.HashMap k ty
+    , objDynamic :: Maybe (ty, ty)
+    } deriving (Eq, Generic, Show)
 
-$(makeLenses ''ObjectType)
+instance (Hashable k, Hashable ty) => Hashable (Object k ty)
 
-data Type
-    = Any
-    | Or Type Type
-    | Array Type
-    | Set Type
-    | Object (ObjectType Type)
+data Elem ty
+    = String
     | Number
-    | String
     | Boolean
     | Null
-    -- | 'Empty' should not actually appear in programs but is useful to have as
-    -- identity element for 'Or'.
-    | Empty
-    deriving (Eq, Show)
+    | Scalar Ast.Scalar
+    | Object (Object Ast.Scalar ty)
+    -- | Array  (Object Int ty)
+    | Array  ty
+    | Set    ty
+    deriving (Eq, Generic, Show)
 
-instance PP.Pretty PP.Sem ty => PP.Pretty PP.Sem (ObjectType ty) where
-    pretty ObjectType {..} = PP.object $
-        [(PP.pretty' k, v) | (k, v) <- HMS.toList _otStatic] ++
-        [ (PP.pretty otDynamicKey, otDynamicValue)
-        | (otDynamicKey, otDynamicValue) <- maybeToList $ _otDynamic
+instance Hashable ty => Hashable (Elem ty)
+
+data Type
+    = Universe
+    | Union !(HS.HashSet (Elem Type))
+    deriving (Eq, Generic, Show)
+
+instance Hashable Type
+
+$(makePrisms ''Elem)
+
+
+--------------------------------------------------------------------------------
+-- Pretty printing.
+
+instance (PP.Pretty PP.Sem k, PP.Pretty PP.Sem ty) =>
+        PP.Pretty PP.Sem (Object k ty) where
+    pretty Obj {..} = PP.object $
+        [(PP.pretty' k, v) | (k, v) <- HMS.toList objStatic] ++
+        [ (PP.pretty dynKey, dynVal)
+        | (dynKey, dynVal) <- maybeToList objDynamic
         ]
 
-instance PP.Pretty PP.Sem Type where
+instance PP.Pretty PP.Sem ty => PP.Pretty PP.Sem (Elem ty) where
     pretty = \case
-        Any           -> PP.keyword "any"
-        Or x y        -> PP.pretty x <+> PP.punctuation "|" <+> PP.pretty y
-        Array x       -> ho "array" (PP.pretty x)
-        Set x         -> ho "set" (PP.pretty x)
-        Object ot     -> PP.pretty ot
         Number        -> PP.keyword "number"
         String        -> PP.keyword "string"
         Boolean       -> PP.keyword "boolean"
         Null          -> PP.keyword "null"
-        Empty         -> PP.keyword "empty"
-      where
-        ho t a = PP.keyword t <> PP.punctuation "<" <> a <> PP.punctuation ">"
+        Scalar s      -> PP.pretty s
+        Object x      -> PP.keyword "object" <> PP.pretty x
+        -- Array  x      -> PP.keyword "array" <> PP.pretty x
+        Array  x      -> PP.keyword "array" <>
+                            PP.punctuation "{" <> PP.pretty x <>
+                            PP.punctuation "}"
+        Set    x      -> PP.keyword "set" <>
+                            PP.punctuation "{" <> PP.pretty x <>
+                            PP.punctuation "}"
 
-data Reify
-    = RAny
-    | RUnion
-        { ruArray   :: Maybe Reify
-        , ruSet     :: Maybe Reify
-        , ruObject  :: Maybe (ObjectType Reify)
-        , ruNumber  :: Bool
-        , ruString  :: Bool
-        , ruBoolean :: Bool
-        , ruNull    :: Bool
-        }
-    deriving (Show)
+instance PP.Pretty PP.Sem Type where
+    pretty = \case
+        Universe              -> PP.keyword "any"
+        Union es | HS.null es -> "empty"
+        Union es              -> mconcat $
+            intersperse (PP.punctuation "|") (map PP.pretty $ HS.toList es)
 
-instance Semigroup ty => Semigroup (ObjectType ty) where
-    l <> r = mempty
-        & otStatic  .~ HMS.unionWith (<>) (l ^. otStatic) (r ^. otStatic)
-        & otDynamic .~ (l ^. otDynamic <> r ^. otDynamic)
 
-instance Semigroup ty => Monoid (ObjectType ty) where
-    mempty = ObjectType HMS.empty Nothing
+--------------------------------------------------------------------------------
 
-instance Semigroup Reify where
-    RAny          <> _             = RAny
-    _             <> RAny          = RAny
-    l@(RUnion {}) <> r@(RUnion {}) = RUnion
-        { ruArray   = ruArray   l <> ruArray   r
-        , ruSet     = ruSet     l <> ruSet     r
-        , ruObject  = ruObject  l <> ruObject  r
-        , ruNumber  = ruNumber  l || ruNumber  r
-        , ruString  = ruString  l || ruString  r
-        , ruBoolean = ruBoolean l || ruBoolean r
-        , ruNull    = ruNull    l || ruNull    r
-        }
 
-instance Monoid Reify where
-    mempty = RUnion Nothing Nothing Nothing False False False False
+scalarElem :: Ast.Scalar -> Elem ty
+scalarElem (Ast.String  _) = String
+scalarElem (Ast.Number  _) = Number
+scalarElem (Ast.Bool _)    = Boolean
+scalarElem Ast.Null        = Null
 
-reify :: Type -> Reify
-reify Any        = RAny
-reify (Or x y)   = reify x <> reify y
-reify (Array x)  = mempty {ruArray   = Just (reify x)}
-reify (Set x)    = mempty {ruSet     = Just (reify x)}
-reify (Object o) = mempty {ruObject  = Just (fmap reify o)}
-reify Number     = mempty {ruNumber  = True}
-reify String     = mempty {ruString  = True}
-reify Boolean    = mempty {ruBoolean = True}
-reify Null       = mempty {ruNull    = True}
-reify Empty      = mempty
+objectSubsetOf
+    :: (Eq k, Hashable k)
+    => (k -> ty) -> (ty -> ty -> Bool) -> Object k ty -> Object k ty -> Bool
+objectSubsetOf keyTy sub l r =
+    -- 1. All static keys in `r` must be present in the static keys of `l`.
+    (Prelude.null $ objStatic r `HMS.difference` objStatic l) &&
+    -- 2. All static keys in `l` must be either be subsets of static keys in
+    -- `r`, or be a subset of the dynamic part of `r`.
+    (all
+        (\(k, lv) -> case HMS.lookup k (objStatic r) of
+            Just rv -> lv `sub` rv
+            Nothing -> case objDynamic r of
+                Nothing         -> False
+                Just (rdk, rdv) -> keyTy k `sub` rdk && lv `sub` rdv)
+        (HMS.toList (objStatic l))) &&
+    -- 3. If `l` has a dynamic part, it must be a subset of `r`s dynamic part.
+    -- If it does not have a dynamic part, `r` should not have one either.
+    (case (objDynamic l, objDynamic r) of
+        (Nothing,       Nothing)       -> True
+        (Nothing,       Just _)        -> False
+        (Just _,        Nothing)       -> False
+        (Just (lk, lv), Just (rk, rv)) -> sub lk rk && sub lv rv)
 
-abstract :: Reify -> Type
-abstract RAny        = Any
-abstract RUnion {..} =
-    let list =
-            [Array x  | x <- maybeToList $ abstract <$> ruArray] ++
-            [Set x    | x <- maybeToList $ abstract <$> ruSet] ++
-            [Object o | o <- maybeToList $ fmap abstract <$> ruObject] ++
-            [Number   | ruNumber]  ++
-            [String   | ruString]  ++
-            [Boolean  | ruBoolean] ++
-            [Null     | ruNull] in
-    case list of
-        []       -> Empty
-        (x : xs) -> foldr Or x xs
+elemSubsetOf :: Elem Type -> Elem Type -> Bool
+elemSubsetOf x y
+    | x == y = True
+elemSubsetOf (Scalar s) y
+    | scalarElem s == y = True
+elemSubsetOf (Object x) (Object y) =
+    objectSubsetOf scalarType subsetOf x y
+elemSubsetOf (Array x) (Array y) =
+    -- objectSubsetOf (const number) subsetOf x y
+    subsetOf x y
+elemSubsetOf (Set x) (Set y) =
+    subsetOf x y
+elemSubsetOf _ _ = False
 
-empty :: Reify -> Bool
-empty RAny        = False
-empty RUnion {..} =
-    isNothing ruArray  &&
-    isNothing ruSet    &&
-    isNothing ruObject &&
-    not ruNumber       &&
-    not ruString       &&
-    not ruBoolean      &&
-    not ruNull
+subsetOf :: Type -> Type -> Bool
+subsetOf _         Universe  = True
+subsetOf Universe  (Union _) = False
+subsetOf (Union l) (Union r) = all (\e -> Prelude.any (e `elemSubsetOf`) r) l
 
-emptyObject :: ObjectType Reify -> Bool
-emptyObject obj = HMS.null (obj ^. otStatic) && isNothing (obj ^. otDynamic)
-
-intersection :: Reify -> Reify -> Reify
-intersection RAny          y             = y
-intersection x             RAny          = x
-intersection l@(RUnion {}) r@(RUnion {}) = RUnion
-    { ruArray   = do
-        array <- intersection <$> ruArray  l <*> ruArray  r
-        guard $ not $ empty array
-        pure array
-    , ruSet     = do
-        set <- intersection <$> ruSet l <*> ruSet r
-        guard $ not $ empty set
-        pure set
-    , ruObject  = do
-        obj <- intersectObjects <$> ruObject l <*> ruObject r
-        guard $ not $ emptyObject obj
-        pure obj
-    , ruNumber  = ruNumber  l && ruNumber  r
-    , ruString  = ruString  l && ruString  r
-    , ruBoolean = ruBoolean l && ruBoolean r
-    , ruNull    = ruNull    l && ruNull    r
-    }
-
-intersectObjects :: ObjectType Reify -> ObjectType Reify -> ObjectType Reify
-intersectObjects l r = ObjectType
-    { _otStatic = HMS.filter (not . empty) $
-        (HMS.intersectionWith intersection (l ^. otStatic) (r ^. otStatic)) <.>
-        ((l ^. otStatic) `diffStaticDynamic` (r ^. otDynamic)) <.>
-        ((r ^. otStatic) `diffStaticDynamic` (l ^. otDynamic))
-    , _otDynamic = do
-        (lk, lv) <- l ^. otDynamic
-        (rk, rv) <- r ^. otDynamic
-        let k = intersection lk rk
-            v = intersection lv rv
-        guard $ not $ empty k
-        guard $ not $ empty v
-        pure (k, v)
-    }
+union :: Type -> Type -> Type
+union Universe _          = Universe
+union _        Universe   = Universe
+union (Union l) (Union r) = Union $ HS.fromList $ foldl' insert (HS.toList r) l
   where
-    (<.>) = HMS.unionWith (<>)
+    insert :: [Elem Type] -> Elem Type -> [Elem Type]
+    insert = work []
 
-    diffStaticDynamic _      Nothing             = HMS.empty
-    diffStaticDynamic static (Just (dynk, dynv)) = HMS.mapMaybeWithKey
-        (\statk statv -> do
-            guard $ containsScalarType statk dynk
-            pure $ intersection statv dynv)
-        static
+    work acc []       elm = elm : acc
+    work acc (e : es) elm
+        | e `elemSubsetOf` elm = work acc es elm
+        | elm `elemSubsetOf` e = acc ++ e : es
+        | otherwise            = work (e : acc) es elm
 
-    containsScalarType :: Ast.Scalar -> Reify -> Bool
-    containsScalarType (Ast.String _) = ruString
-    containsScalarType (Ast.Number _) = ruNumber
-    containsScalarType (Ast.Bool _)   = ruBoolean
-    containsScalarType Ast.Null       = ruNull
+unions :: [Type] -> Type
+unions = foldl' union empty
+
+(∪) :: Type -> Type -> Type
+(∪) = union
 
 
-mergeTypes :: [Type] -> Type
-mergeTypes = abstract . foldMap reify
+--------------------------------------------------------------------------------
+-- | Constructing types.
 
-intersectType :: Type -> Type -> Type
-intersectType x y = abstract $ intersection (reify x) (reify y)
-
-objectOf :: Type -> Type -> Type
-objectOf k v = Object (ObjectType HMS.empty (Just (k, v)))
-
-collectionOf :: Type -> Type
-collectionOf x = Array x `Or` Set x `Or` objectOf Any x
+singleton :: Prism' Type (Elem Type)
+singleton = prism'
+    (Union . HS.singleton)
+    (\case
+        Universe  -> Nothing
+        Union set -> case HS.toList set of
+            [single] -> Just single
+            _        -> Nothing)
 
 scalarType :: Ast.Scalar -> Type
-scalarType = \case
-    Ast.String _ -> String
-    Ast.Number _ -> Number
-    Ast.Bool   _ -> Boolean
-    Ast.Null     -> Null
+scalarType = review singleton . scalarElem
+
+empty :: Type
+empty = Union HS.empty
+
+any :: Type
+any = Universe
+
+boolean :: Type
+boolean = review singleton Boolean
+
+number :: Type
+number = review singleton Number
+
+string :: Type
+string = review singleton String
+
+null :: Type
+null = review singleton Null
+
+object :: Object Ast.Scalar Type -> Type
+object = review singleton . Object
+
+objectOf :: Type -> Type -> Type
+objectOf k v = object $ Obj HMS.empty (Just (k, v))
+
+arrayOf :: Type -> Type
+-- arrayOf ty = review singleton $ Array $ Obj HMS.empty (Just (any, ty))
+arrayOf = review singleton . Array
+
+setOf :: Type -> Type
+setOf = review singleton . Set
+
+collectionOf :: Type -> Type
+collectionOf x = arrayOf x ∪ setOf x ∪ objectOf any x

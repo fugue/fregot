@@ -10,7 +10,7 @@ module Fregot.Types.Builtins
     , BuiltinChecker (..)
     , BuiltinType
     , out
-    , (.->.)
+    , (🡒)
     ) where
 
 import qualified Fregot.PrettyPrint    as PP
@@ -31,7 +31,6 @@ type BuiltinType (i :: [t]) =
 out :: Type -> BuiltinType '[]
 out t = \_ Nil -> pure t
 
-(.->.) :: Type -> BuiltinType i -> BuiltinType (a ': i)
-(.->.) expect f = \c (Cons actual t) -> bcUnify c expect actual >> f c t
-
-infixr 6 .->.
+(🡒) :: Type -> BuiltinType i -> BuiltinType (a ': i)
+(🡒) expect f = \c (Cons actual t) -> bcUnify c expect actual >> f c t
+infixr 6 🡒

@@ -24,8 +24,9 @@ module Fregot.Types.Infer
     , inferTerm
     ) where
 
-import           Control.Lens                  (forOf_, view, (&), (.~), (^.),
-                                                (^?))
+import           Control.Lens                  (forOf_, review, view, (&), (.~),
+                                                (^.), (^?), _1)
+import           Control.Lens.Extras           (is)
 import           Control.Lens.TH               (makeLenses, makePrisms)
 import           Control.Monad                 (forM, join, zipWithM_)
 import           Control.Monad.Except.Extended (catching, throwError)
@@ -116,9 +117,9 @@ fromTypeError = \case
     CannotRef source (τ, _) -> Error.mkError sub source
         "Not indexable" $
         "Cannot index the type" <+> PP.code (PP.pretty τ) <+>?
-        (case τ of
-            Types.Object _ -> Just $ "with the given key"
-            _              -> Nothing)
+        (if is (Types.singleton . Types._Object) τ
+            then Just $ "with the given key"
+            else Nothing)
 
     CannotCall source fun -> Error.mkError sub source
         "Not a function" $
@@ -179,20 +180,20 @@ inferRule rule = case rule ^. ruleKind of
     CompleteRule -> do
         rdefTypes <- forM (rule ^. ruleDefs) $ \rdef -> inferRuleDefinition rdef
         defType   <- traverse inferTerm (rule ^. ruleDefault)
-        let retType = Types.mergeTypes $ fmap fst $
+        let retType = Types.unions $ fmap fst $
                 maybeToList defType ++ map snd rdefTypes
         pure $ rule & ruleInfo .~ Types.CompleteRuleType retType
 
     GenSetRule -> do
         idxValTys <- forM (rule ^. ruleDefs) inferRuleDefinition
-        let idxType = Types.mergeTypes $ map fst $ catMaybes $ map fst idxValTys
+        let idxType = Types.unions $ map fst $ catMaybes $ map fst idxValTys
         pure $ rule & ruleInfo .~ Types.GenSetRuleType idxType
 
     GenObjectRule -> do
         (ixs, vals) <- unzip <$> forM (rule ^. ruleDefs) inferRuleDefinition
-        let idxType = Types.mergeTypes $ map fst $ catMaybes ixs
-            valType = Types.mergeTypes $ map fst vals
-            objType = Types.ObjectType HMS.empty $ case ixs of
+        let idxType = Types.unions $ map fst $ catMaybes ixs
+            valType = Types.unions $ map fst vals
+            objType = Types.Obj HMS.empty $ case ixs of
                 [] -> Nothing
                 _  -> Just (idxType, valType)
         pure $ rule & ruleInfo .~ Types.GenObjectRuleType objType
@@ -212,7 +213,7 @@ inferRuleDefinition rdef =
     fmap mergeBranchReturns $
     traverse inferBranch branches
   where
-    bool = (Types.Boolean, NonEmpty.singleton (rdef ^. ruleDefAnn))
+    bool = (Types.boolean, NonEmpty.singleton (rdef ^. ruleDefAnn))
 
     -- This constructs a list of ALL rule bodies (normal as well as 'else' and
     -- their respective return values).
@@ -250,7 +251,7 @@ inferRuleDefinition rdef =
 mergeSourceTypes :: NonEmpty SourceType -> SourceType
 mergeSourceTypes stys =
     let (tys, anns) = NonEmpty.unzip stys in
-    (Types.mergeTypes (NonEmpty.toList tys), join anns)
+    (Types.unions (NonEmpty.toList tys), join anns)
 
 inferRuleBody :: RuleBody SourceSpan -> InferM ()
 inferRuleBody body =
@@ -308,12 +309,12 @@ inferTerm (CallT source fun args) = do
             NamedFunction (BuiltinName _) -> cannotCall
 
 inferTerm (NameT source WildcardName) =
-    pure (Types.Any, NonEmpty.singleton source)
+    pure (Types.any, NonEmpty.singleton source)
 
 inferTerm (NameT source (BuiltinName _)) =
     -- TODO(jaspervdj); BuiltinName will be "data" or "input", perhaps there
     -- should be an Enum type?
-    pure (Types.Any, NonEmpty.singleton source)
+    pure (Types.any, NonEmpty.singleton source)
 
 inferTerm (NameT source (LocalName var)) = do
     mbRes <- Unify.lookup var
@@ -328,15 +329,15 @@ inferTerm (NameT source (QualifiedName pkg var)) = do
 inferTerm (ArrayT source items) = do
     tys <- traverse inferTerm items
     pure $ maybe
-        (Types.Array Types.Any, NonEmpty.singleton source)
-        (first Types.Array . mergeSourceTypes)
+        (Types.arrayOf Types.any, NonEmpty.singleton source)
+        (first Types.arrayOf . mergeSourceTypes)
         (NonEmpty.fromList tys)
 
 inferTerm (SetT source items) = do
     tys <- traverse inferTerm items
     pure $ maybe
-        (Types.Set Types.Any, NonEmpty.singleton source)
-        (first Types.Set . mergeSourceTypes)
+        (Types.setOf Types.any, NonEmpty.singleton source)
+        (first Types.setOf . mergeSourceTypes)
         (NonEmpty.fromList tys)
 
 inferTerm (ObjectT source obj) = do
@@ -351,13 +352,13 @@ inferTerm (ObjectT source obj) = do
         (scalars, dynamics) = partitionEithers scalarsOrDynamics
 
     return
-        ( Types.Object Types.ObjectType
-            { Types._otStatic  = HMS.fromList $ second fst <$> scalars
-            , Types._otDynamic = case dynamics of
+        ( review Types.singleton $ Types.Object Types.Obj
+            { Types.objStatic  = HMS.fromList $ second fst <$> scalars
+            , Types.objDynamic = case dynamics of
                 []  -> Nothing
                 _   -> Just
-                    ( Types.mergeTypes $ fst . fst <$> dynamics
-                    , Types.mergeTypes $ fst . snd <$> dynamics
+                    ( Types.unions $ fst . fst <$> dynamics
+                    , Types.unions $ fst . snd <$> dynamics
                     )
             }
         , NonEmpty.singleton source
@@ -367,13 +368,13 @@ inferTerm (ArrayCompT source headTerm body) = do
     headTy <- isolateUnification $ do
         inferRuleBody body
         inferTerm headTerm
-    pure (Types.Array (fst headTy), NonEmpty.singleton source)
+    pure (Types.arrayOf (fst headTy), NonEmpty.singleton source)
 
 inferTerm (SetCompT source headTerm body) = do
     headTy <- isolateUnification $ do
         inferRuleBody body
         inferTerm headTerm
-    pure (Types.Set (fst headTy), NonEmpty.singleton source)
+    pure (Types.setOf (fst headTy), NonEmpty.singleton source)
 
 inferTerm (ObjectCompT source keyTerm valueTerm body) = do
     (keyTy, valueTy) <- isolateUnification $ do
@@ -385,44 +386,35 @@ inferTerm (ObjectCompT source keyTerm valueTerm body) = do
 inferTerm (RefT source lhs rhs) = do
     lhsTy <- inferTerm lhs
     case lhsTy of
-        (Types.Array itemTy, _) -> do
-            unifyTermType source rhs (Types.Number, NonEmpty.singleton source)
+        (Types.Universe, _) -> do
+            unifyTermType source rhs (Types.any, NonEmpty.singleton source)
+            return (Types.any, NonEmpty.singleton source)
+
+        _ | Just itemTy <- lhsTy ^? _1 . Types.singleton . Types._Array -> do
+            unifyTermType source rhs (Types.number, NonEmpty.singleton source)
             return (itemTy, NonEmpty.singleton source)
-        (Types.Set elemTy, _) -> do
+
+        _ | Just elemTy <- lhsTy ^? _1 . Types.singleton . Types._Set -> do
             unifyTermType source rhs (elemTy, NonEmpty.singleton source)
-            return (Types.Boolean, NonEmpty.singleton source)
-        (Types.Object objTy, _)
-            -- In case the index is a scalar, and it's present in the object
-            -- type, we can return a very granular type.
-            | ScalarT _ rhsScalar <- rhs
-            , Just specific <- HMS.lookup rhsScalar (objTy ^. Types.otStatic) ->
-                return (specific, NonEmpty.singleton source)
+            return (Types.boolean, NonEmpty.singleton source)
 
-            -- Otherwise we need to look at the dynamic part.
-            | Just (dynKeyTy, dynValTy) <- objTy ^. Types.otDynamic -> do
-                unifyTermType source rhs (dynKeyTy, NonEmpty.singleton source)
-                return (dynValTy, NonEmpty.singleton source)
+        _ | Just objTy <- lhsTy ^? _1 . Types.singleton . Types._Object ->
+            case rhs of
+                -- In case the index is a scalar, and it's present in the object
+                -- type, we can return a very granular type.
+                ScalarT _ s | Just ty <- HMS.lookup s (Types.objStatic objTy) ->
+                    return (ty, NonEmpty.singleton source)
 
-            -- There is no static or dynamic part that matches, this is either
-            -- an internal error or a known empty object.
-            | otherwise -> throwError $ CannotRef source lhsTy
+                -- Otherwise we need to look at the dynamic part.
+                _ | Just (dynk, dynv) <- Types.objDynamic objTy -> do
+                    unifyTermType source rhs (dynk, NonEmpty.singleton source)
+                    return (dynv, NonEmpty.singleton source)
 
-        (Types.Any, _) -> do
-            unifyTermType source rhs (Types.Any, NonEmpty.singleton source)
-            return (Types.Any, NonEmpty.singleton source)
+                -- There is no static or dynamic part that matches, this is
+                -- either an internal error or a known empty object.
+                _ -> throwError $ CannotRef source lhsTy
 
-        (Types.Or _ _, _) ->
-            -- TODO(jaspervdj): We _can_ support this but it requires a little
-            -- effort; we need to merge all the possible types, try indexing
-            -- into the possibly present array/set/object, and then merge the
-            -- results.
-            throwError $ CannotRef source lhsTy
-
-        (Types.Null,    _) -> throwError $ CannotRef source lhsTy
-        (Types.Number,  _) -> throwError $ CannotRef source lhsTy
-        (Types.String,  _) -> throwError $ CannotRef source lhsTy
-        (Types.Boolean, _) -> throwError $ CannotRef source lhsTy
-        (Types.Empty,   _) -> throwError $ CannotRef source lhsTy
+        _ -> throwError $ CannotRef source lhsTy
 
 inferScalar :: Scalar -> Type
 inferScalar = Types.scalarType
@@ -450,10 +442,12 @@ unifyTermType _source (NameT _ WildcardName) _ = return ()
 
 unifyTermType _source (NameT _ (LocalName α)) σ = Unify.bindTerm α σ
 
-unifyTermType source (ArrayT _ arr) (Types.Array σ, s) =
+unifyTermType source (ArrayT _ arr) (τ, s)
+        | Just σ <- τ ^? Types.singleton . Types._Array =
     for_ arr $ \t -> unifyTermType source t (σ, s)
 
-unifyTermType source (SetT _ set) (Types.Set σ, s) =
+unifyTermType source (SetT _ set) (τ, s)
+        | Just σ <- τ ^? Types.singleton . Types._Set =
     for_ set $ \t -> unifyTermType source t (σ, s)
 
 unifyTermType _source term σ = do
@@ -463,13 +457,17 @@ unifyTermType _source term σ = do
 
 unifyTypeType :: SourceType -> SourceType -> InferM ()
 
-unifyTypeType (Types.Array τ, l) (Types.Array σ, r) =
-    unifyTypeType (τ, l) (σ, r)
+unifyTypeType (Types.Universe, _) (_, _)              = return ()
+unifyTypeType (_, _)              (Types.Universe, _) = return ()
 
-unifyTypeType (Types.Set τ, l) (Types.Set σ, r) = unifyTypeType (τ, l) (σ, r)
+unifyTypeType (τ, l) (σ, r)
+    | Just τ' <- τ ^? Types.singleton . Types._Array
+    , Just σ' <- σ ^? Types.singleton . Types._Array =
+        unifyTypeType (τ', l) (σ', r)
 
-unifyTypeType (Types.Any, _) (_, _)         = return ()
-unifyTypeType (_, _)         (Types.Any, _) = return ()
+    | Just τ' <- τ ^? Types.singleton . Types._Set
+    , Just σ' <- σ ^? Types.singleton . Types._Set =
+        unifyTypeType (τ', l) (σ', r)
 
 unifyTypeType (τ, l) (σ, r)
     | τ == σ    = return ()
@@ -520,7 +518,7 @@ inferUserFunction source name rule args = do
             zipWithM_ (unifyTermType source) argTerms inferredArgs
             inferRuleDefinition rdef
 
-        return $ Types.mergeTypes $ map (fst . snd) outTys
+        return $ Types.unions $ map (fst . snd) outTys
 
 inferCall
     :: SourceSpan -> Function -> Int -> [Term SourceSpan]
@@ -536,4 +534,4 @@ inferCall source name arity args check =
                 Nothing -> return (outTy, NonEmpty.singleton source)
                 Just o  -> do
                     unifyTermType source o (outTy, NonEmpty.singleton source)
-                    return (Types.Boolean, NonEmpty.singleton source)
+                    return (Types.boolean, NonEmpty.singleton source)

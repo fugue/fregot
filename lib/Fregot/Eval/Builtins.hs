@@ -57,8 +57,9 @@ import qualified Fregot.Eval.Number           as Number
 import           Fregot.Eval.Value
 import           Fregot.Names
 import           Fregot.Prepare.Ast           (BinOp (..), Function (..))
-import           Fregot.Types.Builtins        ((.->.))
+import           Fregot.Types.Builtins        ((🡒))
 import qualified Fregot.Types.Builtins        as Ty
+import           Fregot.Types.Internal        ((∪))
 import qualified Fregot.Types.Internal        as Ty
 import           Numeric                      (showIntAtBase)
 import qualified Text.Pcre2                   as Pcre2
@@ -269,7 +270,7 @@ defaultBuiltins = HMS.fromList
 builtin_all :: Monad m => Builtin m
 builtin_all = Builtin
     (In Out)
-    (Ty.collectionOf Ty.Boolean .->. Ty.out Ty.Boolean) $ pure $
+    (Ty.collectionOf Ty.boolean 🡒 Ty.out Ty.boolean) $ pure $
     \(Cons arg Nil) -> case arg of
         InL arr -> return $! all (== BoolV True) (arr :: V.Vector Value)
         InR set -> return $! all (== BoolV True) $ HS.toList set
@@ -277,7 +278,7 @@ builtin_all = Builtin
 builtin_any :: Monad m => Builtin m
 builtin_any = Builtin
     (In Out)
-    (Ty.collectionOf Ty.Boolean .->. Ty.out Ty.Boolean) $ pure $
+    (Ty.collectionOf Ty.boolean 🡒 Ty.out Ty.boolean) $ pure $
     \(Cons arg Nil) -> case arg of
         InL arr -> return $! any (== BoolV True) (arr :: V.Vector Value)
         InR set -> return $! HS.member (BoolV True) set
@@ -286,26 +287,26 @@ builtin_array_concat :: Monad m => Builtin m
 builtin_array_concat = Builtin
     (In (In Out))
     -- TODO(jaspervdj): We want `∀a b. array<a> -> array<b> -> array<a|b>`.
-    (Ty.Array Ty.Any .->. Ty.Array Ty.Any .->. Ty.out Ty.Any) $ pure $
+    (Ty.arrayOf Ty.any 🡒 Ty.arrayOf Ty.any 🡒 Ty.out Ty.any) $ pure $
     \(Cons l (Cons r Nil)) -> return (l <> r :: V.Vector Value)
 
 builtin_concat :: Monad m => Builtin m
 builtin_concat = Builtin
     (In (In Out))
-    (Ty.String .->. Ty.collectionOf Ty.String .->. Ty.out Ty.String) $ pure $
+    (Ty.string 🡒 Ty.collectionOf Ty.string 🡒 Ty.out Ty.string) $ pure $
     \(Cons delim (Cons (Collection texts) Nil)) ->
     return $! T.intercalate delim texts
 
 builtin_contains :: Monad m => Builtin m
 builtin_contains = Builtin
     (In (In Out))
-    (Ty.String .->. Ty.String .->. Ty.out Ty.Boolean) $ pure $
+    (Ty.string 🡒 Ty.string 🡒 Ty.out Ty.boolean) $ pure $
     \(Cons str (Cons search Nil)) -> return $! search `T.isInfixOf` str
 
 builtin_count :: Monad m => Builtin m
 builtin_count = Builtin
     (In Out)
-    (Ty.Or (Ty.collectionOf Ty.Any) Ty.String .->. Ty.out Ty.Number) $ pure $
+    (Ty.collectionOf Ty.any ∪ Ty.string 🡒 Ty.out Ty.number) $ pure $
     \(Cons countee Nil) -> case countee of
         InL (Collection c) -> return $! length (c :: [Value])
         InR txt            -> return $! T.length txt
@@ -313,20 +314,20 @@ builtin_count = Builtin
 builtin_endswith :: Monad m => Builtin m
 builtin_endswith = Builtin
     (In (In Out))
-    (Ty.String .->. Ty.String .->. Ty.out Ty.Boolean) $ pure $
+    (Ty.string 🡒 Ty.string 🡒 Ty.out Ty.boolean) $ pure $
     \(Cons str (Cons suffix Nil)) -> return $! suffix `T.isSuffixOf` str
 
 builtin_format_int :: Monad m => Builtin m
 builtin_format_int = Builtin
     (In (In Out))
-    (Ty.Number .->. Ty.Number .->. Ty.out Ty.String) $ pure $
+    (Ty.number 🡒 Ty.number 🡒 Ty.out Ty.string) $ pure $
     \(Cons x (Cons base Nil)) ->
     return $! T.pack $ showIntAtBase base intToDigit (x :: Int) ""
 
 builtin_indexof :: Monad m => Builtin m
 builtin_indexof = Builtin
     (In (In Out))
-    (Ty.String .->. Ty.String .->. Ty.out Ty.Number) $ pure $
+    (Ty.string 🡒 Ty.string 🡒 Ty.out Ty.number) $ pure $
     \(Cons haystack (Cons needle Nil)) ->
     let (prefix, match) = T.breakOn needle haystack in
     return $! if
@@ -338,7 +339,7 @@ builtin_intersection :: Monad m => Builtin m
 builtin_intersection = Builtin
     (In Out)
     -- TODO(jaspervdj): Maybe this should be `∀a. set<set<a>> -> set<a>`.
-    (Ty.Set (Ty.Set Ty.Any) .->. Ty.out (Ty.Set Ty.Any)) $ pure $
+    (Ty.setOf (Ty.setOf Ty.any) 🡒 Ty.out (Ty.setOf Ty.any)) $ pure $
     \(Cons set Nil) -> return $! case HS.toList (set :: (HS.HashSet (HS.HashSet Value))) of
       []   -> HS.empty
       sets -> foldr1 HS.intersection sets
@@ -346,7 +347,7 @@ builtin_intersection = Builtin
 builtin_is_array :: Monad m => Builtin m
 builtin_is_array = Builtin
     (In Out)
-    (Ty.Any .->. Ty.out Ty.Boolean) $ pure $
+    (Ty.any 🡒 Ty.out Ty.boolean) $ pure $
     \(Cons val Nil) -> case val of
         ArrayV _ -> return True
         _        -> return False
@@ -354,7 +355,7 @@ builtin_is_array = Builtin
 builtin_is_object :: Monad m => Builtin m
 builtin_is_object = Builtin
     (In Out)
-    (Ty.Any .->. Ty.out Ty.Boolean) $ pure $
+    (Ty.any 🡒 Ty.out Ty.boolean) $ pure $
     \(Cons val Nil) -> case val of
         ObjectV _ -> return True
         _         -> return False
@@ -362,7 +363,7 @@ builtin_is_object = Builtin
 builtin_is_string :: Monad m => Builtin m
 builtin_is_string = Builtin
     (In Out)
-    (Ty.Any .->. Ty.out Ty.Boolean) $ pure $
+    (Ty.any 🡒 Ty.out Ty.boolean) $ pure $
     \(Cons val Nil) -> case val of
         StringV _ -> return True
         _         -> return False
@@ -370,7 +371,7 @@ builtin_is_string = Builtin
 builtin_json_unmarshal :: Monad m => Builtin m
 builtin_json_unmarshal = Builtin
     (In Out)
-    (Ty.String .->. Ty.out Ty.Any) $ pure $
+    (Ty.string 🡒 Ty.out Ty.any) $ pure $
     \(Cons str Nil) -> case A.eitherDecodeStrict' (T.encodeUtf8 str) of
         Left  err -> throwBuiltinException err
         Right val -> return $! Json.toValue val
@@ -378,14 +379,14 @@ builtin_json_unmarshal = Builtin
 builtin_lower :: Monad m => Builtin m
 builtin_lower = Builtin
     (In Out)
-    (Ty.String .->. Ty.out Ty.String) $ pure $
+    (Ty.string 🡒 Ty.out Ty.string) $ pure $
     \(Cons str Nil) -> return $! T.toLower str
 
 builtin_max :: Monad m => Builtin m
 builtin_max = Builtin
     (In Out)
     -- TODO(jaspervdj): More like `∀a. collection<a> -> a`.
-    (Ty.collectionOf Ty.Any .->. Ty.out Ty.Any) $ pure $
+    (Ty.collectionOf Ty.any 🡒 Ty.out Ty.any) $ pure $
     \(Cons (Collection vals) Nil) -> return $! case vals of
         [] -> NullV  -- TODO(jaspervdj): Should be undefined.
         _  -> maximum (vals :: [Value])
@@ -394,7 +395,7 @@ builtin_min :: Monad m => Builtin m
 builtin_min = Builtin
     (In Out)
     -- TODO(jaspervdj): More like `∀a. collection<a> -> a`.
-    (Ty.collectionOf Ty.Any .->. Ty.out Ty.Any) $ pure $
+    (Ty.collectionOf Ty.any 🡒 Ty.out Ty.any) $ pure $
     \(Cons (Collection vals) Nil) -> return $! case vals of
         [] -> NullV  -- TODO(jaspervdj): Should be undefined.
         _  -> minimum (vals :: [Value])
@@ -402,13 +403,13 @@ builtin_min = Builtin
 builtin_product :: Monad m => Builtin m
 builtin_product = Builtin
     (In Out)
-    (Ty.collectionOf Ty.Number .->. Ty.out Ty.Number) $ pure $
+    (Ty.collectionOf Ty.number 🡒 Ty.out Ty.number) $ pure $
     \(Cons (Collection vals) Nil) -> return $! num $ product vals
 
 builtin_re_match :: Builtin IO
 builtin_re_match = Builtin
     (In (In Out))
-    (Ty.String .->. Ty.String .->. Ty.out Ty.Boolean) $ do
+    (Ty.string 🡒 Ty.string 🡒 Ty.out Ty.boolean) $ do
     cacheRef <- newIORef HMS.empty
     pure $
         \(Cons pattern (Cons value Nil)) -> do
@@ -427,7 +428,7 @@ builtin_re_match = Builtin
 builtin_replace :: Monad m => Builtin m
 builtin_replace = Builtin
     (In (In (In Out)))
-    (Ty.String .->. Ty.String .->. Ty.String .->. Ty.out Ty.String) $ pure $
+    (Ty.string 🡒 Ty.string 🡒 Ty.string 🡒 Ty.out Ty.string) $ pure $
     \(Cons str (Cons old (Cons new Nil))) -> return $! T.replace old new str
 
 utcToNs :: Time.UTCTime -> Int64
@@ -437,13 +438,13 @@ utcToNs =
 builtin_time_now_ns :: Monad m => Builtin m
 builtin_time_now_ns = Builtin
     Out
-    (Ty.out Ty.Number) $ pure $
+    (Ty.out Ty.number) $ pure $
     \Nil -> review Number.int . utcToNs <$> Time.getCurrentTime
 
 builtin_time_date :: Monad m => Builtin m
 builtin_time_date = Builtin
     (In Out)
-    (Ty.Number .->. Ty.out (Ty.Array Ty.Number)) $ pure $
+    (Ty.number 🡒 Ty.out (Ty.arrayOf Ty.number)) $ pure $
     \(Cons ns Nil) ->
     let secs      = (fromIntegral $ Number.floor ns) / 1e9
         utc       = Time.POSIX.posixSecondsToUTCTime secs
@@ -453,7 +454,7 @@ builtin_time_date = Builtin
 builtin_time_parse_rfc3339_ns :: Monad m => Builtin m
 builtin_time_parse_rfc3339_ns = Builtin
     (In Out)
-    (Ty.String .->. Ty.out Ty.Number) $ pure $
+    (Ty.string 🡒 Ty.out Ty.number) $ pure $
     \(Cons txt Nil) -> case Time.RFC3339.parseTimeRFC3339 txt of
         Just zoned -> return $! utcToNs $ Time.zonedTimeToUTC zoned
         Nothing    -> throwBuiltinException $
@@ -462,21 +463,21 @@ builtin_time_parse_rfc3339_ns = Builtin
 builtin_trim :: Monad m => Builtin m
 builtin_trim = Builtin
     (In (In Out))
-    (Ty.String .->. Ty.String .->. Ty.out Ty.String) $ pure $
+    (Ty.string 🡒 Ty.string 🡒 Ty.out Ty.string) $ pure $
     \(Cons str (Cons cutset Nil)) ->
         return $! T.dropAround (\c -> T.any (== c) cutset) str
 
 builtin_upper :: Monad m => Builtin m
 builtin_upper = Builtin
     (In Out)
-    (Ty.String .->. Ty.out Ty.String) $ pure $
+    (Ty.string 🡒 Ty.out Ty.string) $ pure $
     \(Cons str Nil) -> return $! T.toUpper str
 
 builtin_union :: Monad m => Builtin m
 builtin_union = Builtin
     (In Out)
     -- TODO(jaspervdj): Maybe this should be `∀a. set<set<a>> -> set<a>`.
-    (Ty.Set (Ty.Set Ty.Any) .->. Ty.out (Ty.Set Ty.Any)) $ pure $
+    (Ty.setOf (Ty.setOf Ty.any) 🡒 Ty.out (Ty.setOf Ty.any)) $ pure $
     \(Cons set Nil) ->
         return $! HS.unions $ HS.toList (set :: (HS.HashSet (HS.HashSet Value)))
 
@@ -484,26 +485,26 @@ builtin_union = Builtin
 builtin_set :: Monad m => Builtin m
 builtin_set = Builtin
     Out
-    (Ty.out (Ty.Set Ty.Any)) $ pure $
+    (Ty.out (Ty.setOf Ty.any)) $ pure $
     \Nil -> return $! SetV HS.empty
 
 builtin_sort :: Monad m => Builtin m
 builtin_sort = Builtin
     (In Out)
     -- TODO(jaspervdj): Something more akin to `∀a. collection<a> -> array<a>`.
-    (Ty.collectionOf Ty.Any .->. Ty.out (Ty.Array Ty.Any)) $ pure $
+    (Ty.collectionOf Ty.any 🡒 Ty.out (Ty.arrayOf Ty.any)) $ pure $
     \(Cons (Collection vals) Nil) -> return $! L.sort (vals :: [Value])
 
 builtin_split :: Monad m => Builtin m
 builtin_split = Builtin
     (In (In Out))
-    (Ty.String .->. Ty.String .->. Ty.out (Ty.Array Ty.String)) $ pure $
+    (Ty.string 🡒 Ty.string 🡒 Ty.out (Ty.arrayOf Ty.string)) $ pure $
     \(Cons str (Cons delim Nil)) -> return $! T.splitOn delim str
 
 builtin_sprintf :: Monad m => Builtin m
 builtin_sprintf = Builtin
     (In (In Out))
-    (Ty.String .->. Ty.Array Ty.Any .->. Ty.out Ty.String) $ pure $
+    (Ty.string 🡒 Ty.arrayOf Ty.any 🡒 Ty.out Ty.string) $ pure $
     \(Cons format (Cons args Nil)) -> eitherToBuiltinM $
     fmap T.pack $ Printf.sprintf (T.unpack format) $
     map Printf.Some (args :: [Value])
@@ -511,7 +512,7 @@ builtin_sprintf = Builtin
 builtin_substring :: Monad m => Builtin m
 builtin_substring = Builtin
     (In (In (In Out)))
-    (Ty.String .->. Ty.Number .->. Ty.Number .->. Ty.out Ty.String) $ pure $
+    (Ty.string 🡒 Ty.number 🡒 Ty.number 🡒 Ty.out Ty.string) $ pure $
     \(Cons str (Cons start (Cons len Nil))) ->
         return $!
         (if len < 0 then id else T.take len) $!
@@ -520,19 +521,19 @@ builtin_substring = Builtin
 builtin_sum :: Monad m => Builtin m
 builtin_sum = Builtin
     (In Out)
-    (Ty.collectionOf Ty.Number .->. Ty.out Ty.Number) $ pure $
+    (Ty.collectionOf Ty.number 🡒 Ty.out Ty.number) $ pure $
     \(Cons (Collection vals) Nil) -> return $! num $ sum vals
 
 builtin_startswith :: Monad m => Builtin m
 builtin_startswith = Builtin
     (In (In Out))
-    (Ty.String .->. Ty.String .->. Ty.out Ty.Boolean) $ pure $
+    (Ty.string 🡒 Ty.string 🡒 Ty.out Ty.boolean) $ pure $
     (\(Cons str (Cons prefix Nil)) -> return $! prefix `T.isPrefixOf` str)
 
 builtin_to_number :: Monad m => Builtin m
 builtin_to_number = Builtin
     (In Out)
-    (Ty.String .->. Ty.out Ty.Number) $ pure $
+    (Ty.string 🡒 Ty.out Ty.number) $ pure $
     \(Cons txt Nil) ->
         let str = T.unpack txt
             mbRead = (Left <$> readMaybe str) <|> (Right <$> readMaybe str) in
@@ -558,44 +559,44 @@ builtin_equal = Builtin
 builtin_not_equal :: Monad m => Builtin m
 builtin_not_equal = Builtin
   (In (In Out))
-  (Ty.Any .->. Ty.Any .->. Ty.out Ty.Boolean) $ pure $
+  (Ty.any 🡒 Ty.any 🡒 Ty.out Ty.boolean) $ pure $
   \(Cons x (Cons y Nil)) -> return $! BoolV $! x /= (y :: Value)
 
 builtin_less_than :: Monad m => Builtin m
 builtin_less_than = Builtin
   (In (In Out))
-  (Ty.Number .->. Ty.Number .->. Ty.out Ty.Boolean) $ pure $
+  (Ty.number 🡒 Ty.number 🡒 Ty.out Ty.boolean) $ pure $
   \(Cons x (Cons y Nil)) -> return $! x < num y
 
 builtin_less_than_or_equal :: Monad m => Builtin m
 builtin_less_than_or_equal = Builtin
   (In (In Out))
-  (Ty.Number .->. Ty.Number .->. Ty.out Ty.Boolean) $ pure $
+  (Ty.number 🡒 Ty.number 🡒 Ty.out Ty.boolean) $ pure $
   \(Cons x (Cons y Nil)) -> return $! x <= num y
 
 builtin_greater_than :: Monad m => Builtin m
 builtin_greater_than = Builtin
   (In (In Out))
-  (Ty.Number .->. Ty.Number .->. Ty.out Ty.Boolean) $ pure $
+  (Ty.number 🡒 Ty.number 🡒 Ty.out Ty.boolean) $ pure $
   \(Cons x (Cons y Nil)) -> return $! x > num y
 
 builtin_greater_than_or_equal :: Monad m => Builtin m
 builtin_greater_than_or_equal = Builtin
   (In (In Out))
-  (Ty.Number .->. Ty.Number .->. Ty.out Ty.Boolean) $ pure $
+  (Ty.number 🡒 Ty.number 🡒 Ty.out Ty.boolean) $ pure $
   \(Cons x (Cons y Nil)) -> return $! x >= num y
 
 builtin_plus :: Monad m => Builtin m
 builtin_plus = Builtin
   (In (In Out))
-  (Ty.Number .->. Ty.Number .->. Ty.out Ty.Number) $ pure $
+  (Ty.number 🡒 Ty.number 🡒 Ty.out Ty.number) $ pure $
   \(Cons x (Cons y Nil)) -> return $! num $ x + y
 
 builtin_minus :: Monad m => Builtin m
 builtin_minus = Builtin
   (In (In Out))
   -- TODO(jaspervdj): Add set difference
-  (Ty.Number .->. Ty.Number .->. Ty.out Ty.Number) $ pure $
+  (Ty.number 🡒 Ty.number 🡒 Ty.out Ty.number) $ pure $
   \(Cons x (Cons y Nil)) -> case (x, y) of
       (InL x', InL y') -> return $! NumberV $ num $ x' - y'
       (InR x', InR y') -> return $! SetV $ HS.difference (x' :: HS.HashSet Value) y'
@@ -605,33 +606,33 @@ builtin_minus = Builtin
 builtin_times :: Monad m => Builtin m
 builtin_times = Builtin
   (In (In Out))
-  (Ty.Number .->. Ty.Number .->. Ty.out Ty.Number) $ pure $
+  (Ty.number 🡒 Ty.number 🡒 Ty.out Ty.number) $ pure $
   \(Cons x (Cons y Nil)) -> return $! num $ x * y
 
 builtin_divide :: Monad m => Builtin m
 builtin_divide = Builtin
   (In (In Out))
-  (Ty.Number .->. Ty.Number .->. Ty.out Ty.Number) $ pure $
+  (Ty.number 🡒 Ty.number 🡒 Ty.out Ty.number) $ pure $
   \(Cons x (Cons y Nil)) -> return $! num $ x / y
 
 builtin_modulo :: Monad m => Builtin m
 builtin_modulo = Builtin
   (In (In Out))
-  (Ty.Number .->. Ty.Number .->. Ty.out Ty.Number) $ pure $
+  (Ty.number 🡒 Ty.number 🡒 Ty.out Ty.number) $ pure $
   \(Cons x (Cons y Nil)) -> return $! x `Number.mod` y
 
 builtin_bin_and :: Monad m => Builtin m
 builtin_bin_and = Builtin
   (In (In Out))
   -- TODO(jaspervdj): Maybe this should be `∀a. set<a> -> set<a> -> set<a>`.
-  (Ty.Set Ty.Any .->. Ty.Set Ty.Any .->. Ty.out (Ty.Set Ty.Any)) $ pure $
+  (Ty.setOf Ty.any 🡒 Ty.setOf Ty.any 🡒 Ty.out (Ty.setOf Ty.any)) $ pure $
   \(Cons x (Cons y Nil)) -> return $! SetV $ HS.intersection x y
 
 builtin_bin_or :: Monad m => Builtin m
 builtin_bin_or = Builtin
   (In (In Out))
   -- TODO(jaspervdj): Maybe this should be `∀a. set<a> -> set<a> -> set<a>`.
-  (Ty.Set Ty.Any .->. Ty.Set Ty.Any .->. Ty.out (Ty.Set Ty.Any)) $ pure $
+  (Ty.setOf Ty.any 🡒 Ty.setOf Ty.any 🡒 Ty.out (Ty.setOf Ty.any)) $ pure $
   \(Cons x (Cons y Nil)) -> return $! SetV $ HS.union x y
 
 -- | Auxiliary function to fix types.
