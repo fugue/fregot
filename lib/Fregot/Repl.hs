@@ -382,19 +382,6 @@ metaCommands =
                 ":input takes one path argument"
         return True
 
-    , MetaCommand ":load" "load a rego file, e.g. `:load foo.rego`" $
-        \h args -> liftIO $ case map T.unpack args of
-            [path] -> do
-                mbPkg <- load h path
-                case mbPkg of
-                    Nothing  -> pure ()
-                    Just pkg -> liftIO $ IORef.writeIORef (h ^. openPackage) pkg
-                return True
-
-            _ -> do
-                IO.hPutStrLn IO.stderr ":load takes one path argument"
-                return True
-
     , MetaCommand ":open" "open a different package, e.g. `:open foo`" $
         \h args -> liftIO $ case map (preview dataPackageNameFromText) args of
             [Just (_, pkg)] -> do
@@ -416,11 +403,33 @@ metaCommands =
             RegularMode _ -> return False
             _             -> return True
 
+    , MetaCommand ":load" "load a rego file, e.g. `:load foo.rego`" $ \h args ->
+        liftIO $ case map T.unpack args of
+        [path] -> do
+            IO.hPutStrLn IO.stderr $ "Loading " ++ path ++ "..."
+            MTimes.tickle (h ^. mtimes) path
+            void $ runInterpreter h $ \i -> do
+                pkg <- Interpreter.loadModule i Parser.defaultParserOptions path
+                Interpreter.compilePackages i
+                liftIO $ IO.hPutStrLn IO.stderr $
+                    "Loaded package " ++ review packageNameFromString pkg
+                liftIO $ IORef.writeIORef (h ^. openPackage) pkg
+            return True
+
+        _ -> do
+            IO.hPutStrLn IO.stderr ":load takes one path argument"
+            return True
+
     , MetaCommand ":reload" "reload modified rego files" $
         \h _ -> liftIO $ do
-            files <- MTimes.modified (h ^. mtimes)
-            when (null files) $ IO.hPutStrLn IO.stderr "No files modified"
-            forM_ files (load h)
+            paths <- MTimes.modified (h ^. mtimes)
+            void $ runInterpreter h $ \i -> do
+                forM_ paths $ \path -> do
+                    liftIO $ MTimes.tickle (h ^. mtimes) path
+                    Interpreter.loadModule i Parser.defaultParserOptions path
+                Interpreter.compilePackages i
+                liftIO $ IO.hPutStrLn IO.stderr $
+                    "Reloaded " ++ show (length paths) ++ " files"
             pure True
 
     , MetaCommand ":continue" "continue running the debugged program" $
@@ -473,16 +482,6 @@ metaCommands =
         return True
     ]
   where
-    load h path = do
-        IO.hPutStrLn IO.stderr $ "Loading " ++ path ++ "..."
-        liftIO $ MTimes.tickle (h ^. mtimes) path
-        runInterpreter h $ \i -> do
-            pkgname <- Interpreter.loadModule i Parser.defaultParserOptions path
-            Interpreter.compilePackages i
-            liftIO $ IO.hPutStrLn IO.stderr $
-                "Loaded package " ++ review packageNameFromString pkgname
-            return pkgname
-
     stepWith f = \h _ -> liftIO $ do
         emode <- IORef.readIORef (h ^. mode)
         case emode of
