@@ -45,6 +45,7 @@ import qualified Fregot.Prepare.Ast                as Prepare
 import           Fregot.PrettyPrint                ((<$$>), (<+>))
 import qualified Fregot.PrettyPrint                as PP
 import           Fregot.Repl.Breakpoint
+import qualified Fregot.Repl.MTimes                as MTimes
 import qualified Fregot.Repl.Multiline             as Multiline
 import           Fregot.Repl.Parse
 import qualified Fregot.Sources                    as Sources
@@ -75,10 +76,9 @@ data StepTo
 data Handle = Handle
     { _resumeHistory :: !Int
     , _sources       :: !Sources.Handle
+    , _mtimes        :: !MTimes.Handle
     , _interpreter   :: !Interpreter.Handle
     , _replCount     :: !(IORef Int)
-    -- | Last file that was loaded.  Used to implement the `:reload` command.
-    , _lastLoad      :: !(IORef (Maybe FilePath))
     -- | Currently open package.
     , _openPackage   :: !(IORef PackageName)
 
@@ -98,13 +98,13 @@ $(makeLenses ''MetaCommand)
 
 withHandle
     :: Sources.Handle
+    -> MTimes.Handle
     -> Interpreter.Handle
     -> (Handle -> IO a)
     -> IO a
-withHandle _sources _interpreter f = do
+withHandle _sources _mtimes _interpreter f = do
     let _resumeHistory = 10
     _replCount   <- IORef.newIORef 0
-    _lastLoad    <- IORef.newIORef Nothing
     _openPackage <- IORef.newIORef "repl"
     _mode        <- IORef.newIORef $ RegularMode []
     _breakpoints <- IORef.newIORef HS.empty
@@ -382,14 +382,6 @@ metaCommands =
                 ":input takes one path argument"
         return True
 
-    , MetaCommand ":load" "load a rego file, e.g. `:load foo.rego`" $
-        \h args -> case args of
-            _ | [path] <- T.unpack <$> args -> liftIO $ load h path
-            _ -> do
-                liftIO $ IO.hPutStrLn IO.stderr $
-                    ":load takes one path argument"
-                return True
-
     , MetaCommand ":open" "open a different package, e.g. `:open foo`" $
         \h args -> liftIO $ case map (preview dataPackageNameFromText) args of
             [Just (_, pkg)] -> do
@@ -411,12 +403,34 @@ metaCommands =
             RegularMode _ -> return False
             _             -> return True
 
-    , MetaCommand ":reload" "reload the file from the last `:load`" $
+    , MetaCommand ":load" "load a rego file, e.g. `:load foo.rego`" $ \h args ->
+        liftIO $ case map T.unpack args of
+        [path] -> do
+            IO.hPutStrLn IO.stderr $ "Loading " ++ path ++ "..."
+            MTimes.tickle (h ^. mtimes) path
+            void $ runInterpreter h $ \i -> do
+                pkg <- Interpreter.loadModule i Parser.defaultParserOptions path
+                Interpreter.compilePackages i
+                liftIO $ IO.hPutStrLn IO.stderr $
+                    "Loaded package " ++ review packageNameFromString pkg
+                liftIO $ IORef.writeIORef (h ^. openPackage) pkg
+            return True
+
+        _ -> do
+            IO.hPutStrLn IO.stderr ":load takes one path argument"
+            return True
+
+    , MetaCommand ":reload" "reload modified rego files" $
         \h _ -> liftIO $ do
-            mbLastLoad <- IORef.readIORef (h ^. lastLoad)
-            case mbLastLoad of
-                Just ll -> load h ll
-                Nothing -> IO.hPutStrLn IO.stderr "No files loaded" $> True
+            paths <- MTimes.modified (h ^. mtimes)
+            void $ runInterpreter h $ \i -> do
+                forM_ paths $ \path -> do
+                    liftIO $ MTimes.tickle (h ^. mtimes) path
+                    Interpreter.loadModule i Parser.defaultParserOptions path
+                Interpreter.compilePackages i
+                liftIO $ IO.hPutStrLn IO.stderr $
+                    "Reloaded " ++ show (length paths) ++ " files"
+            pure True
 
     , MetaCommand ":continue" "continue running the debugged program" $
         stepWith (StepToBreak . Just . view (_1 . Eval.ecEnvironment . Eval.stack))
@@ -468,18 +482,6 @@ metaCommands =
         return True
     ]
   where
-    load h path = do
-        IO.hPutStrLn IO.stderr $ "Loading " ++ path ++ "..."
-        IORef.writeIORef (h ^. lastLoad) (Just path)
-        void $ runInterpreter h $ \i -> do
-            pkgname <- Interpreter.loadModule i Parser.defaultParserOptions path
-            Interpreter.compilePackages i
-            liftIO $ IO.hPutStrLn IO.stderr $
-                "Loaded package " ++ review packageNameFromString pkgname
-            liftIO $ IORef.writeIORef (h ^. openPackage) pkgname
-
-        return True
-
     stepWith f = \h _ -> liftIO $ do
         emode <- IORef.readIORef (h ^. mode)
         case emode of
