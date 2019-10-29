@@ -28,7 +28,7 @@ import           Control.Lens                  (forOf_, review, view, (&), (.~),
                                                 (^.), (^?), _1)
 import           Control.Lens.Extras           (is)
 import           Control.Lens.TH               (makeLenses, makePrisms)
-import           Control.Monad                 (forM, join, zipWithM_)
+import           Control.Monad                 (forM, join, unless, zipWithM_)
 import           Control.Monad.Except.Extended (catching, throwError)
 import           Control.Monad.Parachute       (ParachuteT, fatal)
 import           Control.Monad.Reader          (ReaderT, ask, runReaderT)
@@ -58,7 +58,7 @@ import           Fregot.PrettyPrint            ((<+>), (<+>?))
 import qualified Fregot.PrettyPrint            as PP
 import           Fregot.Sources.SourceSpan     (SourceSpan)
 import qualified Fregot.Types.Builtins         as B
-import           Fregot.Types.Internal         (Type)
+import           Fregot.Types.Internal         (Type, (⊆))
 import qualified Fregot.Types.Internal         as Types
 import           Fregot.Types.Rule             (RuleType (..))
 import qualified Fregot.Types.Rule             as Types
@@ -69,6 +69,7 @@ data TypeError
     = UnboundVars (HMS.HashMap UnqualifiedVar SourceSpan)
     | UnboundName Name SourceSpan
     | NoUnify (Maybe SourceSpan) SourceType SourceType
+    | NoSubset SourceSpan Type Type
     | ArityMismatch SourceSpan Function Int Int
     | CannotRef SourceSpan SourceType
     | CannotCall SourceSpan Function
@@ -108,6 +109,11 @@ fromTypeError = \case
         Error.mkError sub (fromMaybe source mbSource) "Unification error" $
             "Could not unify type" <+> PP.code (PP.pretty τ) <+>
             "with" <+> PP.code (PP.pretty σ)
+
+    NoSubset source σ τ ->
+        Error.mkError sub source "Subtype error" $
+            "Cannot use type" <+> PP.code (PP.pretty σ) <+>
+            "as" <+> PP.code (PP.pretty τ)
 
     ArityMismatch source name expect got -> Error.mkError sub source
         "Arity mismatch" $
@@ -498,6 +504,9 @@ inferBuiltin
             unifyTypeType
                 (x, NonEmpty.singleton source) (y, NonEmpty.singleton source)
             return x
+        , B.bcSubsetOf = \σ τ ->
+            unless (σ ⊆ τ) $ throwError $ NoSubset source σ τ
+
         , B.bcError = \err -> throwError $ BuiltinTypeError source err
         }
 

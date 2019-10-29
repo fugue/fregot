@@ -21,8 +21,9 @@ data InTypes (i :: [t]) where
     Cons :: Type -> InTypes i -> InTypes (a ': i)
 
 data BuiltinChecker m = BuiltinChecker
-    { bcUnify :: Type -> Type -> m Type
-    , bcError :: forall a. PP.SemDoc -> m a
+    { bcUnify    :: Type -> Type -> m Type
+    , bcSubsetOf :: Type -> Type -> m ()
+    , bcError    :: forall a. PP.SemDoc -> m a
     }
 
 type BuiltinType (i :: [t]) =
@@ -32,5 +33,5 @@ out :: Type -> BuiltinType '[]
 out t = \_ Nil -> pure t
 
 (🡒) :: Type -> BuiltinType i -> BuiltinType (a ': i)
-(🡒) expect f = \c (Cons actual t) -> bcUnify c expect actual >> f c t
+(🡒) expect f = \c (Cons actual t) -> bcSubsetOf c actual expect >> f c t
 infixr 6 🡒

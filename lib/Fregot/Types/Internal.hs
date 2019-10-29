@@ -14,6 +14,9 @@ module Fregot.Types.Internal
     , union, (∪)
     , unions
 
+      -- Queries
+    , subsetOf, (⊆)
+
       -- Utilities
     , singleton
     , any
@@ -136,7 +139,7 @@ objectSubsetOf keyTy sub l r =
     -- If it does not have a dynamic part, `r` should not have one either.
     (case (objDynamic l, objDynamic r) of
         (Nothing,       Nothing)       -> True
-        (Nothing,       Just _)        -> False
+        (Nothing,       Just _)        -> True
         (Just _,        Nothing)       -> False
         (Just (lk, lv), Just (rk, rv)) -> sub lk rk && sub lv rv)
 
@@ -158,6 +161,9 @@ subsetOf :: Type -> Type -> Bool
 subsetOf _         Universe  = True
 subsetOf Universe  (Union _) = False
 subsetOf (Union l) (Union r) = all (\e -> Prelude.any (e `elemSubsetOf`) r) l
+
+(⊆) :: Type -> Type -> Bool
+(⊆) = subsetOf
 
 union :: Type -> Type -> Type
 union Universe _          = Universe
