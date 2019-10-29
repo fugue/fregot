@@ -1,0 +1,5 @@
+repl% mypkg1% mypkg1% = [31m1[0m
+mypkg1% mypkg2% mypkg2% = [31m2[0m
+mypkg2% mypkg1% = [31m1[0m
+mypkg1% = [31m2[0m
+mypkg1% 
