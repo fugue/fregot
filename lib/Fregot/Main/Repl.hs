@@ -25,14 +25,19 @@ import           System.Exit               (ExitCode (..))
 import qualified System.IO                 as IO
 
 data Options = Options
-    { _paths :: [FilePath]
+    { _watch :: Bool
+    , _paths :: [FilePath]
     } deriving (Show)
 
 $(makeLenses ''Options)
 
 parseOptions :: OA.Parser Options
 parseOptions = Options
-    <$> (OA.many $ OA.strArgument $
+    <$> (OA.switch $
+            OA.long  "watch" <>
+            OA.short 'w' <>
+            OA.help  "Watch files for changes and reload automatically")
+    <*> (OA.many $ OA.strArgument $
             OA.metavar "PATHS" <>
             OA.help    "Rego files or directories to load into repl")
 
@@ -41,7 +46,9 @@ main _ opts = do
     sources     <- Sources.newHandle
     itpr        <- Interpreter.newHandle sources
     regoPaths   <- Find.findRegoFiles (opts ^. paths)
-    MTimes.withHandle $ \mtimes ->
+
+    let mtimesConf = MTimes.Config {MTimes.cEnableListeners = opts ^. watch}
+    MTimes.withHandle mtimesConf $ \mtimes ->
         Repl.withHandle sources mtimes itpr $ \repl -> do
         (lerrs, mbResult) <- runParachuteT $ do
             forM_ regoPaths $ \path -> do

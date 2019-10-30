@@ -106,6 +106,7 @@ Library
 
   Build-depends:
     aeson                >= 1.4  && < 1.5,
+    async                >= 2.2  && < 2.3,
     annotated-wl-pprint  >= 0.7  && < 0.8,
     ansi-terminal        >= 0.8  && < 0.10,
     base                 >= 4    && < 5,

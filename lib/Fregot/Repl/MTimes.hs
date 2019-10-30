@@ -3,24 +3,28 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE RecordWildCards            #-}
 module Fregot.Repl.MTimes
-    ( Handle
+    ( Config (..)
+    , Handle
     , withHandle
     , watch
     , pop
+    , listen
     ) where
 
-import           Control.Concurrent.MVar (MVar)
-import qualified Control.Concurrent.MVar as MVar
-import           Control.Exception       (Exception, throwIO)
-import           Control.Monad           (unless, void)
-import           Data.Foldable           (for_)
-import           Data.Hashable           (Hashable)
-import qualified Data.HashMap.Strict     as HMS
-import           Data.IORef.Extended     (IORef)
-import qualified Data.IORef.Extended     as IORef
-import qualified System.Directory        as Dir
-import           System.FilePath         (takeDirectory)
-import qualified System.FSNotify         as FSNotify
+import qualified Control.Concurrent.Async as Async
+import           Control.Concurrent.MVar  (MVar)
+import qualified Control.Concurrent.MVar  as MVar
+import           Control.Exception        (Exception, throwIO)
+import           Control.Monad            (forever, unless, void)
+import           Data.Foldable            (for_)
+import           Data.Hashable            (Hashable)
+import qualified Data.HashMap.Strict      as HMS
+import           Data.IORef.Extended      (IORef)
+import qualified Data.IORef.Extended      as IORef
+import qualified System.Directory         as Dir
+import           System.FilePath          (takeDirectory)
+import qualified System.FSNotify          as FSNotify
+import qualified System.IO                as IO
 
 
 --------------------------------------------------------------------------------
@@ -53,8 +57,17 @@ instance Show MTimesException where show (MTimesException msg) = msg
 --------------------------------------------------------------------------------
 -- Actual handle.
 
+data Config = Config
+    { -- | If listeners are enabled, the registered listeners will be called
+      -- when files change.  If listeners are disabled, they will be ignored and
+      -- you must manually check for changes using 'pop'.
+      cEnableListeners :: Bool
+    }
+
 data Handle = Handle
-    { -- | The manager for FSNotify.
+    { -- | Configuration.
+      hConfig      :: Config
+    , -- | The manager for FSNotify.
       hManager     :: FSNotify.WatchManager
     , -- | We need to install a watcher for every directory that has files we
       -- care about.
@@ -67,15 +80,21 @@ data Handle = Handle
       hBuffer      :: IORef (HMS.HashMap CanonFile FilePath)
     , -- | MVar used as a signal that new changes are available.
       hSignal      :: MVar ()
+      -- | Listeners that need to be notified of file changes.  Litteners are
+      -- called one after the other.
+    , hListeners   :: IORef [[FilePath] -> IO ()]
     }
 
-withHandle :: (Handle -> IO a) -> IO a
-withHandle f = FSNotify.withManager $ \hManager -> do
+withHandle :: Config -> (Handle -> IO a) -> IO a
+withHandle hConfig f = FSNotify.withManager $ \hManager -> do
     hDirectories <- MVar.newMVar HMS.empty
     hFiles       <- IORef.newIORef HMS.empty
     hBuffer      <- IORef.newIORef HMS.empty
     hSignal      <- MVar.newEmptyMVar
-    f Handle {..}
+    hListeners   <- IORef.newIORef []
+
+    let h = Handle {..}
+    withListenWorker h (f h)
 
 -- | Watch a file for changes.  This is idempotent and will not change anything
 -- if the file is already being watched.
@@ -97,7 +116,7 @@ watch h@Handle {..} path = do
 
 -- | Called whenever a file changes.
 notifyHandler :: Handle -> FSNotify.Event -> IO ()
-notifyHandler Handle {..} event = do
+notifyHandler Handle {..} (event@(FSNotify.Modified {})) = do
     -- FSNotify docs claim the path will already be canonical.
     let canon = CanonFile (FSNotify.eventPath event)
     relevant <- HMS.lookup canon <$> IORef.readIORef hFiles
@@ -106,8 +125,33 @@ notifyHandler Handle {..} event = do
         -- if the signal is not on already.
         IORef.atomicModifyIORef_ hBuffer $ HMS.insert canon path
         void $ MVar.tryPutMVar hSignal ()
+notifyHandler _ _ = pure ()
 
 -- | Pop all changed files.
 pop :: Handle -> IO [FilePath]
 pop Handle {..} = IORef.atomicModifyIORef hBuffer $
     \buff -> (HMS.empty, map snd $ HMS.toList buff)
+
+-- | Add a listener that gets called on (possibly buffered) file changes.
+listen :: Handle -> ([FilePath] -> IO ()) -> IO ()
+listen Handle {..} l
+    | cEnableListeners hConfig = IORef.atomicModifyIORef_ hListeners (l :)
+    | otherwise                = pure ()
+
+-- | Start a worker that watches for signals and calls the listeners.
+withListenWorker :: Handle -> IO a -> IO a
+withListenWorker h@Handle {..}
+    | cEnableListeners hConfig = Async.withAsync worker . const
+    | otherwise                = id
+  where
+    worker = forever $ do
+        -- Wait for signal and then get the changed files.
+        MVar.takeMVar hSignal
+        popped <- pop h
+
+        -- Call listeners one after the other.
+        unless (null popped) $ do
+            listeners <- IORef.readIORef hListeners
+            for_ listeners $ \listener -> do
+                async <- Async.async $ listener popped
+                Async.waitCatch async >>= either (IO.hPrint IO.stderr) pure
