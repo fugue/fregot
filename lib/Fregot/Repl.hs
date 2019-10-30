@@ -92,6 +92,9 @@ data Handle = Handle
 
     -- | Stored because we need to watch this for changes.
     , _inputPath     :: !(IORef (Maybe FilePath))
+
+    -- | Evaluate this after file changes.
+    , _watchInput    :: !(IORef (Maybe T.Text))
     }
 
 data MetaCommand = MetaCommand
@@ -117,6 +120,7 @@ withHandle _sources _fileWatch interp f = do
     _mode        <- IORef.newIORef $ RegularMode []
     _breakpoints <- IORef.newIORef HS.empty
     _inputPath   <- IORef.newIORef Nothing
+    _watchInput  <- IORef.newIORef Nothing
 
     let handle = Handle {..}
     FileWatch.listen _fileWatch $ \paths -> do
@@ -128,6 +132,9 @@ withHandle _sources _fileWatch interp f = do
             void $ runInterpreter handle (Interpreter.setInputFile `flip` input)
             IO.hPutStrLn IO.stderr $ "Reloaded " ++ input
         reload handle regoPaths
+
+        mbWatchInput <- IORef.readIORef (handle ^. watchInput)
+        for_ mbWatchInput $ \input -> processInput handle input
 
         -- NOTE(jaspervdj): This does not work well if the user has already
         -- typed part of a prompt; we would not some way to redraw that.
@@ -507,6 +514,13 @@ metaCommands =
                 sauce <- IORef.readIORef (h ^. sources)
                 Error.hPutErrors IO.stderr sauce Error.Text [err]
             _ -> PP.hPutSemDoc IO.stderr "only available when in debugging"
+        return True
+
+    , MetaCommand ":watch" "evaluate input after file changes" $
+        \h args -> liftIO $ do
+        let input = T.unwords args
+        IORef.writeIORef (h ^. watchInput) $
+            if T.all isSpace input then Nothing else Just input
         return True
     ]
   where
