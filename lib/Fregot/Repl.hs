@@ -24,6 +24,7 @@ import           Control.Monad.Parachute
 import           Control.Monad.Trans               (liftIO)
 import           Data.Bifunctor                    (bimap)
 import           Data.Char                         (isSpace)
+import           Data.Foldable                     (for_)
 import           Data.Functor                      (($>))
 import qualified Data.HashMap.Strict.Extended      as HMS
 import qualified Data.HashSet                      as HS
@@ -88,6 +89,9 @@ data Handle = Handle
     -- | Current mode; either debugging or regular evaluation.
     , _mode          :: !(IORef Mode)
     , _breakpoints   :: !(IORef (HS.HashSet Breakpoint))
+
+    -- | Stored because we need to watch this for changes.
+    , _inputPath     :: !(IORef (Maybe FilePath))
     }
 
 data MetaCommand = MetaCommand
@@ -112,14 +116,24 @@ withHandle _sources _fileWatch interp f = do
     _openPackage <- IORef.newIORef "repl"
     _mode        <- IORef.newIORef $ RegularMode []
     _breakpoints <- IORef.newIORef HS.empty
+    _inputPath   <- IORef.newIORef Nothing
 
     let handle = Handle {..}
     FileWatch.listen _fileWatch $ \paths -> do
+        mbInput <- IORef.readIORef (handle ^. inputPath)
+        let (regoPaths, inputPaths) = L.partition ((/= mbInput) . Just) $ paths
+
+        IO.hPutStrLn IO.stdout ""
+        unless (null inputPaths) $ for_ mbInput $ \input -> do
+            void $ runInterpreter handle (Interpreter.setInputFile `flip` input)
+            IO.hPutStrLn IO.stderr $ "Reloaded " ++ input
+        reload handle regoPaths
+
         -- NOTE(jaspervdj): This does not work well if the user has already
         -- typed part of a prompt; we would not some way to redraw that.
+        --
+        -- TODO(jaspervdj): Make we can clean the line by doing Ctrl+U
         prompt <- getPrompt handle
-        IO.hPutStrLn IO.stdout ""
-        reload handle paths
         IO.hPutStr IO.stdout prompt
         IO.hFlush IO.stdout
 
@@ -392,8 +406,12 @@ metaCommands =
 
     , MetaCommand ":input" "set the input document" $ \h args -> do
         case args of
-            _ | [path] <- T.unpack <$> args -> liftIO $ void $
-                runInterpreter h (`Interpreter.setInputFile` path)
+            _ | [path] <- T.unpack <$> args -> liftIO $ do
+                mbOld <- IORef.readIORef (h ^. inputPath)
+                for_ mbOld $ \old -> FileWatch.unwatch (h ^. fileWatch) old
+                void $ runInterpreter h (`Interpreter.setInputFile` path)
+                IORef.writeIORef (h ^. inputPath) (Just path)
+                FileWatch.watch (h ^. fileWatch) path
             _ -> liftIO $ IO.hPutStrLn IO.stderr $
                 ":input takes one path argument"
         return True
@@ -517,9 +535,11 @@ reload h paths = void $ runInterpreter h $ \i -> do
     forM_ paths $ \path ->
         Interpreter.loadModule i Parser.defaultParserOptions path
     Interpreter.compilePackages i
-    liftIO $ IO.hPutStrLn IO.stderr $ case paths of
-        [path] -> "Reloaded " ++ path
-        _      -> "Reloaded " ++ show (length paths) ++ " files"
+    liftIO $ case paths of
+        []     -> pure ()
+        [path] -> IO.hPutStrLn IO.stderr $ "Reloaded " ++ path
+        _ : _  -> IO.hPutStrLn IO.stderr $
+            "Reloaded " ++ show (length paths) ++ " files"
 
 completeBuiltins :: Handle -> Hl.CompletionFunc IO
 completeBuiltins h = Hl.completeDictionary completeWhitespace $ do
