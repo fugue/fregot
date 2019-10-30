@@ -33,7 +33,8 @@ import qualified Data.IORef.Extended               as IORef
 import qualified Data.List                         as L
 import           Data.List.NonEmpty.Extended       (NonEmpty (..))
 import qualified Data.List.NonEmpty.Extended       as NonEmpty
-import           Data.Maybe                        (fromMaybe, isNothing)
+import           Data.Maybe                        (fromMaybe, isJust,
+                                                    isNothing)
 import qualified Data.Text                         as T
 import qualified Data.Text.IO                      as T
 import           Data.Version                      (showVersion)
@@ -131,10 +132,11 @@ withHandle _sources _fileWatch interp f = do
         unless (null inputPaths) $ for_ mbInput $ \input -> do
             void $ runInterpreter handle (Interpreter.setInputFile `flip` input)
             IO.hPutStrLn IO.stderr $ "Reloaded " ++ input
-        reload handle regoPaths
+        success <- reload handle regoPaths
 
-        mbWatchInput <- IORef.readIORef (handle ^. watchInput)
-        for_ mbWatchInput $ \input -> processInput handle input
+        when success $ do
+            mbWatchInput <- IORef.readIORef (handle ^. watchInput)
+            for_ mbWatchInput $ \input -> processInput handle input
 
         -- NOTE(jaspervdj): This does not work well if the user has already
         -- typed part of a prompt; we would not some way to redraw that.
@@ -464,7 +466,7 @@ metaCommands =
     , MetaCommand ":reload" "reload modified rego files" $
         \h _ -> liftIO $ do
             paths <- FileWatch.pop (h ^. fileWatch)
-            reload h paths
+            void $ reload h paths
             pure True
 
     , MetaCommand ":continue" "continue running the debugged program" $
@@ -544,8 +546,8 @@ metaCommands =
         , "    :break foo/bar.rego:9"
         ]
 
-reload :: Handle -> [FilePath] -> IO ()
-reload h paths = void $ runInterpreter h $ \i -> do
+reload :: Handle -> [FilePath] -> IO Bool
+reload h paths = fmap isJust $ runInterpreter h $ \i -> do
     forM_ paths $ \path ->
         Interpreter.loadModule i Parser.defaultParserOptions path
     Interpreter.compilePackages i
