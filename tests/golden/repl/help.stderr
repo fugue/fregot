@@ -17,5 +17,6 @@ Other commands:
   [33m:rewind    [0mgo back to the previous debug suspension
   [33m:test      [0mrun tests in the current package
   [33m:where     [0mprint your location
+  [33m:watch     [0mevaluate input after file changes
 
 Shortcuts are supported for commands, e.g. `:l` for `:load`.
