@@ -1,9 +1,11 @@
 fregot
-========
+======
 
 `fregot` (**F**ugue **Rego** **T**oolkit) is a set of tools for working with the [Rego] policy language. It allows you to easily evaluate expressions, debug code, test policies, and more.
 
-![Demo: debugging with fregot](examples/break_example/gif_break_example.gif)
+[![Demo: debugging with fregot](examples/break_example/gif_break_example.gif)](https://asciinema.org/a/AfmqS0xB2g5ZuORW4siesYFRY)
+
+[(Check out the text-based demo on asciinema so you can copy/paste commands.)](https://asciinema.org/a/AfmqS0xB2g5ZuORW4siesYFRY)
 
 `fregot` can be seen as an alternative REPL to [OPA's](https://www.openpolicyagent.org/) built-in interpreter.  The goals are a little different -- `fregot` aims to provide:
 
