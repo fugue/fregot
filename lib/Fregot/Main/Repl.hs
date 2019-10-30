@@ -39,13 +39,13 @@ parseOptions = Options
 main :: GlobalOptions -> Options -> IO ExitCode
 main _ opts = do
     sources     <- Sources.newHandle
-    mtimes      <- MTimes.newHandle
     itpr        <- Interpreter.newHandle sources
     regoPaths   <- Find.findRegoFiles (opts ^. paths)
-    Repl.withHandle sources mtimes itpr $ \repl -> do
+    MTimes.withHandle $ \mtimes ->
+        Repl.withHandle sources mtimes itpr $ \repl -> do
         (lerrs, mbResult) <- runParachuteT $ do
             forM_ regoPaths $ \path -> do
-                liftIO $ MTimes.tickle mtimes path
+                liftIO $ MTimes.watch mtimes path
                 Interpreter.loadModuleOrBundle itpr defaultParserOptions path
             Interpreter.compilePackages itpr
         sauce <- IORef.readIORef sources

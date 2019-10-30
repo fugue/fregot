@@ -407,7 +407,7 @@ metaCommands =
         liftIO $ case map T.unpack args of
         [path] -> do
             IO.hPutStrLn IO.stderr $ "Loading " ++ path ++ "..."
-            MTimes.tickle (h ^. mtimes) path
+            MTimes.watch (h ^. mtimes) path
             void $ runInterpreter h $ \i -> do
                 pkg <- Interpreter.loadModule i Parser.defaultParserOptions path
                 Interpreter.compilePackages i
@@ -422,10 +422,9 @@ metaCommands =
 
     , MetaCommand ":reload" "reload modified rego files" $
         \h _ -> liftIO $ do
-            paths <- MTimes.modified (h ^. mtimes)
+            paths <- MTimes.pop (h ^. mtimes)
             void $ runInterpreter h $ \i -> do
-                forM_ paths $ \path -> do
-                    liftIO $ MTimes.tickle (h ^. mtimes) path
+                forM_ paths $ \path ->
                     Interpreter.loadModule i Parser.defaultParserOptions path
                 Interpreter.compilePackages i
                 liftIO $ IO.hPutStrLn IO.stderr $
