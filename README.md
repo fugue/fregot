@@ -39,9 +39,9 @@ Table of Contents
 	- [:break](#break)
 	- [:help](#help)
 	- [:input](#input)
-	- [:load](#load)
 	- [:open](#open)
 	- [:quit](#quit)
+	- [:load](#load)
 	- [:reload](#reload)
 	- [:continue](#continue)
 	- [:step](#step)
@@ -172,10 +172,10 @@ REPL
       :break     Set a breakpoint
       :help      show this info
       :input     set the input document
-      :load      load a rego file, e.g. `:load foo.rego`
       :open      open a different package, e.g. `:open foo`
       :quit      exit the repl
-      :reload    reload the file from the last `:load`
+      :load      load a rego file, e.g. `:load foo.rego`
+      :reload    reload modified rego files
       :continue  continue running the debugged program
       :step      step (into) the next rule in the debugged program
       :next      step (over) the next rule in the debugged program
@@ -226,11 +226,10 @@ A typical workflow is to have an editor open as well as a `fregot repl`.  You ca
     Loaded package policy
     policy%
 
-Once you make changes to the file, just reload it using `:reload`. If the file includes any rules starting with `test_`, you can test your changes using `:test`:
+Once you make changes to the file, just reload it using `:reload`, which reloads all modified Rego files. If the file includes any rules starting with `test_`, you can assess your changes using `:test`:
 
     policy% :reload
-    Loading policy.rego...
-    Loaded package policy
+    Reloaded 1 files
     policy% :test
     passed: 1, failed: 0, errored: 0
 
@@ -372,28 +371,6 @@ Two things to note:
 - The home directory shortcut `~` is not currently supported, so use the absolute path instead; e.g., `/Users/alice/input.json`
 - If you change the input document, make sure to update it by issuing the `:input [PATH]` command again.
 
-### :load
-
-**Shortcut** `:l`
-
-`:load [PATH]` loads a Rego file. For example:
-
-    repl% :load examples/ami_id/ami_id.rego
-
-You'll see output like this:
-
-    Loaded package fregot.examples.ami_id
-
-Once the file is loaded, you can debug it with [other commands](#repl-usage). You can also enter rules or expressions to evaluate them. For example, this command returns the value of the rule `allow` in the loaded Rego file:
-
-    fregot.examples.ami_id% allow
-
-You'll see output like this:
-
-    = true
-
-_Note: If you change the Rego file after you've loaded it, you'll need to [:reload](#reload) it._
-
 ### :open
 
 **Shortcut** `:o`
@@ -420,17 +397,39 @@ For more information, see [The open package](#the-open-package).
     
     repl% :quit
 
+### :load
+
+**Shortcut** `:l`
+
+`:load [PATH]` loads a Rego file. For example:
+
+    repl% :load examples/ami_id/ami_id.rego
+
+You'll see output like this:
+
+    Loaded package fregot.examples.ami_id
+
+Once the file is loaded, you can debug it with [other commands](#repl-usage). You can also enter rules or expressions to evaluate them. For example, this command returns the value of the rule `allow` in the loaded Rego file:
+
+    fregot.examples.ami_id% allow
+
+You'll see output like this:
+
+    = true
+
+_Note: If you change the Rego file after you've loaded it, you'll need to [:reload](#reload) it._
+
 ### :reload
 
 **Shortcut** `:r`
 
-`:reload` reloads the file from the last `:load`. If you make changes to the loaded file, you'll need to `:reload` it to update it in the REPL.
+`:reload` checks for modified Rego files and reloads them. If you make changes to a loaded file, you'll need to `:reload` it to update it in the REPL.
 
     fregot.examples.ami_id% :reload
 
 You'll see output like this:
 
-    Loaded package fregot.examples.ami_id
+    Reloaded 1 files
 
 ### :continue
 
