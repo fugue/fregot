@@ -11,7 +11,7 @@ echo '{"name": "input-1"}' >"$input1"
 echo '{"name": "input-2"}' >"$input2"
 mkfifo "$pipe"
 
-sleep 500 >"$pipe" &  # Just to keep this file open.
+sleep 500 >"$pipe" 2>/dev/null &  # Just to keep this file open.
 doorstop_pid=$!
 
 fregot repl --watch <"$pipe" &
@@ -30,5 +30,5 @@ echo '{"name": "input-changed!"}' >"$input2"
 sleep 0.1
 enter "input"
 
-kill "$doorstop_pid" 2>/dev/null || true
-kill "$fregot_pid" 2>/dev/null || true
+kill "$doorstop_pid" >/dev/null 2>&1 || true
+kill "$fregot_pid"   >/dev/null 2>&1 || true
