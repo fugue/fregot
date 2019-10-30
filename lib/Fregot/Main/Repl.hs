@@ -18,7 +18,7 @@ import qualified Fregot.Interpreter        as Interpreter
 import           Fregot.Main.GlobalOptions
 import           Fregot.Parser             (defaultParserOptions)
 import qualified Fregot.Repl               as Repl
-import qualified Fregot.Repl.MTimes        as MTimes
+import qualified Fregot.Repl.FileWatch        as FileWatch
 import qualified Fregot.Sources            as Sources
 import qualified Options.Applicative       as OA
 import           System.Exit               (ExitCode (..))
@@ -47,12 +47,11 @@ main _ opts = do
     itpr        <- Interpreter.newHandle sources
     regoPaths   <- Find.findRegoFiles (opts ^. paths)
 
-    let mtimesConf = MTimes.Config {MTimes.cEnableListeners = opts ^. watch}
-    MTimes.withHandle mtimesConf $ \mtimes ->
-        Repl.withHandle sources mtimes itpr $ \repl -> do
+    FileWatch.withHandle (FileWatch.Config (opts ^. watch)) $ \fileWatch ->
+        Repl.withHandle sources fileWatch itpr $ \repl -> do
         (lerrs, mbResult) <- runParachuteT $ do
             forM_ regoPaths $ \path -> do
-                liftIO $ MTimes.watch mtimes path
+                liftIO $ FileWatch.watch fileWatch path
                 Interpreter.loadModuleOrBundle itpr defaultParserOptions path
             Interpreter.compilePackages itpr
         sauce <- IORef.readIORef sources

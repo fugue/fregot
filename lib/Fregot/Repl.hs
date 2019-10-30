@@ -47,7 +47,7 @@ import qualified Fregot.Prepare.Ast                as Prepare
 import           Fregot.PrettyPrint                ((<$$>), (<+>))
 import qualified Fregot.PrettyPrint                as PP
 import           Fregot.Repl.Breakpoint
-import qualified Fregot.Repl.MTimes                as MTimes
+import qualified Fregot.Repl.FileWatch             as FileWatch
 import qualified Fregot.Repl.Multiline             as Multiline
 import           Fregot.Repl.Parse
 import qualified Fregot.Sources                    as Sources
@@ -78,7 +78,7 @@ data StepTo
 data Handle = Handle
     { _resumeHistory :: !Int
     , _sources       :: !Sources.Handle
-    , _mtimes        :: !MTimes.Handle
+    , _fileWatch     :: !FileWatch.Handle
     -- | Stored in an MVar so we have a mutex.
     , _interpreter   :: !(MVar Interpreter.Handle)
     , _replCount     :: !(IORef Int)
@@ -101,11 +101,11 @@ $(makeLenses ''MetaCommand)
 
 withHandle
     :: Sources.Handle
-    -> MTimes.Handle
+    -> FileWatch.Handle
     -> Interpreter.Handle
     -> (Handle -> IO a)
     -> IO a
-withHandle _sources _mtimes interp f = do
+withHandle _sources _fileWatch interp f = do
     let _resumeHistory = 10
     _replCount   <- IORef.newIORef 0
     _interpreter <- MVar.newMVar interp
@@ -114,7 +114,7 @@ withHandle _sources _mtimes interp f = do
     _breakpoints <- IORef.newIORef HS.empty
 
     let handle = Handle {..}
-    MTimes.listen _mtimes $ \paths -> do
+    FileWatch.listen _fileWatch $ \paths -> do
         -- NOTE(jaspervdj): This does not work well if the user has already
         -- typed part of a prompt; we would not some way to redraw that.
         prompt <- getPrompt handle
@@ -423,7 +423,7 @@ metaCommands =
         liftIO $ case map T.unpack args of
         [path] -> do
             IO.hPutStrLn IO.stderr $ "Loading " ++ path ++ "..."
-            MTimes.watch (h ^. mtimes) path
+            FileWatch.watch (h ^. fileWatch) path
             void $ runInterpreter h $ \i -> do
                 pkg <- Interpreter.loadModule i Parser.defaultParserOptions path
                 Interpreter.compilePackages i
@@ -438,7 +438,7 @@ metaCommands =
 
     , MetaCommand ":reload" "reload modified rego files" $
         \h _ -> liftIO $ do
-            paths <- MTimes.pop (h ^. mtimes)
+            paths <- FileWatch.pop (h ^. fileWatch)
             reload h paths
             pure True
 

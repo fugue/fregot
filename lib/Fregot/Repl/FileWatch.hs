@@ -2,7 +2,7 @@
 -- list of files that have been modified since.
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE RecordWildCards            #-}
-module Fregot.Repl.MTimes
+module Fregot.Repl.FileWatch
     ( Config (..)
     , Handle
     , withHandle
@@ -39,7 +39,7 @@ newtype CanonDir = CanonDir {canonDirPath :: FilePath}
 canonicalize :: FilePath -> IO (CanonDir, CanonFile)
 canonicalize path = do
     exists <- Dir.doesFileExist path
-    unless exists $ throwIO $ MTimesException $ path ++ " does not exist"
+    unless exists $ throwIO $ FileWatchException $ path ++ " does not exist"
     canonFile <- Dir.canonicalizePath path
     canonDir  <- Dir.canonicalizePath $ takeDirectory path
     return (CanonDir canonDir, CanonFile {canonFilePath = canonFile})
@@ -48,10 +48,10 @@ canonicalize path = do
 --------------------------------------------------------------------------------
 -- Error type.
 
-data MTimesException = MTimesException String
+data FileWatchException = FileWatchException String
 
-instance Exception MTimesException
-instance Show MTimesException where show (MTimesException msg) = msg
+instance Exception FileWatchException
+instance Show FileWatchException where show (FileWatchException msg) = msg
 
 
 --------------------------------------------------------------------------------

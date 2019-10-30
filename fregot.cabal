@@ -63,7 +63,7 @@ Library
     Fregot.PrettyPrint.Sem
     Fregot.Repl
     Fregot.Repl.Breakpoint
-    Fregot.Repl.MTimes
+    Fregot.Repl.FileWatch
     Fregot.Repl.Multiline
     Fregot.Repl.Parse
     Fregot.Sources
