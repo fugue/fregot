@@ -1,11 +1,11 @@
 Name:                fregot
 Version:             0.3.0
 Synopsis:            Fugue Rego Toolkit
-License:             AllRightsReserved
+License:             Apache-2.0
 License-file:        LICENSE
-Author:              Jasper Van der Jeugt
-Maintainer:          jasper@fugue.co
-Copyright:           Fugue, Inc.
+Author:              Jasper Van der Jeugt <jasper@fugue.co>
+Maintainer:          Jasper Van der Jeugt <jasper@fugue.co>
+Copyright:           2019 Fugue, Inc
 Category:            Language
 Build-type:          Simple
 Cabal-version:       1.18
