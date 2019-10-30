@@ -11,6 +11,7 @@
 module Fregot.Names
     ( PackageName (..), unPackageName, mkPackageName
     , packageNameFromString, packageNameFromText
+    , dataPackageNameFromText
     , dataPackageNameFromString
 
     , Var, unVar, mkVar
@@ -33,27 +34,27 @@ module Fregot.Names
     , packageNameFromFilePath
     ) where
 
-import           Control.Lens          (review, (^?))
+import           Control.Lens          (iso, preview, review, (^?))
 import           Control.Lens.Prism    (Prism', prism')
 import           Control.Lens.TH       (makePrisms)
 import           Control.Monad         (guard)
-import           Data.Binary           (Binary)
-import           Data.Hashable         (Hashable (..))
-import           Data.String           (IsString (..))
-import           Data.Unique           (HasUnique (..), Unique, Uniquely (..))
-import           GHC.Generics          (Generic)
-import           System.FilePath       (dropTrailingPathSeparator, isRelative,
-                                        joinPath, splitPath, splitExtension,
-                                        (<.>))
-import           System.IO.Unsafe      (unsafePerformIO)
 import qualified Data.Aeson            as Aeson
+import           Data.Binary           (Binary)
 import qualified Data.Binary           as Binary
-import qualified Fregot.Lexer.Internal as Lexer
+import           Data.Hashable         (Hashable (..))
 import qualified Data.HashMap.Strict   as HMS
 import qualified Data.List             as L
+import           Data.String           (IsString (..))
 import qualified Data.Text.Extended    as T
+import           Data.Unique           (HasUnique (..), Unique, Uniquely (..))
 import qualified Data.Unique           as Unique
+import qualified Fregot.Lexer.Internal as Lexer
 import qualified Fregot.PrettyPrint    as PP
+import           GHC.Generics          (Generic)
+import           System.FilePath       (dropTrailingPathSeparator, isRelative,
+                                        joinPath, splitExtension, splitPath,
+                                        (<.>))
+import           System.IO.Unsafe      (unsafePerformIO)
 
 data PackageName = PackageName {-# UNPACK #-} !Unique ![T.Text]
     deriving Eq via (Uniquely PackageName)
@@ -110,12 +111,20 @@ packageNameFromText = prism'
     (T.intercalate "." . unPackageName)
     (packageNameFromPieces . T.split (== '.'))
 
--- | Like 'packageNameFromString', but with "data." prepended.
-dataPackageNameFromString :: Prism' String PackageName
-dataPackageNameFromString = prependData . packageNameFromString
+-- | This prism understands both package names with and without a "data."
+-- prefix.  The output needs to carry a boolean to indicate that in order to
+-- satisfy the laws; but it is often thrown away.
+dataPackageNameFromText :: Prism' T.Text (Bool, PackageName)
+dataPackageNameFromText = prism' from to
   where
-    prependData :: Prism' String String
-    prependData = prism' ("data." ++) (L.stripPrefix "data.")
+    from (True, pkg)  = "data." <> review packageNameFromText pkg
+    from (False, pkg) = review packageNameFromText pkg
+    to txt = case T.stripPrefix "data." txt of
+        Nothing   -> (,) False <$> preview packageNameFromText txt
+        Just txt' -> (,) True  <$> preview packageNameFromText txt'
+
+dataPackageNameFromString :: Prism' String (Bool, PackageName)
+dataPackageNameFromString = iso T.pack T.unpack . dataPackageNameFromText
 
 data Var = Var {-# UNPACK #-} !Unique {-# UNPACK #-} !T.Text
     deriving Eq via (Uniquely Var)

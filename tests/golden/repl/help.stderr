@@ -7,10 +7,10 @@ Other commands:
   [33m:break     [0mSet a breakpoint
   [33m:help      [0mshow this info
   [33m:input     [0mset the input document
-  [33m:load      [0mload a rego file, e.g. `:load foo.rego`
   [33m:open      [0mopen a different package, e.g. `:open foo`
   [33m:quit      [0mexit the repl
-  [33m:reload    [0mreload the file from the last `:load`
+  [33m:load      [0mload a rego file, e.g. `:load foo.rego`
+  [33m:reload    [0mreload modified rego files
   [33m:continue  [0mcontinue running the debugged program
   [33m:step      [0mstep (into) the next rule in the debugged program
   [33m:next      [0mstep (over) the next rule in the debugged program

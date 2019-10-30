@@ -12,6 +12,8 @@ module Fregot.Repl
     , metaCommands
     ) where
 
+import           Control.Concurrent.MVar           (MVar)
+import qualified Control.Concurrent.MVar           as MVar
 import           Control.Lens                      (maximumOf, preview, review,
                                                     to, view, (^.), (^?), _1)
 import           Control.Lens.TH                   (makeLenses)
@@ -45,6 +47,7 @@ import qualified Fregot.Prepare.Ast                as Prepare
 import           Fregot.PrettyPrint                ((<$$>), (<+>))
 import qualified Fregot.PrettyPrint                as PP
 import           Fregot.Repl.Breakpoint
+import qualified Fregot.Repl.FileWatch             as FileWatch
 import qualified Fregot.Repl.Multiline             as Multiline
 import           Fregot.Repl.Parse
 import qualified Fregot.Sources                    as Sources
@@ -75,10 +78,10 @@ data StepTo
 data Handle = Handle
     { _resumeHistory :: !Int
     , _sources       :: !Sources.Handle
-    , _interpreter   :: !Interpreter.Handle
+    , _fileWatch     :: !FileWatch.Handle
+    -- | Stored in an MVar so we have a mutex.
+    , _interpreter   :: !(MVar Interpreter.Handle)
     , _replCount     :: !(IORef Int)
-    -- | Last file that was loaded.  Used to implement the `:reload` command.
-    , _lastLoad      :: !(IORef (Maybe FilePath))
     -- | Currently open package.
     , _openPackage   :: !(IORef PackageName)
 
@@ -98,24 +101,37 @@ $(makeLenses ''MetaCommand)
 
 withHandle
     :: Sources.Handle
+    -> FileWatch.Handle
     -> Interpreter.Handle
     -> (Handle -> IO a)
     -> IO a
-withHandle _sources _interpreter f = do
+withHandle _sources _fileWatch interp f = do
     let _resumeHistory = 10
     _replCount   <- IORef.newIORef 0
-    _lastLoad    <- IORef.newIORef Nothing
+    _interpreter <- MVar.newMVar interp
     _openPackage <- IORef.newIORef "repl"
     _mode        <- IORef.newIORef $ RegularMode []
     _breakpoints <- IORef.newIORef HS.empty
-    f Handle {..}
 
--- | Auxiliary function to invoke the interpreter.
+    let handle = Handle {..}
+    FileWatch.listen _fileWatch $ \paths -> do
+        -- NOTE(jaspervdj): This does not work well if the user has already
+        -- typed part of a prompt; we would not some way to redraw that.
+        prompt <- getPrompt handle
+        IO.hPutStrLn IO.stdout ""
+        reload handle paths
+        IO.hPutStr IO.stdout prompt
+        IO.hFlush IO.stdout
+
+    f handle
+
+-- | Auxiliary function to invoke the interpreter.  This locks the interpreter
+-- resource.
 runInterpreter
     :: Handle -> (Interpreter.Handle -> Interpreter.InterpreterM a)
     -> IO (Maybe a)
-runInterpreter h f = do
-    (errors, mbX) <- runParachuteT $ f (h ^. interpreter)
+runInterpreter h f = MVar.withMVar (h ^. interpreter) $ \interp -> do
+    (errors, mbX) <- runParachuteT $ f interp
     sauce <- IORef.readIORef (h ^. sources)
     Error.hPutErrors IO.stderr sauce Error.Text errors
     return mbX
@@ -301,7 +317,7 @@ run h = do
 
     getMultilineInput :: Hl.InputT IO (Maybe T.Text)
     getMultilineInput = do
-        prompt  <- liftIO getPrompt
+        prompt  <- liftIO (getPrompt h)
         mbLine0 <- Hl.getInputLine prompt
         case mbLine0 of
             Nothing    -> return Nothing
@@ -315,17 +331,17 @@ run h = do
                     Nothing       -> return $ Just $ Multiline.finish p1
                     Just nextLine -> more p1 nextLine
 
-    getPrompt :: IO String
-    getPrompt = do
-        pkg   <- readFocusedPackage h
-        emode <- IORef.readIORef (h ^. mode)
-        return $
-            review packageNameFromString pkg <>
-            (case emode of
-                RegularMode _ -> ""
-                Suspended _   -> "(debug)"
-                Errored _ _ _ -> "(error)") <>
-            "% "
+getPrompt :: Handle -> IO String
+getPrompt h = do
+    pkg   <- readFocusedPackage h
+    emode <- IORef.readIORef (h ^. mode)
+    return $
+        review packageNameFromString pkg <>
+        (case emode of
+            RegularMode _ -> ""
+            Suspended _   -> "(debug)"
+            Errored _ _ _ -> "(error)") <>
+        "% "
 
 metaShortcuts :: HMS.HashMap T.Text MetaCommand
 metaShortcuts =
@@ -390,22 +406,18 @@ metaCommands =
                 ":input takes one path argument"
         return True
 
-    , MetaCommand ":load" "load a rego file, e.g. `:load foo.rego`" $
-        \h args -> case args of
-            _ | [path] <- T.unpack <$> args -> liftIO $ load h path
-            _ -> do
-                liftIO $ IO.hPutStrLn IO.stderr $
-                    ":load takes one path argument"
-                return True
-
     , MetaCommand ":open" "open a different package, e.g. `:open foo`" $
-        \h args -> case args of
-            _ | [Just pkg] <- preview packageNameFromText <$> args ->
-                -- TODO(jaspervdj): Check if exists?
-                liftIO $ IORef.writeIORef (h ^. openPackage) pkg $> True
+        \h args -> liftIO $ case map (preview dataPackageNameFromText) args of
+            [Just (_, pkg)] -> do
+                -- NOTE(jaspervdj): Rather than erroring if it doesn't exist, we
+                -- just make it clear that the user has opened a new package.
+                pkgs <- runInterpreter h Interpreter.readPackages
+                let exists = maybe False (pkg `elem`) pkgs
+                unless exists $ PP.hPutSemDoc IO.stderr $
+                    "Created new package" <+> PP.code (PP.pretty pkg)
+                IORef.writeIORef (h ^. openPackage) pkg $> True
             _ -> do
-                liftIO $ IO.hPutStrLn IO.stderr $
-                    ":open takes a package name as argument"
+                IO.hPutStrLn IO.stderr ":open takes a package name as argument"
                 return True
 
     , MetaCommand ":quit" "exit the repl" $ \h _ -> liftIO $ do
@@ -415,12 +427,28 @@ metaCommands =
             RegularMode _ -> return False
             _             -> return True
 
-    , MetaCommand ":reload" "reload the file from the last `:load`" $
+    , MetaCommand ":load" "load a rego file, e.g. `:load foo.rego`" $ \h args ->
+        liftIO $ case map T.unpack args of
+        [path] -> do
+            IO.hPutStrLn IO.stderr $ "Loading " ++ path ++ "..."
+            FileWatch.watch (h ^. fileWatch) path
+            void $ runInterpreter h $ \i -> do
+                pkg <- Interpreter.loadModule i Parser.defaultParserOptions path
+                Interpreter.compilePackages i
+                liftIO $ IO.hPutStrLn IO.stderr $
+                    "Loaded package " ++ review packageNameFromString pkg
+                liftIO $ IORef.writeIORef (h ^. openPackage) pkg
+            return True
+
+        _ -> do
+            IO.hPutStrLn IO.stderr ":load takes one path argument"
+            return True
+
+    , MetaCommand ":reload" "reload modified rego files" $
         \h _ -> liftIO $ do
-            mbLastLoad <- IORef.readIORef (h ^. lastLoad)
-            case mbLastLoad of
-                Just ll -> load h ll
-                Nothing -> IO.hPutStrLn IO.stderr "No files loaded" $> True
+            paths <- FileWatch.pop (h ^. fileWatch)
+            reload h paths
+            pure True
 
     , MetaCommand ":continue" "continue running the debugged program" $
         stepWith (StepToBreak . Just . view (_1 . Eval.ecEnvironment . Eval.stack))
@@ -491,18 +519,6 @@ metaCommands =
         return True
     ]
   where
-    load h path = do
-        IO.hPutStrLn IO.stderr $ "Loading " ++ path ++ "..."
-        IORef.writeIORef (h ^. lastLoad) (Just path)
-        void $ runInterpreter h $ \i -> do
-            pkgname <- Interpreter.loadModule i Parser.defaultParserOptions path
-            Interpreter.compilePackages i
-            liftIO $ IO.hPutStrLn IO.stderr $
-                "Loaded package " ++ review packageNameFromString pkgname
-            liftIO $ IORef.writeIORef (h ^. openPackage) pkgname
-
-        return True
-
     stepWith f = \h _ -> liftIO $ do
         emode <- IORef.readIORef (h ^. mode)
         case emode of
@@ -523,6 +539,15 @@ metaCommands =
         , "    :break foo/bar.rego:9"
         ]
 
+reload :: Handle -> [FilePath] -> IO ()
+reload h paths = void $ runInterpreter h $ \i -> do
+    forM_ paths $ \path ->
+        Interpreter.loadModule i Parser.defaultParserOptions path
+    Interpreter.compilePackages i
+    liftIO $ IO.hPutStrLn IO.stderr $ case paths of
+        [path] -> "Reloaded " ++ path
+        _      -> "Reloaded " ++ show (length paths) ++ " files"
+
 completeBuiltins :: Handle -> Hl.CompletionFunc IO
 completeBuiltins h = Hl.completeDictionary completeWhitespace $ do
     builtins <- fromMaybe [] <$> runInterpreter h Interpreter.readBuiltins
@@ -537,31 +562,26 @@ completeRules h = Hl.completeDictionary completeWhitespace $ do
 completePackages :: Handle -> Hl.CompletionFunc IO
 completePackages h = Hl.completeDictionary completeWhitespace $ do
     pkgs <- fromMaybe [] <$> runInterpreter h Interpreter.readPackages
-    return $
-        map ((<> ".") . review dataPackageNameFromString) pkgs ++
-        map ((<> ".") . review packageNameFromString) pkgs
+    return $ do
+        pkg        <- pkgs
+        dataPrefix <- [True, False]
+        pure $ review dataPackageNameFromString (dataPrefix, pkg) <> "."
 
 completePackageRules :: Handle -> Hl.CompletionFunc IO
 completePackageRules h = Hl.completeWord Nothing completeWhitespace $ \str0 -> do
     let (prefix, pkgname) =
             bimap reverse (reverse . drop 1) $
             break (== '.') (reverse str0)
-        dataPrefix = "data." `L.isPrefixOf` pkgname
-        mbPkgName = pkgname ^?
-            (if dataPrefix
-                then dataPackageNameFromString
-                else packageNameFromString)
+        mbPkgName = pkgname ^? dataPackageNameFromString
     case mbPkgName of
         Nothing      -> return []
-        Just pkg -> do
+        Just (dataPrefix, pkg) -> do
             rules <- runInterpreter h $ \i -> Interpreter.readPackageRules i pkg
             return $ do
                 rule <- fromMaybe [] rules
                 let r = varToString rule
                     text =
-                        review (if dataPrefix
-                                    then dataPackageNameFromString
-                                    else packageNameFromString) pkg <>
+                        review dataPackageNameFromString (dataPrefix, pkg) <>
                         "." <> r
                 guard $ prefix `L.isPrefixOf` r
                 return (Hl.Completion text text False)
