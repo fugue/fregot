@@ -80,6 +80,7 @@ Library
     Control.Monad.Parachute
     Control.Monad.Stream
     Data.Cache
+    Data.Kleene
     Data.SafeVar
     Data.Traversable.HigherOrder
     Data.Unification
@@ -178,6 +179,7 @@ Test-suite fregot-tests
   Ghc-options:       -Wall -rtsopts -threaded
 
   Other-modules:
+    Data.Kleene.Tests
     Data.SafeVar.Tests
     Fregot.Compile.Order.Tests
     Fregot.Interpreter.Dependencies.Tests
