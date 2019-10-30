@@ -1,0 +1,5 @@
+repl% repl% = [33m{[0m[31m"name"[0m[33m:[0m [31m"input-1"[0m[33m}[0m
+repl% repl% = [33m{[0m[31m"name"[0m[33m:[0m [31m"input-2"[0m[33m}[0m
+repl% 
+repl% = [33m{[0m[31m"name"[0m[33m:[0m [31m"input-changed!"[0m[33m}[0m
+repl% 
