@@ -30,5 +30,4 @@ echo '{"name": "input-changed!"}' >"$input2"
 sleep 0.1
 enter "input"
 
-kill "$doorstop_pid" >/dev/null 2>&1 || true
-kill "$fregot_pid"   >/dev/null 2>&1 || true
+kill -PIPE "$doorstop_pid"
