@@ -18,34 +18,40 @@ import qualified Fregot.Interpreter        as Interpreter
 import           Fregot.Main.GlobalOptions
 import           Fregot.Parser             (defaultParserOptions)
 import qualified Fregot.Repl               as Repl
-import qualified Fregot.Repl.MTimes        as MTimes
+import qualified Fregot.Repl.FileWatch        as FileWatch
 import qualified Fregot.Sources            as Sources
 import qualified Options.Applicative       as OA
 import           System.Exit               (ExitCode (..))
 import qualified System.IO                 as IO
 
 data Options = Options
-    { _paths :: [FilePath]
+    { _watch :: Bool
+    , _paths :: [FilePath]
     } deriving (Show)
 
 $(makeLenses ''Options)
 
 parseOptions :: OA.Parser Options
 parseOptions = Options
-    <$> (OA.many $ OA.strArgument $
+    <$> (OA.switch $
+            OA.long  "watch" <>
+            OA.short 'w' <>
+            OA.help  "Watch files for changes and reload automatically")
+    <*> (OA.many $ OA.strArgument $
             OA.metavar "PATHS" <>
             OA.help    "Rego files or directories to load into repl")
 
 main :: GlobalOptions -> Options -> IO ExitCode
 main _ opts = do
     sources     <- Sources.newHandle
-    mtimes      <- MTimes.newHandle
     itpr        <- Interpreter.newHandle sources
     regoPaths   <- Find.findRegoFiles (opts ^. paths)
-    Repl.withHandle sources mtimes itpr $ \repl -> do
+
+    FileWatch.withHandle (FileWatch.Config (opts ^. watch)) $ \fileWatch ->
+        Repl.withHandle sources fileWatch itpr $ \repl -> do
         (lerrs, mbResult) <- runParachuteT $ do
             forM_ regoPaths $ \path -> do
-                liftIO $ MTimes.tickle mtimes path
+                liftIO $ FileWatch.watch fileWatch path
                 Interpreter.loadModuleOrBundle itpr defaultParserOptions path
             Interpreter.compilePackages itpr
         sauce <- IORef.readIORef sources

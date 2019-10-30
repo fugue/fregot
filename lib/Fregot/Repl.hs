@@ -12,6 +12,8 @@ module Fregot.Repl
     , metaCommands
     ) where
 
+import           Control.Concurrent.MVar           (MVar)
+import qualified Control.Concurrent.MVar           as MVar
 import           Control.Lens                      (maximumOf, preview, review,
                                                     to, view, (^.), (^?), _1)
 import           Control.Lens.TH                   (makeLenses)
@@ -45,7 +47,7 @@ import qualified Fregot.Prepare.Ast                as Prepare
 import           Fregot.PrettyPrint                ((<$$>), (<+>))
 import qualified Fregot.PrettyPrint                as PP
 import           Fregot.Repl.Breakpoint
-import qualified Fregot.Repl.MTimes                as MTimes
+import qualified Fregot.Repl.FileWatch             as FileWatch
 import qualified Fregot.Repl.Multiline             as Multiline
 import           Fregot.Repl.Parse
 import qualified Fregot.Sources                    as Sources
@@ -76,8 +78,9 @@ data StepTo
 data Handle = Handle
     { _resumeHistory :: !Int
     , _sources       :: !Sources.Handle
-    , _mtimes        :: !MTimes.Handle
-    , _interpreter   :: !Interpreter.Handle
+    , _fileWatch     :: !FileWatch.Handle
+    -- | Stored in an MVar so we have a mutex.
+    , _interpreter   :: !(MVar Interpreter.Handle)
     , _replCount     :: !(IORef Int)
     -- | Currently open package.
     , _openPackage   :: !(IORef PackageName)
@@ -98,24 +101,37 @@ $(makeLenses ''MetaCommand)
 
 withHandle
     :: Sources.Handle
-    -> MTimes.Handle
+    -> FileWatch.Handle
     -> Interpreter.Handle
     -> (Handle -> IO a)
     -> IO a
-withHandle _sources _mtimes _interpreter f = do
+withHandle _sources _fileWatch interp f = do
     let _resumeHistory = 10
     _replCount   <- IORef.newIORef 0
+    _interpreter <- MVar.newMVar interp
     _openPackage <- IORef.newIORef "repl"
     _mode        <- IORef.newIORef $ RegularMode []
     _breakpoints <- IORef.newIORef HS.empty
-    f Handle {..}
 
--- | Auxiliary function to invoke the interpreter.
+    let handle = Handle {..}
+    FileWatch.listen _fileWatch $ \paths -> do
+        -- NOTE(jaspervdj): This does not work well if the user has already
+        -- typed part of a prompt; we would not some way to redraw that.
+        prompt <- getPrompt handle
+        IO.hPutStrLn IO.stdout ""
+        reload handle paths
+        IO.hPutStr IO.stdout prompt
+        IO.hFlush IO.stdout
+
+    f handle
+
+-- | Auxiliary function to invoke the interpreter.  This locks the interpreter
+-- resource.
 runInterpreter
     :: Handle -> (Interpreter.Handle -> Interpreter.InterpreterM a)
     -> IO (Maybe a)
-runInterpreter h f = do
-    (errors, mbX) <- runParachuteT $ f (h ^. interpreter)
+runInterpreter h f = MVar.withMVar (h ^. interpreter) $ \interp -> do
+    (errors, mbX) <- runParachuteT $ f interp
     sauce <- IORef.readIORef (h ^. sources)
     Error.hPutErrors IO.stderr sauce Error.Text errors
     return mbX
@@ -293,7 +309,7 @@ run h = do
 
     getMultilineInput :: Hl.InputT IO (Maybe T.Text)
     getMultilineInput = do
-        prompt  <- liftIO getPrompt
+        prompt  <- liftIO (getPrompt h)
         mbLine0 <- Hl.getInputLine prompt
         case mbLine0 of
             Nothing    -> return Nothing
@@ -307,17 +323,17 @@ run h = do
                     Nothing       -> return $ Just $ Multiline.finish p1
                     Just nextLine -> more p1 nextLine
 
-    getPrompt :: IO String
-    getPrompt = do
-        pkg   <- readFocusedPackage h
-        emode <- IORef.readIORef (h ^. mode)
-        return $
-            review packageNameFromString pkg <>
-            (case emode of
-                RegularMode _ -> ""
-                Suspended _   -> "(debug)"
-                Errored _ _ _ -> "(error)") <>
-            "% "
+getPrompt :: Handle -> IO String
+getPrompt h = do
+    pkg   <- readFocusedPackage h
+    emode <- IORef.readIORef (h ^. mode)
+    return $
+        review packageNameFromString pkg <>
+        (case emode of
+            RegularMode _ -> ""
+            Suspended _   -> "(debug)"
+            Errored _ _ _ -> "(error)") <>
+        "% "
 
 metaShortcuts :: HMS.HashMap T.Text MetaCommand
 metaShortcuts =
@@ -407,7 +423,7 @@ metaCommands =
         liftIO $ case map T.unpack args of
         [path] -> do
             IO.hPutStrLn IO.stderr $ "Loading " ++ path ++ "..."
-            MTimes.tickle (h ^. mtimes) path
+            FileWatch.watch (h ^. fileWatch) path
             void $ runInterpreter h $ \i -> do
                 pkg <- Interpreter.loadModule i Parser.defaultParserOptions path
                 Interpreter.compilePackages i
@@ -422,14 +438,8 @@ metaCommands =
 
     , MetaCommand ":reload" "reload modified rego files" $
         \h _ -> liftIO $ do
-            paths <- MTimes.modified (h ^. mtimes)
-            void $ runInterpreter h $ \i -> do
-                forM_ paths $ \path -> do
-                    liftIO $ MTimes.tickle (h ^. mtimes) path
-                    Interpreter.loadModule i Parser.defaultParserOptions path
-                Interpreter.compilePackages i
-                liftIO $ IO.hPutStrLn IO.stderr $
-                    "Reloaded " ++ show (length paths) ++ " files"
+            paths <- FileWatch.pop (h ^. fileWatch)
+            reload h paths
             pure True
 
     , MetaCommand ":continue" "continue running the debugged program" $
@@ -501,6 +511,15 @@ metaCommands =
         , ""
         , "    :break foo/bar.rego:9"
         ]
+
+reload :: Handle -> [FilePath] -> IO ()
+reload h paths = void $ runInterpreter h $ \i -> do
+    forM_ paths $ \path ->
+        Interpreter.loadModule i Parser.defaultParserOptions path
+    Interpreter.compilePackages i
+    liftIO $ IO.hPutStrLn IO.stderr $ case paths of
+        [path] -> "Reloaded " ++ path
+        _      -> "Reloaded " ++ show (length paths) ++ " files"
 
 completeBuiltins :: Handle -> Hl.CompletionFunc IO
 completeBuiltins h = Hl.completeDictionary completeWhitespace $ do
