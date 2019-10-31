@@ -109,8 +109,9 @@ Usage
 
 ### fregot repl
 
-`fregot repl [PATHS]`: Start a REPL.  See [working with the REPL](#repl) for
-details and examples.
+`fregot repl [PATHS]`: Start a REPL. Optionally, use the `--watch` flag to
+enable [watching files](#watch). See [working with the REPL](#repl) for details
+and examples.
 
 ### fregot test
 
@@ -627,11 +628,15 @@ double-check your location in the code.
 
 ### :watch
 
-**You must launch the REPL with `fregot repl --watch` in order to use the `:watch` command.**
+**To enable `--watch` mode, you must launch the REPL with `fregot repl 
+--watch`. This also allows you to use the `:watch [expression]` command.**
 
-`:watch` monitors loaded package and input files for changes and live-reloads them. You can also use `:watch data.package.rule` to monitor an expression, and `fregot` will automatically print an updated evaluation when loaded files are changed.
+When you launch the REPL with `fregot repl --watch`, the REPL monitors loaded
+package and input files for changes and live-reloads them. You can also use the
+`:watch data.package.rule` command to monitor an expression, and `fregot` will
+automatically print an updated evaluation when loaded files are changed.
 
-Here's an example. Make sure to start the REPL with the `--watch` flag first:
+Here's an example. Start the REPL with the `--watch` flag:
 
     fregot repl --watch
 
@@ -642,11 +647,8 @@ Load the Rego and input files:
     Loaded package fregot.examples.ami_id
     fregot.examples.ami_id% :input repl-input.json
 
-Then run `:watch` by itself:
-
-    fregot.examples.ami_id% :watch
-
-Now you can make changes to the Rego and/or input files and `fregot` automatically reloads them:
+Now you can make changes to the Rego and/or input files and `fregot`
+automatically reloads them:
 
     fregot.examples.ami_id%
     Reloaded ami_id.rego
@@ -654,13 +656,15 @@ Now you can make changes to the Rego and/or input files and `fregot` automatical
     fregot.examples.ami_id%
     Reloaded repl-input.json
 
-This allows you to evaluate expressions as you like, and they'll automatically be up-to-date.
+This allows you to evaluate expressions as you like, and they'll automatically
+be up-to-date.
 
-`:watch` also supports expressions. Use `:watch data.package.rule`:
+Use `:watch data.package.rule` to monitor a particular expression:
 
     fregot.examples.ami_id% :watch data.fregot.examples.ami_id.allow
 
-You can then make changes to the Rego and/or input file, and `fregot` re-evaluates the expression:
+You can then make changes to the Rego and/or input file, and `fregot`
+re-evaluates the expression and prints the evaluation:
 
     fregot.examples.ami_id%
     Reloaded ami_id.rego
