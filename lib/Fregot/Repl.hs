@@ -101,7 +101,7 @@ data Handle = Handle
 data MetaCommand = MetaCommand
     { _metaName        :: !T.Text
     , _metaDescription :: !T.Text
-    , _metaRun         :: Handle -> [T.Text] -> Hl.InputT IO Bool
+    , _metaRun         :: Handle -> [T.Text] -> IO Bool
     }
 
 $(makeLenses ''Handle)
@@ -136,7 +136,7 @@ withHandle _sources _fileWatch interp f = do
 
         when success $ do
             mbWatchInput <- IORef.readIORef (handle ^. watchInput)
-            for_ mbWatchInput $ \input -> processInput handle input
+            for_ mbWatchInput $ \input -> processLine handle input
 
         -- NOTE(jaspervdj): This does not work well if the user has already
         -- typed part of a prompt; we would not some way to redraw that.
@@ -173,6 +173,13 @@ readFocusedPackage h = do
             Suspended ((_, ss) :| _) -> Just $
                 ss ^. _1 . Eval.ecEnvironment . Eval.stack
     return $ fromMaybe open (stack >>= Stack.package)
+
+processLine :: Handle -> T.Text -> IO Bool
+processLine h input
+    | (meta : args) <- T.words input
+    , ":" `T.isPrefixOf` meta
+    , Just cmd <- HMS.lookup meta metaShortcuts = (cmd ^. metaRun) h args
+    | otherwise                                 = processInput h input $> True
 
 processInput :: Handle -> T.Text -> IO ()
 processInput h input = do
@@ -316,19 +323,12 @@ run h = do
         mbInput <- getMultilineInput
         case mbInput of
             Nothing -> return ()
-            Just input
-                    | (meta : args) <- T.words input
-                    , ":" `T.isPrefixOf` meta
-                    , Just cmd <- HMS.lookup meta metaShortcuts -> do
-                addHistory input
-                cont <- (cmd ^. metaRun) h args
-                when cont loop
             Just input | T.all isSpace input ->
                 loop
-            Just input   -> do
+            Just input -> do
                 addHistory input
-                liftIO $ processInput h input
-                loop
+                cont <- liftIO $ processLine h input
+                when cont loop
 
     getMultilineInput :: Hl.InputT IO (Maybe T.Text)
     getMultilineInput = do
@@ -378,12 +378,12 @@ metaCommands :: [MetaCommand]
 metaCommands =
     [ MetaCommand ":break" "Set a breakpoint" $ \h args -> case args of
         [point] | Just qualify <- point ^? breakpointFromText -> do
-            openPkg <- liftIO $ readFocusedPackage h
+            openPkg <- readFocusedPackage h
             let bpt = qualifyBreakpoint openPkg qualify
-            liftIO $ IORef.atomicModifyIORef_ (h ^. breakpoints) $ HS.insert bpt
+            IORef.atomicModifyIORef_ (h ^. breakpoints) $ HS.insert bpt
             return True
 
-        [] -> liftIO $ do
+        [] -> do
             bpts  <- IORef.readIORef (h ^. breakpoints)
             case HS.null bpts of
                 False -> forM_ bpts $
@@ -394,13 +394,13 @@ metaCommands =
             return True
 
         _ -> do
-            liftIO $ IO.hPutStrLn IO.stderr $ unlines breakHelp
+            IO.hPutStrLn IO.stderr $ unlines breakHelp
             return True
 
     , MetaCommand ":help" "show this info" $ \_ _ -> do
         let width   = maximumOf (traverse . metaName . to T.length) metaCommands
             justify = T.justifyLeft (fromMaybe 0 width + 2) ' '
-        liftIO $ PP.hPutSemDoc IO.stderr $
+        PP.hPutSemDoc IO.stderr $
             "Enter an expression to evaluate it." <$$>
             "Enter a rule to add it to the current package." <$$>
             mempty <$$>
@@ -415,18 +415,18 @@ metaCommands =
 
     , MetaCommand ":input" "set the input document" $ \h args -> do
         case args of
-            _ | [path] <- T.unpack <$> args -> liftIO $ do
+            _ | [path] <- T.unpack <$> args -> do
                 mbOld <- IORef.readIORef (h ^. inputPath)
                 for_ mbOld $ \old -> FileWatch.unwatch (h ^. fileWatch) old
                 void $ runInterpreter h (`Interpreter.setInputFile` path)
                 IORef.writeIORef (h ^. inputPath) (Just path)
                 FileWatch.watch (h ^. fileWatch) path
-            _ -> liftIO $ IO.hPutStrLn IO.stderr $
+            _ -> IO.hPutStrLn IO.stderr $
                 ":input takes one path argument"
         return True
 
     , MetaCommand ":open" "open a different package, e.g. `:open foo`" $
-        \h args -> liftIO $ case map (preview dataPackageNameFromText) args of
+        \h args -> case map (preview dataPackageNameFromText) args of
             [Just (_, pkg)] -> do
                 -- NOTE(jaspervdj): Rather than erroring if it doesn't exist, we
                 -- just make it clear that the user has opened a new package.
@@ -439,7 +439,7 @@ metaCommands =
                 IO.hPutStrLn IO.stderr ":open takes a package name as argument"
                 return True
 
-    , MetaCommand ":quit" "exit the repl" $ \h _ -> liftIO $ do
+    , MetaCommand ":quit" "exit the repl" $ \h _ -> do
         oldMode <- IORef.atomicModifyIORef (h ^. mode) $
             \m -> (RegularMode [], m)
         case oldMode of
@@ -447,7 +447,7 @@ metaCommands =
             _             -> return True
 
     , MetaCommand ":load" "load a rego file, e.g. `:load foo.rego`" $ \h args ->
-        liftIO $ case map T.unpack args of
+        case map T.unpack args of
         [path] -> do
             IO.hPutStrLn IO.stderr $ "Loading " ++ path ++ "..."
             FileWatch.watch (h ^. fileWatch) path
@@ -464,7 +464,7 @@ metaCommands =
             return True
 
     , MetaCommand ":reload" "reload modified rego files" $
-        \h _ -> liftIO $ do
+        \h _ -> do
             paths <- FileWatch.pop (h ^. fileWatch)
             void $ reload h paths
             pure True
@@ -479,7 +479,7 @@ metaCommands =
         stepWith (StepOver . view (_1 . Eval.ecEnvironment . Eval.stack))
 
     , MetaCommand ":rewind" "go back to the previous debug suspension" $ do
-        \h _ -> liftIO $ do
+        \h _ -> do
             sauce  <- IORef.readIORef (h ^. sources)
             source <- IORef.atomicModifyIORef' (h ^. mode) $ \case
                 RegularMode (resume : resumes) ->
@@ -496,7 +496,7 @@ metaCommands =
             return True
 
     , MetaCommand ":test" "run tests in the current package" $
-        \h _ -> liftIO $ do
+        \h _ -> do
             pkg     <- IORef.readIORef (h ^. openPackage)
             results <- runInterpreter h $ \i -> do
                 rules <- map ((,) pkg) <$> Interpreter.readPackageRules i pkg
@@ -505,7 +505,7 @@ metaCommands =
             forM_ results (Test.printTestResults IO.stdout sauce)
             return True
 
-    , MetaCommand ":where" "print your location" $ \h _ -> liftIO $ do
+    , MetaCommand ":where" "print your location" $ \h _ -> do
         emode <- IORef.readIORef (h ^. mode)
         case emode of
             Suspended ((source, (ec, _)) :| _) -> do
@@ -519,7 +519,7 @@ metaCommands =
         return True
 
     , MetaCommand ":watch" "evaluate input after file changes" $
-        \h args -> liftIO $ do
+        \h args -> do
         if FileWatch.listenersEnabled (h ^. fileWatch)
             then
                 let input = T.unwords args in
@@ -531,7 +531,7 @@ metaCommands =
         return True
     ]
   where
-    stepWith f = \h _ -> liftIO $ do
+    stepWith f = \h _ -> do
         emode <- IORef.readIORef (h ^. mode)
         case emode of
             RegularMode _ -> IO.hPutStrLn IO.stderr "Not paused"
