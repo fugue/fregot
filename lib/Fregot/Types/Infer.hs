@@ -418,6 +418,15 @@ inferTerm (RefT source lhs rhs) = do
                     unifyTermType source rhs (dynk, NonEmpty.singleton source)
                     return (dynv, NonEmpty.singleton source)
 
+                -- If there is no dynamic part, we need to unify the rhs against
+                -- all the different static keys.
+                _ | not (HMS.null (Types.objStatic objTy)) -> do
+                    let (ks, vs) = unzip $ HMS.toList (Types.objStatic objTy)
+                        kty      = Types.unions $ map Types.scalarType ks
+                        vty      = Types.unions vs
+                    unifyTermType source rhs (kty, NonEmpty.singleton source)
+                    return (vty, NonEmpty.singleton source)
+
                 -- There is no static or dynamic part that matches, this is
                 -- either an internal error or a known empty object.
                 _ -> throwError $ CannotRef source lhsTy
