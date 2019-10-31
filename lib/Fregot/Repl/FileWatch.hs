@@ -6,6 +6,7 @@ module Fregot.Repl.FileWatch
     ( Config (..)
     , Handle
     , withHandle
+    , listenersEnabled
     , watch
     , unwatch
     , pop
@@ -96,6 +97,9 @@ withHandle hConfig f = FSNotify.withManager $ \hManager -> do
 
     let h = Handle {..}
     withListenWorker h (f h)
+
+listenersEnabled :: Handle -> Bool
+listenersEnabled = cEnableListeners . hConfig
 
 -- | Watch a file for changes.  This is idempotent and will not change anything
 -- if the file is already being watched.
