@@ -287,7 +287,7 @@ builtin_array_concat :: Monad m => Builtin m
 builtin_array_concat = Builtin
     (In (In Out))
     -- TODO(jaspervdj): We want `∀a b. array<a> -> array<b> -> array<a|b>`.
-    (Ty.arrayOf Ty.any 🡒 Ty.arrayOf Ty.any 🡒 Ty.out Ty.any) $ pure $
+    (Ty.arrayOf Ty.any 🡒 Ty.arrayOf Ty.any 🡒 Ty.out Ty.unknown) $ pure $
     \(Cons l (Cons r Nil)) -> return (l <> r :: V.Vector Value)
 
 builtin_concat :: Monad m => Builtin m
@@ -339,7 +339,7 @@ builtin_intersection :: Monad m => Builtin m
 builtin_intersection = Builtin
     (In Out)
     -- TODO(jaspervdj): Maybe this should be `∀a. set<set<a>> -> set<a>`.
-    (Ty.setOf (Ty.setOf Ty.any) 🡒 Ty.out (Ty.setOf Ty.any)) $ pure $
+    (Ty.setOf (Ty.setOf Ty.any) 🡒 Ty.out (Ty.setOf Ty.unknown)) $ pure $
     \(Cons set Nil) -> return $! case HS.toList (set :: (HS.HashSet (HS.HashSet Value))) of
       []   -> HS.empty
       sets -> foldr1 HS.intersection sets
@@ -371,7 +371,7 @@ builtin_is_string = Builtin
 builtin_json_unmarshal :: Monad m => Builtin m
 builtin_json_unmarshal = Builtin
     (In Out)
-    (Ty.string 🡒 Ty.out Ty.any) $ pure $
+    (Ty.string 🡒 Ty.out Ty.unknown) $ pure $
     \(Cons str Nil) -> case A.eitherDecodeStrict' (T.encodeUtf8 str) of
         Left  err -> throwBuiltinException err
         Right val -> return $! Json.toValue val
@@ -386,7 +386,7 @@ builtin_max :: Monad m => Builtin m
 builtin_max = Builtin
     (In Out)
     -- TODO(jaspervdj): More like `∀a. collection<a> -> a`.
-    (Ty.collectionOf Ty.any 🡒 Ty.out Ty.any) $ pure $
+    (Ty.collectionOf Ty.any 🡒 Ty.out Ty.unknown) $ pure $
     \(Cons (Collection vals) Nil) -> return $! case vals of
         [] -> NullV  -- TODO(jaspervdj): Should be undefined.
         _  -> maximum (vals :: [Value])
@@ -395,7 +395,7 @@ builtin_min :: Monad m => Builtin m
 builtin_min = Builtin
     (In Out)
     -- TODO(jaspervdj): More like `∀a. collection<a> -> a`.
-    (Ty.collectionOf Ty.any 🡒 Ty.out Ty.any) $ pure $
+    (Ty.collectionOf Ty.any 🡒 Ty.out Ty.unknown) $ pure $
     \(Cons (Collection vals) Nil) -> return $! case vals of
         [] -> NullV  -- TODO(jaspervdj): Should be undefined.
         _  -> minimum (vals :: [Value])
@@ -477,7 +477,7 @@ builtin_union :: Monad m => Builtin m
 builtin_union = Builtin
     (In Out)
     -- TODO(jaspervdj): Maybe this should be `∀a. set<set<a>> -> set<a>`.
-    (Ty.setOf (Ty.setOf Ty.any) 🡒 Ty.out (Ty.setOf Ty.any)) $ pure $
+    (Ty.setOf (Ty.setOf Ty.any) 🡒 Ty.out (Ty.setOf Ty.unknown)) $ pure $
     \(Cons set Nil) ->
         return $! HS.unions $ HS.toList (set :: (HS.HashSet (HS.HashSet Value)))
 
@@ -492,7 +492,7 @@ builtin_sort :: Monad m => Builtin m
 builtin_sort = Builtin
     (In Out)
     -- TODO(jaspervdj): Something more akin to `∀a. collection<a> -> array<a>`.
-    (Ty.collectionOf Ty.any 🡒 Ty.out (Ty.arrayOf Ty.any)) $ pure $
+    (Ty.collectionOf Ty.any 🡒 Ty.out (Ty.arrayOf Ty.unknown)) $ pure $
     \(Cons (Collection vals) Nil) -> return $! L.sort (vals :: [Value])
 
 builtin_split :: Monad m => Builtin m
@@ -605,7 +605,7 @@ builtin_minus = Builtin
         (do
             Ty.bcSubsetOf c x $ Ty.setOf Ty.any
             Ty.bcSubsetOf c y $ Ty.setOf Ty.any
-            return $ Ty.setOf Ty.any)) $ pure $
+            return $ Ty.setOf Ty.unknown)) $ pure $
   \(Cons x (Cons y Nil)) -> case (x, y) of
       (InL x', InL y') -> return $! NumberV $ num $ x' - y'
       (InR x', InR y') -> return $! SetV $ HS.difference (x' :: HS.HashSet Value) y'
@@ -634,14 +634,14 @@ builtin_bin_and :: Monad m => Builtin m
 builtin_bin_and = Builtin
   (In (In Out))
   -- TODO(jaspervdj): Maybe this should be `∀a. set<a> -> set<a> -> set<a>`.
-  (Ty.setOf Ty.any 🡒 Ty.setOf Ty.any 🡒 Ty.out (Ty.setOf Ty.any)) $ pure $
+  (Ty.setOf Ty.any 🡒 Ty.setOf Ty.any 🡒 Ty.out (Ty.setOf Ty.unknown)) $ pure $
   \(Cons x (Cons y Nil)) -> return $! SetV $ HS.intersection x y
 
 builtin_bin_or :: Monad m => Builtin m
 builtin_bin_or = Builtin
   (In (In Out))
   -- TODO(jaspervdj): Maybe this should be `∀a. set<a> -> set<a> -> set<a>`.
-  (Ty.setOf Ty.any 🡒 Ty.setOf Ty.any 🡒 Ty.out (Ty.setOf Ty.any)) $ pure $
+  (Ty.setOf Ty.any 🡒 Ty.setOf Ty.any 🡒 Ty.out (Ty.setOf Ty.unknown)) $ pure $
   \(Cons x (Cons y Nil)) -> return $! SetV $ HS.union x y
 
 -- | Auxiliary function to fix types.

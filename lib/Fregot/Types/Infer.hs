@@ -28,7 +28,8 @@ import           Control.Lens                  (forOf_, review, view, (&), (.~),
                                                 (^.), (^?), _1)
 import           Control.Lens.Extras           (is)
 import           Control.Lens.TH               (makeLenses, makePrisms)
-import           Control.Monad                 (forM, join, unless, zipWithM_)
+import           Control.Monad                 (forM, join, unless, void,
+                                                zipWithM_)
 import           Control.Monad.Except.Extended (catchError, catching,
                                                 throwError)
 import           Control.Monad.Parachute       (ParachuteT, fatal)
@@ -322,7 +323,7 @@ inferTerm (NameT source WildcardName) =
 inferTerm (NameT source (BuiltinName _)) =
     -- TODO(jaspervdj); BuiltinName will be "data" or "input", perhaps there
     -- should be an Enum type?
-    pure (Types.any, NonEmpty.singleton source)
+    pure (Types.unknown, NonEmpty.singleton source)
 
 inferTerm (NameT source (LocalName var)) = do
     mbRes <- Unify.lookup var
@@ -398,13 +399,17 @@ inferTerm (RefT source lhs rhs) = do
             unifyTermType source rhs (Types.any, NonEmpty.singleton source)
             return (Types.any, NonEmpty.singleton source)
 
+        (Types.Unknown, _) -> do
+            unifyTermType source rhs (Types.unknown, NonEmpty.singleton source)
+            return (Types.unknown, NonEmpty.singleton source)
+
         _ | Just itemTy <- lhsTy ^? _1 . Types.singleton . Types._Array -> do
             unifyTermType source rhs (Types.number, NonEmpty.singleton source)
             return (itemTy, NonEmpty.singleton source)
 
         _ | Just elemTy <- lhsTy ^? _1 . Types.singleton . Types._Set -> do
             unifyTermType source rhs (elemTy, NonEmpty.singleton source)
-            return (Types.boolean, NonEmpty.singleton source)
+            return (elemTy, NonEmpty.singleton source)
 
         _ | Just objTy <- lhsTy ^? _1 . Types.singleton . Types._Object ->
             case rhs of
@@ -438,8 +443,10 @@ inferScalar = Types.scalarType
 
 unifyTermTerm
     :: SourceSpan -> Term SourceSpan -> Term SourceSpan -> InferM ()
-unifyTermTerm _ (NameT _ WildcardName)  _                       = return ()
-unifyTermTerm _ _                       (NameT _ WildcardName)  = return ()
+unifyTermTerm _ (NameT _ WildcardName)  r                       =
+    void (inferTerm r)  -- This might bind variables!
+unifyTermTerm _ l                       (NameT _ WildcardName)  =
+    void (inferTerm l)
 unifyTermTerm _ (NameT _ (LocalName α)) (NameT _ (LocalName β)) =
     Unify.bindVar α β
 
