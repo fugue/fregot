@@ -174,25 +174,25 @@ runInfer env mx =
 
 inferRule :: Rule' -> InferM (Rule Types.RuleType SourceSpan)
 inferRule rule = case rule ^. ruleKind of
-    FunctionRule arity ->
-        -- TODO(jaspervdj): According to the current plan, functions will be
-        -- skipped right now and inferred in an "inlined" way.
-        --
-        -- TODO(jaspervdj): We also want to do a pre-flight check using Any.
-        pure $ rule & ruleInfo .~ Types.FunctionType arity
-
     -- TODO(jaspervdj): Here, we need to assign types to the arguments as well
     -- as the return value.  According to the current plan, functions will be
     -- skipped right now and inferred in an "inlined" way.
     --
     -- We'll want to do some concatenation here in addition to the current
     -- traversal.
-    CompleteRule -> do
+    kind | kind == CompleteRule || kind == FunctionRule 0 -> do
         rdefTypes <- forM (rule ^. ruleDefs) $ \rdef -> inferRuleDefinition rdef
         defType   <- traverse inferTerm (rule ^. ruleDefault)
         let retType = Types.unions $ fmap fst $
                 maybeToList defType ++ map snd rdefTypes
         pure $ rule & ruleInfo .~ Types.CompleteRuleType retType
+
+    FunctionRule arity ->
+        -- TODO(jaspervdj): According to the current plan, functions will be
+        -- skipped right now and inferred in an "inlined" way.
+        --
+        -- TODO(jaspervdj): We also want to do a pre-flight check using Any.
+        pure $ rule & ruleInfo .~ Types.FunctionType arity
 
     GenSetRule -> do
         idxValTys <- forM (rule ^. ruleDefs) inferRuleDefinition
@@ -207,6 +207,10 @@ inferRule rule = case rule ^. ruleKind of
                 [] -> Nothing
                 _  -> Just (idxType, valType)
         pure $ rule & ruleInfo .~ Types.GenObjectRuleType objType
+
+    _ -> throwError $ InternalError
+        -- Absurd: the 'kind' rule is exhaustive but GHC can't tell.
+        "inferRule with absurd rule kind"
 
 -- | Ad-hoc datatype for the branches in 'inferRuleDefinition'.
 data RuleDefBranch = RuleDefBranch
