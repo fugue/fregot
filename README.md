@@ -167,10 +167,10 @@ policy file using a JSON file as input.
 _Tip: You can run this command yourself from the root of this repo!_
 
 This command evaluates the `data.fregot.examples.ami_id.allow` expression from
-`ami_id.rego` using the input file `input_ami_id.json`:
+`ami_id.rego` using the input file `repl-input.json`:
 
     fregot eval \
-        --input examples/ami_id/input_ami_id.json \
+        --input examples/ami_id/repl-input.json \
         'data.fregot.examples.ami_id.allow' \
         examples/ami_id/ami_id.rego
 
@@ -268,8 +268,9 @@ Debugging generally follows these steps:
 
  1. Set one or more breakpoints with `:break`
  2. Evaluate an expression that activates the breakpoint
- 3. Use other debugging commands to step into, step over, rewind, print
-    location, or continue to the next breakpoint
+ 3. Use other debugging commands to [step into](#step), [step over](#next),
+    [rewind](#rewind), [print location](#where), or [continue to the next
+    breakpoint](#continue)
 
 #### Step 1: Set breakpoint
 
@@ -293,8 +294,9 @@ display the list. You'll see output like this:
 
 #### Step 2: Activate breakpoint
 
-Next, evaluate an expression that activates the breakpoint.  If the breakpoint
-is set on `foo`, we can just evaluate that:
+Next, evaluate an expression that activates the breakpoint.  If the `repl`
+package is already loaded and the breakpoint is set on `foo`, we can just
+evaluate `foo`:
 
     %repl foo
 
@@ -305,11 +307,12 @@ here, you can do a number of things:
 
  -  Enter a query to evaluate in the _current context_: meaning that you can
     print and evaluate local variables that are in scope.
- -  Use `:continue` to continue to the next breakpoint.
- -  Use `:step` and `:next` to step into and over the next query, respectively.
- -  Use `:rewind` to go _back_ to the last step.
- -  Use `:where` to see your current location.
- -  Use `:quit` to exit debugging mode. Use `:quit` again to exit the REPL.
+ -  Use [:continue](#continue) to continue to the next breakpoint.
+ -  Use [:step](#step) and [:next](#next) to step into and over the next query,
+    respectively.
+ -  Use [:rewind](#rewind) to go _back_ to the last step.
+ -  Use [:where](#where) to see your current location.
+ -  Use [:quit](#quit) to exit debugging mode. Use `:quit` again to exit the REPL.
 
 REPL Usage
 ----------
@@ -322,9 +325,12 @@ breakpoint at the `allow` rule in the package `fregot.examples.ami_id`:
     repl% :break fregot.examples.ami_id.allow
 
 The command returns no output unless there is an error.  To enter debugging
-mode, activate the breakpoint by entering its name:
+mode, activate the breakpoint by entering its full `data.package.rule` name:
 
-    repl% fregot.examples.ami_id.allow
+    repl% data.fregot.examples.ami_id.allow
+
+(Tip: If the package is already loaded, you can activate it with just `allow` --
+no need for the full name.)
 
 The REPL displays the code at the breakpoint, along with the line number:
 
@@ -350,9 +356,9 @@ See [Step 1: Set breakpoint](#step-1-set-breakpoint) for more info.
 
 #### Evaluating local variables
 
-Once you've activated a breakpoint and are in debugging mode, you can evaluate
-queries in the current context -- including printing and evaluating local
-variables.
+Once you've loaded a file, activated a breakpoint, and entered debugging mode,
+you can evaluate queries in the current context -- including printing and
+evaluating local variables.
 
 For example, if you look at
 [break_example.rego](./examples/break_example/break_example.rego), you'll see
@@ -503,7 +509,7 @@ You'll see output like this:
 The REPL displays the code at the next breakpoint, along with the line number.
 
 In the following example, we set a breakpoint at `test_step` (see
-[break_example.rego](./examples/break_example/break_example.rego), activate the
+[break_example.rego](./examples/break_example/break_example.rego)), activate the
 breakpoint, then use the `:continue` command:
 
     fregot.examples.break_example% :break test_step
@@ -625,7 +631,7 @@ You can use fregot to determine whether a Terraform plan complies with a Rego
 policy.  Incorporate fregot into your CI/CD pipeline to prevent noncompliant
 infrastructure from being deployed.
 
-See `examples/ami_id/ami_id.rego` for details.
+See [examples/ami_id/ami_id.rego](./examples/ami_id/ami_id.rego) for details.
 
 Additional Reading
 ------------------
