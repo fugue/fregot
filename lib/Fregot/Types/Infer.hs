@@ -25,7 +25,7 @@ module Fregot.Types.Infer
     ) where
 
 import           Control.Lens                  (forOf_, review, view, (&), (.~),
-                                                (^.), (^?), _1)
+                                                (^.), (^?))
 import           Control.Lens.Extras           (is)
 import           Control.Lens.TH               (makeLenses, makePrisms)
 import           Control.Monad                 (forM, join, unless, void,
@@ -40,6 +40,7 @@ import           Data.Bifunctor                (bimap, first, second)
 import           Data.Either                   (partitionEithers)
 import           Data.Foldable                 (for_)
 import qualified Data.HashMap.Strict           as HMS
+import qualified Data.HashSet                  as HS
 import qualified Data.Kleene                   as K
 import           Data.List.NonEmpty.Extended   (NonEmpty (..))
 import qualified Data.List.NonEmpty.Extended   as NonEmpty
@@ -403,40 +404,60 @@ inferTerm (RefT source lhs rhs) = do
             unifyTermType source rhs (Types.unknown, NonEmpty.singleton source)
             return (Types.unknown, NonEmpty.singleton source)
 
-        _ | Just itemTy <- lhsTy ^? _1 . Types.singleton . Types._Array -> do
-            unifyTermType source rhs (Types.number, NonEmpty.singleton source)
-            return (itemTy, NonEmpty.singleton source)
+        (Types.Union opts, _) -> case NonEmpty.fromList (HS.toList opts) of
+            Nothing    -> throwError $ CannotRef source lhsTy
+            Just nopts -> do
+                (keytys, valtys) <- fmap NonEmpty.unzip $
+                    mapM (inferElemRef lhsTy) nopts
+                unifyTermType source rhs (mergeSourceTypes keytys)
+                return $ mergeSourceTypes valtys
 
-        _ | Just elemTy <- lhsTy ^? _1 . Types.singleton . Types._Set -> do
-            unifyTermType source rhs (elemTy, NonEmpty.singleton source)
-            return (elemTy, NonEmpty.singleton source)
+  where
+    inferElemRef
+        :: SourceType       -- ^ Original LHS type, only for errors
+        -> Types.Elem Type  -- ^ Actual LHS
+        -> InferM (SourceType, SourceType)  -- ^ Key type, value type
 
-        _ | Just objTy <- lhsTy ^? _1 . Types.singleton . Types._Object ->
-            case rhs of
-                -- In case the index is a scalar, and it's present in the object
-                -- type, we can return a very granular type.
-                ScalarT _ s | Just ty <- HMS.lookup s (Types.objStatic objTy) ->
-                    return (ty, NonEmpty.singleton source)
+    inferElemRef _lhsTy (Types.Array itemTy) = return $ (,)
+            (Types.number, NonEmpty.singleton source)
+            (itemTy, NonEmpty.singleton source)
 
-                -- Otherwise we need to look at the dynamic part.
-                _ | Just (dynk, dynv) <- Types.objDynamic objTy -> do
-                    unifyTermType source rhs (dynk, NonEmpty.singleton source)
-                    return (dynv, NonEmpty.singleton source)
+    inferElemRef _lhsTy (Types.Set elemTy) = return $ (,)
+            (elemTy, NonEmpty.singleton source)
+            (elemTy, NonEmpty.singleton source)
 
-                -- If there is no dynamic part, we need to unify the rhs against
-                -- all the different static keys.
-                _ | not (HMS.null (Types.objStatic objTy)) -> do
-                    let (ks, vs) = unzip $ HMS.toList (Types.objStatic objTy)
-                        kty      = Types.unions $ map Types.scalarType ks
-                        vty      = Types.unions vs
-                    unifyTermType source rhs (kty, NonEmpty.singleton source)
-                    return (vty, NonEmpty.singleton source)
+    inferElemRef lhsTy (Types.Object objTy) = case rhs of
+        -- In case the index is a scalar, and it's present in the object
+        -- type, we can return a very granular type.
+        ScalarT ss s | Just ty <- HMS.lookup s (Types.objStatic objTy) ->
+            return $ (,)
+                (Types.scalarType s, NonEmpty.singleton ss)
+                (ty, NonEmpty.singleton source)
 
-                -- There is no static or dynamic part that matches, this is
-                -- either an internal error or a known empty object.
-                _ -> throwError $ CannotRef source lhsTy
+        -- Otherwise we need to look at the dynamic part.
+        _ | Just (dynk, dynv) <- Types.objDynamic objTy -> return $ (,)
+            (dynk, NonEmpty.singleton source)
+            (dynv, NonEmpty.singleton source)
 
+        -- If there is no dynamic part, we need to unify the rhs against
+        -- all the different static keys.
+        _ | not (HMS.null (Types.objStatic objTy)) ->
+            let (ks, vs) = unzip $ HMS.toList (Types.objStatic objTy)
+                kty      = Types.unions $ map Types.scalarType ks
+                vty      = Types.unions vs in
+            return $ (,)
+                (kty, NonEmpty.singleton source)
+                (vty, NonEmpty.singleton source)
+
+        -- There is no static or dynamic part that matches, this is
+        -- either an internal error or a known empty object.
         _ -> throwError $ CannotRef source lhsTy
+
+    inferElemRef lhsTy Types.String     = throwError $ CannotRef source lhsTy
+    inferElemRef lhsTy Types.Number     = throwError $ CannotRef source lhsTy
+    inferElemRef lhsTy Types.Boolean    = throwError $ CannotRef source lhsTy
+    inferElemRef lhsTy Types.Null       = throwError $ CannotRef source lhsTy
+    inferElemRef lhsTy (Types.Scalar _) = throwError $ CannotRef source lhsTy
 
 inferScalar :: Scalar -> Type
 inferScalar = Types.scalarType
