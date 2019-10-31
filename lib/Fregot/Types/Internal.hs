@@ -19,7 +19,9 @@ module Fregot.Types.Internal
 
       -- Utilities
     , singleton
+    , empty
     , any
+    , unknown
     , boolean
     , number
     , string
@@ -37,6 +39,7 @@ import           Control.Lens.TH     (makePrisms)
 import           Data.Hashable       (Hashable)
 import qualified Data.HashMap.Strict as HMS
 import qualified Data.HashSet        as HS
+import qualified Data.Kleene         as K
 import           Data.List           (foldl', intersperse)
 import           Data.Maybe          (maybeToList)
 import qualified Fregot.Prepare.Ast  as Ast
@@ -68,6 +71,7 @@ instance Hashable ty => Hashable (Elem ty)
 
 data Type
     = Universe
+    | Unknown
     | Union !(HS.HashSet (Elem Type))
     deriving (Eq, Generic, Show)
 
@@ -106,7 +110,8 @@ instance PP.Pretty PP.Sem ty => PP.Pretty PP.Sem (Elem ty) where
 instance PP.Pretty PP.Sem Type where
     pretty = \case
         Universe              -> PP.keyword "any"
-        Union es | HS.null es -> "empty"
+        Unknown               -> PP.keyword "unknown"
+        Union es | HS.null es -> PP.keyword "empty"
         Union es              -> mconcat $
             intersperse (PP.punctuation "|") (map PP.pretty $ HS.toList es)
 
@@ -122,52 +127,57 @@ scalarElem Ast.Null        = Null
 
 objectSubsetOf
     :: (Eq k, Hashable k)
-    => (k -> ty) -> (ty -> ty -> Bool) -> Object k ty -> Object k ty -> Bool
+    => (k -> ty) -> (ty -> ty -> K.Ternary) -> Object k ty -> Object k ty
+    -> K.Ternary
 objectSubsetOf keyTy sub l r =
     -- 1. All static keys in `r` must be present in the static keys of `l`.
-    (Prelude.null $ objStatic r `HMS.difference` objStatic l) &&
+    (K.fromBool $ Prelude.null $ objStatic r `HMS.difference` objStatic l) K.&&
     -- 2. All static keys in `l` must be either be subsets of static keys in
     -- `r`, or be a subset of the dynamic part of `r`.
-    (all
+    (K.all
         (\(k, lv) -> case HMS.lookup k (objStatic r) of
             Just rv -> lv `sub` rv
             Nothing -> case objDynamic r of
-                Nothing         -> False
-                Just (rdk, rdv) -> keyTy k `sub` rdk && lv `sub` rdv)
-        (HMS.toList (objStatic l))) &&
+                Nothing         -> K.False
+                Just (rdk, rdv) -> keyTy k `sub` rdk K.&& lv `sub` rdv)
+        (HMS.toList (objStatic l))) K.&&
     -- 3. If `l` has a dynamic part, it must be a subset of `r`s dynamic part.
     -- If it does not have a dynamic part, `r` should not have one either.
     (case (objDynamic l, objDynamic r) of
-        (Nothing,       Nothing)       -> True
-        (Nothing,       Just _)        -> True
-        (Just _,        Nothing)       -> False
-        (Just (lk, lv), Just (rk, rv)) -> sub lk rk && sub lv rv)
+        (Nothing,       Nothing)       -> K.True
+        (Nothing,       Just _)        -> K.True
+        (Just _,        Nothing)       -> K.False
+        (Just (lk, lv), Just (rk, rv)) -> sub lk rk K.&& sub lv rv)
 
-elemSubsetOf :: Elem Type -> Elem Type -> Bool
+elemSubsetOf :: Elem Type -> Elem Type -> K.Ternary
 elemSubsetOf x y
-    | x == y = True
+    | x == y = K.True
 elemSubsetOf (Scalar s) y
-    | scalarElem s == y = True
+    | scalarElem s == y = K.True
 elemSubsetOf (Object x) (Object y) =
-    objectSubsetOf scalarType subsetOf x y
+    objectSubsetOf scalarType (⊆) x y
 elemSubsetOf (Array x) (Array y) =
     -- objectSubsetOf (const number) subsetOf x y
     subsetOf x y
 elemSubsetOf (Set x) (Set y) =
     subsetOf x y
-elemSubsetOf _ _ = False
+elemSubsetOf _ _ = K.False
 
-subsetOf :: Type -> Type -> Bool
-subsetOf _         Universe  = True
-subsetOf Universe  (Union _) = False
-subsetOf (Union l) (Union r) = all (\e -> Prelude.any (e `elemSubsetOf`) r) l
+subsetOf :: Type -> Type -> K.Ternary
+subsetOf _         Universe  = K.True
+subsetOf Universe  (Union _) = K.False
+subsetOf Unknown   _         = K.Unknown
+subsetOf _         Unknown   = K.Unknown
+subsetOf (Union l) (Union r) = K.all (\e -> K.any (e `elemSubsetOf`) r) l
 
-(⊆) :: Type -> Type -> Bool
+(⊆) :: Type -> Type -> K.Ternary
 (⊆) = subsetOf
 
 union :: Type -> Type -> Type
 union Universe _          = Universe
 union _        Universe   = Universe
+union Unknown  _          = Unknown
+union _        Unknown    = Unknown
 union (Union l) (Union r) = Union $ HS.fromList $ foldl' insert (HS.toList r) l
   where
     insert :: [Elem Type] -> Elem Type -> [Elem Type]
@@ -175,9 +185,9 @@ union (Union l) (Union r) = Union $ HS.fromList $ foldl' insert (HS.toList r) l
 
     work acc []       elm = elm : acc
     work acc (e : es) elm
-        | e `elemSubsetOf` elm = work acc es elm
-        | elm `elemSubsetOf` e = acc ++ e : es
-        | otherwise            = work (e : acc) es elm
+        | K.isTrue (e `elemSubsetOf` elm) = work acc es elm
+        | K.isTrue (elm `elemSubsetOf` e) = acc ++ e : es
+        | otherwise                       = work (e : acc) es elm
 
 unions :: [Type] -> Type
 unions = foldl' union empty
@@ -194,6 +204,7 @@ singleton = prism'
     (Union . HS.singleton)
     (\case
         Universe  -> Nothing
+        Unknown   -> Nothing
         Union set -> case HS.toList set of
             [single] -> Just single
             _        -> Nothing)
@@ -206,6 +217,9 @@ empty = Union HS.empty
 
 any :: Type
 any = Universe
+
+unknown :: Type
+unknown = Unknown
 
 boolean :: Type
 boolean = review singleton Boolean

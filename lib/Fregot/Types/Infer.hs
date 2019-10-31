@@ -29,7 +29,8 @@ import           Control.Lens                  (forOf_, review, view, (&), (.~),
 import           Control.Lens.Extras           (is)
 import           Control.Lens.TH               (makeLenses, makePrisms)
 import           Control.Monad                 (forM, join, unless, zipWithM_)
-import           Control.Monad.Except.Extended (catching, throwError)
+import           Control.Monad.Except.Extended (catchError, catching,
+                                                throwError)
 import           Control.Monad.Parachute       (ParachuteT, fatal)
 import           Control.Monad.Reader          (ReaderT, ask, runReaderT)
 import           Control.Monad.State.Strict    (StateT, evalStateT, get, modify,
@@ -38,6 +39,7 @@ import           Data.Bifunctor                (bimap, first, second)
 import           Data.Either                   (partitionEithers)
 import           Data.Foldable                 (for_)
 import qualified Data.HashMap.Strict           as HMS
+import qualified Data.Kleene                   as K
 import           Data.List.NonEmpty.Extended   (NonEmpty (..))
 import qualified Data.List.NonEmpty.Extended   as NonEmpty
 import           Data.Maybe                    (catMaybes, fromMaybe,
@@ -335,14 +337,14 @@ inferTerm (NameT source (QualifiedName pkg var)) = do
 inferTerm (ArrayT source items) = do
     tys <- traverse inferTerm items
     pure $ maybe
-        (Types.arrayOf Types.any, NonEmpty.singleton source)
+        (Types.arrayOf Types.empty, NonEmpty.singleton source)
         (first Types.arrayOf . mergeSourceTypes)
         (NonEmpty.fromList tys)
 
 inferTerm (SetT source items) = do
     tys <- traverse inferTerm items
     pure $ maybe
-        (Types.setOf Types.any, NonEmpty.singleton source)
+        (Types.setOf Types.empty, NonEmpty.singleton source)
         (first Types.setOf . mergeSourceTypes)
         (NonEmpty.fromList tys)
 
@@ -505,9 +507,13 @@ inferBuiltin
                 (x, NonEmpty.singleton source) (y, NonEmpty.singleton source)
             return x
         , B.bcSubsetOf = \σ τ ->
-            unless (σ ⊆ τ) $ throwError $ NoSubset source σ τ
+            -- NOTE(jaspervdj): We map 'K.Unknown' to 'True' here.
+            unless (K.fromTernary True $ σ ⊆ τ) $
+                throwError $ NoSubset source σ τ
 
         , B.bcError = \err -> throwError $ BuiltinTypeError source err
+
+        , B.bcCatch = \mx my -> catchError mx (\_ -> my)
         }
 
 inferUserFunction

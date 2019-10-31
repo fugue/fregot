@@ -43,11 +43,11 @@ and = foldr (&&) True
 or :: Foldable f => f Ternary -> Ternary
 or = foldr (||) False
 
-all :: (Foldable f, P.Functor f) => (a -> Ternary) -> f a -> Ternary
-all f = and P.. P.fmap f
+all :: Foldable f => (a -> Ternary) -> f a -> Ternary
+all f = foldr (\x -> (f x &&)) True
 
-any :: (Foldable f, P.Functor f) => (a -> Ternary) -> f a -> Ternary
-any f = or P.. P.fmap f
+any :: Foldable f => (a -> Ternary) -> f a -> Ternary
+any f = foldr (\x -> (f x ||)) False
 
 fromTernary :: P.Bool -> Ternary -> P.Bool
 fromTernary _ False   = P.False

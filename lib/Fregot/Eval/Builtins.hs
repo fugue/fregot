@@ -485,7 +485,7 @@ builtin_union = Builtin
 builtin_set :: Monad m => Builtin m
 builtin_set = Builtin
     Out
-    (Ty.out (Ty.setOf Ty.any)) $ pure $
+    (Ty.out (Ty.setOf Ty.empty)) $ pure $
     \Nil -> return $! SetV HS.empty
 
 builtin_sort :: Monad m => Builtin m
@@ -595,8 +595,17 @@ builtin_plus = Builtin
 builtin_minus :: Monad m => Builtin m
 builtin_minus = Builtin
   (In (In Out))
-  -- TODO(jaspervdj): Add set difference
-  (Ty.number 🡒 Ty.number 🡒 Ty.out Ty.number) $ pure $
+  -- TODO(jaspervdj): Maybe this should be `∀a. set<a> -> set<a> -> set<a>`.
+  (\c (Ty.Cons x (Ty.Cons y Ty.Nil)) ->
+    Ty.bcCatch c
+        (do
+            Ty.bcSubsetOf c x Ty.number
+            Ty.bcSubsetOf c y Ty.number
+            return Ty.number)
+        (do
+            Ty.bcSubsetOf c x $ Ty.setOf Ty.any
+            Ty.bcSubsetOf c y $ Ty.setOf Ty.any
+            return $ Ty.setOf Ty.any)) $ pure $
   \(Cons x (Cons y Nil)) -> case (x, y) of
       (InL x', InL y') -> return $! NumberV $ num $ x' - y'
       (InR x', InR y') -> return $! SetV $ HS.difference (x' :: HS.HashSet Value) y'

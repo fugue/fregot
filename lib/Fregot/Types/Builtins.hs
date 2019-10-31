@@ -24,6 +24,7 @@ data BuiltinChecker m = BuiltinChecker
     { bcUnify    :: Type -> Type -> m Type
     , bcSubsetOf :: Type -> Type -> m ()
     , bcError    :: forall a. PP.SemDoc -> m a
+    , bcCatch    :: forall a. m a -> m a -> m a
     }
 
 type BuiltinType (i :: [t]) =
