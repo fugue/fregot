@@ -520,9 +520,14 @@ metaCommands =
 
     , MetaCommand ":watch" "evaluate input after file changes" $
         \h args -> liftIO $ do
-        let input = T.unwords args
-        IORef.writeIORef (h ^. watchInput) $
-            if T.all isSpace input then Nothing else Just input
+        if FileWatch.listenersEnabled (h ^. fileWatch)
+            then
+                let input = T.unwords args in
+                IORef.writeIORef (h ^. watchInput) $
+                    guard (not $ T.all isSpace input) $> input
+            else
+                IO.hPutStrLn IO.stderr $
+                    "Restart the with `--watch` to enable watching."
         return True
     ]
   where
