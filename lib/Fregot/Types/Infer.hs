@@ -60,7 +60,7 @@ import           Fregot.PrettyPrint            ((<+>), (<+>?))
 import qualified Fregot.PrettyPrint            as PP
 import           Fregot.Sources.SourceSpan     (SourceSpan)
 import qualified Fregot.Types.Builtins         as B
-import           Fregot.Types.Internal         (Type, (⊆))
+import           Fregot.Types.Internal         (Type, (∩), (⊆))
 import qualified Fregot.Types.Internal         as Types
 import           Fregot.Types.Rule             (RuleType (..))
 import qualified Fregot.Types.Rule             as Types
@@ -472,6 +472,7 @@ unifyTermType _source term σ = do
     unifyTypeType τ σ
 
 
+-- TODO(jaspervdj): we should return a refined type here.
 unifyTypeType :: SourceType -> SourceType -> InferM ()
 
 unifyTypeType (Types.Universe, _) (_, _)              = return ()
@@ -487,8 +488,10 @@ unifyTypeType (τ, l) (σ, r)
         unifyTypeType (τ', l) (σ', r)
 
 unifyTypeType (τ, l) (σ, r)
-    | τ == σ    = return ()
-    | otherwise = throwError $ NoUnify Nothing (τ, l) (σ, r)
+    | τ == σ                       = return ()
+    | ρ <- τ ∩ σ, ρ /= Types.empty = return ()
+    | otherwise                    =
+        throwError $ NoUnify Nothing (τ, l) (σ, r)
 
 inferBuiltin
     :: SourceSpan

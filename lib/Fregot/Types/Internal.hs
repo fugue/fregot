@@ -11,11 +11,12 @@ module Fregot.Types.Internal
     , Elem (..), _String, _Number, _Boolean, _Null, _Scalar, _Object, _Array
     , _Set
     , Type (..)
-    , union, (∪)
-    , unions
 
       -- Queries
     , subsetOf, (⊆)
+    , union, (∪)
+    , unions
+    , intersection, (∩)
 
       -- Utilities
     , singleton
@@ -36,12 +37,14 @@ module Fregot.Types.Internal
 
 import           Control.Lens        (Prism', prism', review)
 import           Control.Lens.TH     (makePrisms)
+import           Control.Monad       (forM)
+import           Data.Functor        (($>))
 import           Data.Hashable       (Hashable)
 import qualified Data.HashMap.Strict as HMS
 import qualified Data.HashSet        as HS
 import qualified Data.Kleene         as K
 import           Data.List           (foldl', intersperse)
-import           Data.Maybe          (maybeToList)
+import           Data.Maybe          (catMaybes, maybeToList)
 import qualified Fregot.Prepare.Ast  as Ast
 import qualified Fregot.PrettyPrint  as PP
 import           GHC.Generics        (Generic)
@@ -194,6 +197,63 @@ unions = foldl' union empty
 
 (∪) :: Type -> Type -> Type
 (∪) = union
+
+-- TODO: abstract this.
+objectIntersection
+    :: Object Ast.Scalar Type -> Object Ast.Scalar Type
+    -> Maybe (Object Ast.Scalar Type)
+objectIntersection l r = do
+    static <- mbStatic
+    pure $ Obj static dynamic
+  where
+    keys = HS.union (HMS.keysSet (objStatic l)) (HMS.keysSet (objStatic r))
+    mbStatic = fmap HMS.fromList $ forM (HS.toList keys) $ \k ->
+        case (HMS.lookup k (objStatic l), HMS.lookup k (objStatic r)) of
+            (Nothing, Nothing) -> Nothing
+            (Just v,  Nothing) -> case objDynamic r of
+                Nothing           -> Nothing
+                Just (kdyn, wdyn) -> (,)
+                    <$> (intersectionMaybe (scalarType k) kdyn $> k)
+                    <*> intersectionMaybe v wdyn
+            (Nothing, Just w)  -> case objDynamic l of
+                Nothing           -> Nothing
+                Just (kdyn, vdyn) -> (,)
+                    <$> (intersectionMaybe (scalarType k) kdyn $> k)
+                    <*> intersectionMaybe w vdyn
+            (Just v,  Just w)  -> (,) k <$> intersectionMaybe v w
+
+    dynamic = case (objDynamic l, objDynamic r) of
+        (Nothing,       Nothing)       -> Nothing
+        (Nothing,       Just _)        -> Nothing
+        (Just _,        Nothing)       -> Nothing
+        (Just (lk, lv), Just (rk, rv)) ->
+            (,) <$> intersectionMaybe lk rk <*> intersectionMaybe lv rv
+
+elemIntersection :: Elem Type -> Elem Type -> Maybe (Elem Type)
+elemIntersection x y                   | x == y = Just x
+elemIntersection (Scalar s) y          | scalarElem s == y = Just (Scalar s)
+elemIntersection x (Scalar s)          | scalarElem s == x = Just (Scalar s)
+elemIntersection (Object x) (Object y) = Object <$> objectIntersection x y
+elemIntersection (Set x) (Set y)       = Set <$> intersectionMaybe x y
+elemIntersection (Array x) (Array y)   = Array <$> intersectionMaybe x y
+elemIntersection _ _                   = Nothing
+
+intersectionMaybe :: Type -> Type -> Maybe Type
+intersectionMaybe l r =
+    let lr = intersection l r in if lr == empty then Nothing else Just lr
+
+intersection :: Type -> Type -> Type
+intersection Universe  r         = r
+intersection l         Universe  = l
+intersection Unknown   _         = Unknown
+intersection _         Unknown   = Unknown
+intersection (Union l) (Union r) = Union $ HS.fromList $ catMaybes $ do
+    x <- HS.toList l
+    y <- HS.toList r
+    pure $ elemIntersection x y
+
+(∩) :: Type -> Type -> Type
+(∩) = intersection
 
 
 --------------------------------------------------------------------------------
