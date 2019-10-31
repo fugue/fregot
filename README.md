@@ -204,6 +204,7 @@ REPL
       :rewind    go back to the previous debug suspension
       :test      run tests in the current package
       :where     print your location
+      :watch     evaluate input after file changes
 
     Shortcuts are supported for commands, e.g., `:l` for `:load`.
 
@@ -623,6 +624,51 @@ directory and includes the 2 tests in `ami_id.rego` _and_ the 8 tests from
 
 This comes in handy when you are stepping into and over rules and want to
 double-check your location in the code.
+
+### :watch
+
+**You must launch the REPL with `fregot repl --watch` in order to use the `:watch` command.**
+
+`:watch` monitors loaded package and input files for changes and live-reloads them. You can also use `:watch data.package.rule` to monitor an expression, and `fregot` will automatically print an updated evaluation when loaded files are changed.
+
+Here's an example. Make sure to start the REPL with the `--watch` flag first:
+
+    fregot repl --watch
+
+Load the Rego and input files:
+
+    repl% :load ami_id.rego
+    Loading ami_id.rego...
+    Loaded package fregot.examples.ami_id
+    fregot.examples.ami_id% :input repl-input.json
+
+Then run `:watch` by itself:
+
+    fregot.examples.ami_id% :watch
+
+Now you can make changes to the Rego and/or input files and `fregot` automatically reloads them:
+
+    fregot.examples.ami_id%
+    Reloaded ami_id.rego
+
+    fregot.examples.ami_id%
+    Reloaded repl-input.json
+
+This allows you to evaluate expressions as you like, and they'll automatically be up-to-date.
+
+`:watch` also supports expressions. Use `:watch data.package.rule`:
+
+    fregot.examples.ami_id% :watch data.fregot.examples.ami_id.allow
+
+You can then make changes to the Rego and/or input file, and `fregot` re-evaluates the expression:
+
+    fregot.examples.ami_id%
+    Reloaded ami_id.rego
+    = false
+
+    fregot.examples.ami_id%
+    Reloaded repl-input.json
+    = true
 
 Example Use Case
 ----------------
