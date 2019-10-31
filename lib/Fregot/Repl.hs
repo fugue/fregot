@@ -33,7 +33,8 @@ import qualified Data.IORef.Extended               as IORef
 import qualified Data.List                         as L
 import           Data.List.NonEmpty.Extended       (NonEmpty (..))
 import qualified Data.List.NonEmpty.Extended       as NonEmpty
-import           Data.Maybe                        (fromMaybe, isNothing)
+import           Data.Maybe                        (fromMaybe, isJust,
+                                                    isNothing)
 import qualified Data.Text                         as T
 import qualified Data.Text.IO                      as T
 import           Data.Version                      (showVersion)
@@ -92,6 +93,9 @@ data Handle = Handle
 
     -- | Stored because we need to watch this for changes.
     , _inputPath     :: !(IORef (Maybe FilePath))
+
+    -- | Evaluate this after file changes.
+    , _watchInput    :: !(IORef (Maybe T.Text))
     }
 
 data MetaCommand = MetaCommand
@@ -117,6 +121,7 @@ withHandle _sources _fileWatch interp f = do
     _mode        <- IORef.newIORef $ RegularMode []
     _breakpoints <- IORef.newIORef HS.empty
     _inputPath   <- IORef.newIORef Nothing
+    _watchInput  <- IORef.newIORef Nothing
 
     let handle = Handle {..}
     FileWatch.listen _fileWatch $ \paths -> do
@@ -127,7 +132,11 @@ withHandle _sources _fileWatch interp f = do
         unless (null inputPaths) $ for_ mbInput $ \input -> do
             void $ runInterpreter handle (Interpreter.setInputFile `flip` input)
             IO.hPutStrLn IO.stderr $ "Reloaded " ++ input
-        reload handle regoPaths
+        success <- reload handle regoPaths
+
+        when success $ do
+            mbWatchInput <- IORef.readIORef (handle ^. watchInput)
+            for_ mbWatchInput $ \input -> processInput handle input
 
         -- NOTE(jaspervdj): This does not work well if the user has already
         -- typed part of a prompt; we would not some way to redraw that.
@@ -465,7 +474,7 @@ metaCommands =
     , MetaCommand ":reload" "reload modified rego files" $
         \h _ -> liftIO $ do
             paths <- FileWatch.pop (h ^. fileWatch)
-            reload h paths
+            void $ reload h paths
             pure True
 
     , MetaCommand ":continue" "continue running the debugged program" $
@@ -535,6 +544,13 @@ metaCommands =
                 Error.hPutErrors IO.stderr sauce Error.Text [err]
             _ -> PP.hPutSemDoc IO.stderr "only available when in debugging"
         return True
+
+    , MetaCommand ":watch" "evaluate input after file changes" $
+        \h args -> liftIO $ do
+        let input = T.unwords args
+        IORef.writeIORef (h ^. watchInput) $
+            if T.all isSpace input then Nothing else Just input
+        return True
     ]
   where
     stepWith f = \h _ -> liftIO $ do
@@ -557,8 +573,8 @@ metaCommands =
         , "    :break foo/bar.rego:9"
         ]
 
-reload :: Handle -> [FilePath] -> IO ()
-reload h paths = void $ runInterpreter h $ \i -> do
+reload :: Handle -> [FilePath] -> IO Bool
+reload h paths = fmap isJust $ runInterpreter h $ \i -> do
     forM_ paths $ \path ->
         Interpreter.loadModule i Parser.defaultParserOptions path
     Interpreter.compilePackages i
