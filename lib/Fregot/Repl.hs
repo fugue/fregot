@@ -125,15 +125,8 @@ withHandle _sources _fileWatch interp f = do
 
     let handle = Handle {..}
     FileWatch.listen _fileWatch $ \paths -> do
-        mbInput <- IORef.readIORef (handle ^. inputPath)
-        let (regoPaths, inputPaths) = L.partition ((/= mbInput) . Just) $ paths
-
         IO.hPutStrLn IO.stdout ""
-        unless (null inputPaths) $ for_ mbInput $ \input -> do
-            void $ runInterpreter handle (Interpreter.setInputFile `flip` input)
-            IO.hPutStrLn IO.stderr $ "Reloaded " ++ input
-        success <- reload handle regoPaths
-
+        success <- reload handle paths
         when success $ do
             mbWatchInput <- IORef.readIORef (handle ^. watchInput)
             for_ mbWatchInput $ \input -> processLine handle input
@@ -553,14 +546,22 @@ metaCommands =
 
 reload :: Handle -> [FilePath] -> IO Bool
 reload h paths = fmap isJust $ runInterpreter h $ \i -> do
-    forM_ paths $ \path ->
+    -- Separate input and normal paths.
+    mbInput <- liftIO $ IORef.readIORef (h ^. inputPath)
+    let (regoPaths, inputPaths) = L.partition ((/= mbInput) . Just) $ paths
+
+    unless (null inputPaths) $ for_ mbInput $ \input -> do
+        Interpreter.setInputFile i input
+        liftIO $ IO.hPutStrLn IO.stderr $ "Reloaded " ++ input
+
+    forM_ regoPaths $ \path ->
         Interpreter.loadModule i Parser.defaultParserOptions path
     Interpreter.compilePackages i
-    liftIO $ case paths of
+    liftIO $ case regoPaths of
         []     -> pure ()
         [path] -> IO.hPutStrLn IO.stderr $ "Reloaded " ++ path
         _ : _  -> IO.hPutStrLn IO.stderr $
-            "Reloaded " ++ show (length paths) ++ " files"
+            "Reloaded " ++ show (length regoPaths) ++ " files"
 
 completeBuiltins :: Handle -> Hl.CompletionFunc IO
 completeBuiltins h = Hl.completeDictionary completeWhitespace $ do
