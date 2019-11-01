@@ -32,7 +32,6 @@ Table of Contents
 --------------------
 
 - [Installation](#installation)
-	- [Pre-built packages](#pre-built-packages)
 	- [From source](#from-source)
 		- [Using stack](#using-stack)
 		- [Using Cabal](#using-cabal)
@@ -61,6 +60,7 @@ Table of Contents
 	- [:rewind](#rewind)
 	- [:test](#test)
 	- [:where](#where)
+	- [:watch](#watch)
 - [Example Use Case](#example-use-case)
 - [Additional Reading](#additional-reading)
 
