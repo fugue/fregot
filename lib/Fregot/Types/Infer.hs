@@ -187,11 +187,15 @@ inferRule rule = case rule ^. ruleKind of
                 maybeToList defType ++ map snd rdefTypes
         pure $ rule & ruleInfo .~ Types.CompleteRuleType retType
 
-    FunctionRule arity ->
-        -- TODO(jaspervdj): According to the current plan, functions will be
-        -- skipped right now and inferred in an "inlined" way.
-        --
-        -- TODO(jaspervdj): We also want to do a pre-flight check using Any.
+    FunctionRule arity -> do
+        -- We do a pre-flight check using 'Types.unknown', since we don't know
+        -- the actual types this will be called with.
+        for_ (rule ^. ruleDefs) $ \rdef -> isolateUnification $ do
+            let argTerms = fromMaybe [] $ rdef ^. ruleArgs
+            zipWithM_ (unifyTermType (rdef ^. ruleDefAnn)) argTerms $ repeat $
+                (Types.unknown, NonEmpty.singleton (rdef ^. ruleDefAnn))
+            inferRuleDefinition rdef
+
         pure $ rule & ruleInfo .~ Types.FunctionType arity
 
     GenSetRule -> do
@@ -572,11 +576,12 @@ inferUserFunction source name rule args = do
     inferCall source name arity args $ \inferredArgs -> do
         -- Go through all rule definitions, and infer them in an environment
         -- where we have assigned the arguments types.
+        --
+        -- TODO(jaspervdj): we will want to cache this based on 'inferredArgs'.
         outTys <- forM (rule ^. ruleDefs) $ \rdef -> blankUnification $ do
             let argTerms = fromMaybe [] $ rdef ^. ruleArgs
             zipWithM_ (unifyTermType source) argTerms inferredArgs
             inferRuleDefinition rdef
-
         return $ Types.unions $ map (fst . snd) outTys
 
 inferCall
