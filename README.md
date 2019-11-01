@@ -59,8 +59,8 @@ Table of Contents
 	- [:next](#next)
 	- [:rewind](#rewind)
 	- [:test](#test)
-   - [:watch](#watch)
 	- [:where](#where)
+   - [:watch](#watch)
 - [Example Use Case](#example-use-case)
 - [Additional Reading](#additional-reading)
 
