@@ -4,8 +4,8 @@ fregot ([34meval error[0m):
   "rewind.rego" (line 5, column 3):
   builtin type error:
 
-    5|   x + "hi" > "wat"
-         [31m^^^^^^^^[0m
+    5|   x + input.msg with input as {"msg": "crash"}
+         [31m^^^^^^^^^^^^^[0m
 
   Expected number but got string
 
