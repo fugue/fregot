@@ -16,10 +16,9 @@ module Fregot.Compile.Package
     ) where
 
 import           Control.Applicative          ((<|>))
-import           Control.Lens                 (at, forOf_, iforM_, ix,
-                                               traverseOf, view, (&), (.~),
-                                               (^.), (^..), (^?))
-import           Control.Monad                (foldM, forM, guard, when)
+import           Control.Lens                 (at, iforM_, ix, traverseOf, view,
+                                               (&), (.~), (^.), (^?))
+import           Control.Monad                (foldM, forM, guard)
 import           Control.Monad.Identity       (runIdentity)
 import           Control.Monad.Parachute      (ParachuteT, catch, fatal,
                                                tellError, tellErrors)
@@ -40,8 +39,7 @@ import           Fregot.Names
 import           Fregot.Prepare.Ast
 import           Fregot.Prepare.Lens
 import           Fregot.Prepare.Package
-import           Fregot.Prepare.Vars          (Arities, Safe (..), ovRuleBody,
-                                               ovTerm)
+import           Fregot.Prepare.Vars          (Arities, Safe (..))
 import           Fregot.PrettyPrint           ((<$$>), (<+>))
 import qualified Fregot.PrettyPrint           as PP
 import           Fregot.Sources.SourceSpan    (SourceSpan)
@@ -156,27 +154,6 @@ compilePackage builtins dependencies prep = do
             traverseOf (ruleElses . traverse . ruleElseBody) orderRuleBody >>=
             traverseOf (ruleElses . traverse . ruleElseValue . traverse) orderTerm
 
-        -- General check for every rule body (index and value).
-        forOf_ (ruleBodies . traverse) ordered $ \body -> do
-            let safe1 = safe <> ovRuleBody arities safe body
-            forOf_ (ruleIndex . traverse) def $ \v ->
-                tellErrors $ checkTerm arities safe1 v
-            forOf_ (ruleValue . traverse) def $ \v ->
-                tellErrors $ checkTerm arities safe1 v
-
-        -- If there is no body; we still need the index and value to be defined.
-        when (null (ordered ^. ruleBodies)) $
-            forOf_ (ruleValue . traverse) def $ \v ->
-            tellErrors $ checkTerm arities safe v
-
-        -- General check the elses (index and else value).
-        forOf_ (ruleElses . traverse) ordered $ \els -> do
-            let safe1 = safe <> ovRuleBody arities safe (els ^. ruleElseBody)
-            forOf_ (ruleIndex . traverse) def $ \v ->
-                tellErrors $ checkTerm arities safe1 v
-            forOf_ (ruleElseValue . traverse) els $ \v ->
-                tellErrors $ checkTerm arities safe1 v
-
         return ordered
       where
         -- Safe set before ordering.
@@ -232,8 +209,6 @@ compileTerm
     -> ParachuteT Error m (Term SourceSpan, Infer.SourceType)
 compileTerm builtins dependencies pkg typeContext term0 = do
     ordered <- runOrder $ orderTermForSafety arities safe0 term0
-    let safe = safe0 <> ovTerm arities safe0 ordered
-    tellErrors $ checkTerm arities safe ordered
 
     let inferEnv = Infer.InferEnv
             -- TODO(jaspervdj): Builtins Proxy works quite well, we should move
@@ -250,24 +225,6 @@ compileTerm builtins dependencies pkg typeContext term0 = do
   where
     safe0   = safeGlobals pkg <> Safe (HMS.keysSet typeContext)
     arities = aritiesFromPackage builtins pkg
-
--- | Various checks on terms.
-checkTerm :: Arities -> Safe Var -> Term SourceSpan -> [Error]
-checkTerm _arities safe term = checkTermVars safe term
-
--- | Check that all variables in the term occurr in the safe set.
-checkTermVars
-    :: Safe Var
-    -> Term SourceSpan
-    -> [Error]
-checkTermVars (Safe safe) term =
-    [ Error.mkError "var check" source "unsafe variable" $
-        "Variable" <+> PP.pretty var <+> "is referenced, but it is never" <$$>
-        "assigned a value."
-    | (source, name) <- term ^.. termCosmosNoClosures . termNames
-    , var            <- name ^.. _LocalName
-    , not $ var `HS.member` safe
-    ]
 
 -- | Designed to match the return type of `orderTermForSafety`.
 runOrder

@@ -106,7 +106,8 @@ fromTypeError = \case
     UnboundVars vars -> Error.mkMultiError sub "Unbound variables" $ do
         (v, source) <- HMS.toList vars
         return $ (,) source $
-            "The variable" <+> PP.code (PP.pretty v) <+> "is not defined"
+            "The variable" <+> PP.code (PP.pretty v) <+> "is referenced," <+>
+            "but it is never assigned a value"
 
     UnboundName name source -> Error.mkError sub source "Unbound name" $
         "The name" <+> PP.code (PP.pretty name) <+> "is not defined"
