@@ -2,19 +2,21 @@ fregot
 ======
 
 `fregot` (**F**ugue **Rego** **T**oolkit) is a set of tools for working with the
-[Rego] policy language.  It allows you to easily evaluate expressions, debug
-code, test policies, and more.
+[Rego] policy language, which is part of the Open Policy Agent (OPA) policy
+engine.  `fregot` allows you to easily evaluate expressions, debug code, test
+policies, and more.
 
 [![Demo: debugging with fregot](examples/break_example/break_example.gif)](https://asciinema.org/a/AfmqS0xB2g5ZuORW4siesYFRY?size=medium)
 
 [(Check out the text-based demo on asciinema so you can copy/paste commands.)](https://asciinema.org/a/AfmqS0xB2g5ZuORW4siesYFRY?size=medium)
 
 `fregot` can be seen an alternative REPL to [OPA]'s built-in interpreter.  The
-goals are a little different -- whereas the OPA agent provides an enterprise
-ready, `fregot` was internally at [Fugue] to improve the Rego development
-experience.  It aims to provide:
+goals are a little different -- whereas the OPA agent provides general-purpose
+components and functionality that are particularly useful with Kubernetes,
+`fregot` was developed internally at [Fugue] as a lightweight set of tools to
+enhance the Rego development experience.  It aims to provide:
 
- -  Just the Rego language implementation rather than the full agent
+ -  Just the Rego language implementation rather than the full OPA agent
  -  Useful tools to debug Rego queries and modules
  -  Enhanced error messages
  -  Ease of extending and experimenting with different language features
@@ -30,7 +32,6 @@ Table of Contents
 --------------------
 
 - [Installation](#installation)
-	- [Pre-built packages](#pre-built-packages)
 	- [From source](#from-source)
 		- [Using stack](#using-stack)
 		- [Using Cabal](#using-cabal)
@@ -59,20 +60,17 @@ Table of Contents
 	- [:rewind](#rewind)
 	- [:test](#test)
 	- [:where](#where)
+	- [:watch](#watch)
 - [Example Use Case](#example-use-case)
 - [Additional Reading](#additional-reading)
 
 Installation
 ------------
 
-### Pre-built packages
-
-TODO: We need to set up CircleCI to built Linux and Mac OS X binaries.
-
 ### From source
 
 Installation through source is done using standard Haskell tooling -- [Cabal]
-and [stack] should both work fine.
+and [stack] both work well.
 
 #### Using stack
 
@@ -678,7 +676,7 @@ Example Use Case
 ----------------
 
 You can use fregot to determine whether a Terraform plan complies with a Rego
-policy.  Incorporate fregot into your CI/CD pipeline to prevent noncompliant
+policy.  Incorporate `fregot` into your CI/CD pipeline to prevent noncompliant
 infrastructure from being deployed.
 
 See [examples/ami_id/ami_id.rego](./examples/ami_id/ami_id.rego) for details.
@@ -699,7 +697,6 @@ Want to learn more? Check out these resources:
  -  [Rego and Kubernetes example](https://www.openpolicyagent.org/docs/latest/kubernetes-introduction/): a tutorial on admission control for Kubernetes using Rego policy
  -  [De Morgan's laws](https://en.wikipedia.org/wiki/De_Morgan%27s_laws):
     a deep dive into transformation rules useful for writing Rego logic.
-    TODO: This would be a good topic for some kind of blogpost.
 
 [Cabal]: https://www.haskell.org/cabal/
 [Fugue]: https://www.fugue.co/
