@@ -41,7 +41,7 @@ module Fregot.Interpreter
 
 import qualified Codec.Compression.GZip          as GZip
 import           Control.Lens                    (forOf_, ifor_, over, review,
-                                                  to, (^.), (^..), _2)
+                                                  (^.), (^..), _2)
 import           Control.Lens.TH                 (makeLenses)
 import           Control.Monad                   (foldM, unless)
 import           Control.Monad.Identity          (Identity (..))
@@ -86,6 +86,7 @@ import qualified Fregot.Sources                  as Sources
 import           Fregot.Sources.SourceSpan       (SourceSpan)
 import qualified Fregot.Sugar                    as Sugar
 import qualified Fregot.Types.Internal           as Types
+import qualified Fregot.Types.Value              as Types
 import           System.FilePath.Extended        (listExtensions)
 
 type InterpreterM a = ParachuteT Error IO a
@@ -416,13 +417,13 @@ compileQuery h mbEvalEnvCtx pkgname query = do
     rquery <- runRenamerT renamerEnv $ Renamer.renameQuery query
 
     pquery <- Prepare.prepareQuery rquery
-    cquery <- Compile.compileQuery builtin comp pkg safeLocals pquery
+    cquery <- Compile.compileQuery builtin comp pkg typeContext pquery
     dieIfErrors
     return cquery
   where
-    safeLocals = Compile.Safe $ HS.fromList $ case mbEvalEnvCtx of
+    typeContext = case mbEvalEnvCtx of
         Nothing -> mempty
-        Just ec -> ec ^. Eval.ecContext . Eval.locals . to HMS.keys
+        Just ec -> Types.inferContext $ ec ^. Eval.ecContext
 
 compileExpr
     :: Handle -> Maybe Eval.EnvContext -> PackageName
@@ -444,13 +445,13 @@ compileExpr h mbEvalEnvCtx pkgname expr = do
     rterm <- runRenamerT renamerEnv $ Renamer.renameExpr expr
 
     pterm      <- Prepare.prepareExpr rterm
-    (cterm, ty) <- Compile.compileTerm builtin comp pkg safeLocals pterm
+    (cterm, ty) <- Compile.compileTerm builtin comp pkg typeContext pterm
     dieIfErrors
     return (cterm, fst ty)
   where
-    safeLocals = Compile.Safe $ HS.fromList $ case mbEvalEnvCtx of
+    typeContext = case mbEvalEnvCtx of
         Nothing -> mempty
-        Just ec -> ec ^. Eval.ecContext . Eval.locals . to HMS.keys
+        Just ec -> Types.inferContext $ ec ^. Eval.ecContext
 
 typeExpr
     :: Handle -> Maybe Eval.EnvContext -> PackageName

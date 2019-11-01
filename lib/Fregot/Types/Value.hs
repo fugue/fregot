@@ -11,7 +11,7 @@ import qualified Data.HashMap.Strict   as HMS
 import qualified Data.HashSet          as HS
 import qualified Data.Unification      as Unification
 import qualified Data.Vector           as V
-import qualified Fregot.Eval.Monad     as Eval
+import qualified Fregot.Eval.Internal  as Eval
 import qualified Fregot.Eval.Number    as Number
 import qualified Fregot.Eval.Value     as V
 import           Fregot.Names          (Var)

@@ -18,6 +18,7 @@ module Fregot.Types.Infer
     , InferEnv (..), ieBuiltins, ieDependencies
     , InferM
     , runInfer
+    , setInferContext
 
     , inferRule
     , inferQuery
@@ -66,6 +67,7 @@ import           Fregot.Types.Internal         (Type, (∩), (⊆))
 import qualified Fregot.Types.Internal         as Types
 import           Fregot.Types.Rule             (RuleType (..))
 import qualified Fregot.Types.Rule             as Types
+import qualified Fregot.Types.Value            as Types
 
 type SourceType = (Type, NonEmpty SourceSpan)
 
@@ -171,6 +173,10 @@ runInfer :: Monad m => InferEnv -> InferM a -> ParachuteT Error m a
 runInfer env mx =
     let errOrA = evalStateT (runReaderT mx env) Unify.empty in
     either (fatal . fromTypeError) return errOrA
+
+setInferContext :: SourceSpan -> Types.TypeContext -> InferM ()
+setInferContext source ctx = for_ (HMS.toList ctx) $ \(var, ty) ->
+    Unify.bindTerm var (ty, NonEmpty.singleton source)
 
 inferRule :: Rule' -> InferM (Rule Types.RuleType SourceSpan)
 inferRule rule = case rule ^. ruleKind of

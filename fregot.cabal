@@ -29,6 +29,7 @@ Library
     Fregot.Eval
     Fregot.Eval.Builtins
     Fregot.Eval.Cache
+    Fregot.Eval.Internal
     Fregot.Eval.Json
     Fregot.Eval.Monad
     Fregot.Eval.Number

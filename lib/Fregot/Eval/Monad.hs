@@ -64,9 +64,6 @@ import qualified Control.Monad.Stream      as Stream
 import           Control.Monad.Trans       (MonadIO (..))
 import qualified Data.HashMap.Strict       as HMS
 import           Data.List                 (find)
-import           Data.Unification          (Unification)
-import qualified Data.Unification          as Unification
-import qualified Data.Unique               as Unique
 import           Fregot.Compile.Package    (CompiledPackage)
 import qualified Fregot.Compile.Package    as Package
 import           Fregot.Error              (Error)
@@ -74,6 +71,7 @@ import qualified Fregot.Error              as Error
 import qualified Fregot.Error.Stack        as Stack
 import           Fregot.Eval.Builtins      (ReadyBuiltin)
 import           Fregot.Eval.Cache         (Cache)
+import           Fregot.Eval.Internal
 import           Fregot.Eval.Value
 import           Fregot.Names
 import           Fregot.Prepare.Ast
@@ -81,21 +79,6 @@ import           Fregot.PrettyPrint        ((<$$>))
 import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources.SourceSpan (SourceSpan)
 import           Fregot.Types.Rule         (RuleType)
-
-data Context = Context
-    { _unification :: !(Unification InstVar Value)
-    , _locals      :: !(HMS.HashMap Var InstVar)
-    , _nextInstVar :: !Unique.Unique
-    }
-
-$(makeLenses ''Context)
-
-emptyContext :: Context
-emptyContext = Context
-    { _unification = Unification.empty
-    , _locals      = mempty
-    , _nextInstVar = 0
-    }
 
 data Row a = Row
     { _rowContext :: !Context

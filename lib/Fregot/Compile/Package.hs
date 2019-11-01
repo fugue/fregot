@@ -48,6 +48,7 @@ import qualified Fregot.PrettyPrint           as PP
 import           Fregot.Sources.SourceSpan    (SourceSpan)
 import qualified Fregot.Types.Infer           as Infer
 import           Fregot.Types.Rule            (RuleType)
+import           Fregot.Types.Value           (TypeContext)
 import           Prelude                      hiding (head, lookup)
 
 type CompiledPackage = Package RuleType
@@ -189,10 +190,10 @@ compileQuery
     => Builtins f
     -> Dependencies
     -> Package ty
-    -> Safe Var
+    -> TypeContext
     -> Query SourceSpan
     -> ParachuteT Error m (Query SourceSpan)
-compileQuery builtins dependencies pkg safeLocals query0 = do
+compileQuery builtins dependencies pkg typeContext query0 = do
     query1 <- runOrder $ orderForSafety arities safe0 query0
     let inferEnv = Infer.InferEnv
             -- TODO(jaspervdj): Builtins Proxy works quite well, we should move
@@ -202,10 +203,14 @@ compileQuery builtins dependencies pkg safeLocals query0 = do
             , Infer._ieDependencies = dependencies
             }
 
-    Infer.runInfer inferEnv $ Infer.inferQuery query1
+    Infer.runInfer inferEnv $ do
+        case query0 of
+            []    -> pure ()
+            l : _ -> Infer.setInferContext (l ^. literalAnn) typeContext
+        Infer.inferQuery query1
     return query1
   where
-    safe0   = safeGlobals pkg <> safeLocals
+    safe0   = safeGlobals pkg <> Safe (HMS.keysSet typeContext)
     arities = aritiesFromPackage builtins pkg
 
 compileTerm
@@ -213,10 +218,10 @@ compileTerm
     => Builtins f
     -> Dependencies
     -> Package ty
-    -> Safe Var
+    -> TypeContext
     -> Term SourceSpan
     -> ParachuteT Error m (Term SourceSpan, Infer.SourceType)
-compileTerm builtins dependencies pkg safeLocals term0 = do
+compileTerm builtins dependencies pkg typeContext term0 = do
     ordered <- runOrder $ orderTermForSafety arities safe0 term0
     let safe = safe0 <> ovTerm arities safe0 ordered
     tellErrors $ checkTerm arities safe ordered
@@ -229,10 +234,12 @@ compileTerm builtins dependencies pkg safeLocals term0 = do
             , Infer._ieDependencies = dependencies
             }
 
-    ty <- Infer.runInfer inferEnv $ Infer.inferTerm ordered
+    ty <- Infer.runInfer inferEnv $ do
+        Infer.setInferContext (term0 ^. termAnn) typeContext
+        Infer.inferTerm ordered
     return (ordered, ty)
   where
-    safe0   = safeGlobals pkg <> safeLocals
+    safe0   = safeGlobals pkg <> Safe (HMS.keysSet typeContext)
     arities = aritiesFromPackage builtins pkg
 
 -- | Various checks on terms.
