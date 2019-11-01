@@ -60,7 +60,7 @@ Table of Contents
 	- [:rewind](#rewind)
 	- [:test](#test)
 	- [:where](#where)
-   - [:watch](#watch)
+	- [:watch](#watch)
 - [Example Use Case](#example-use-case)
 - [Additional Reading](#additional-reading)
 
