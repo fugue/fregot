@@ -697,7 +697,6 @@ Want to learn more? Check out these resources:
  -  [Rego and Kubernetes example](https://www.openpolicyagent.org/docs/latest/kubernetes-introduction/): a tutorial on admission control for Kubernetes using Rego policy
  -  [De Morgan's laws](https://en.wikipedia.org/wiki/De_Morgan%27s_laws):
     a deep dive into transformation rules useful for writing Rego logic.
-    TODO: This would be a good topic for some kind of blogpost.
 
 [Cabal]: https://www.haskell.org/cabal/
 [Fugue]: https://www.fugue.co/
