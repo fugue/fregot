@@ -2,7 +2,7 @@ package fregot.tests.invalid.stack_trace_01
 
 rule1[x] {
   x = 1
-  x + "crash"
+  x + input.msg with input as {"msg": "crash"}
 }
 
 rule2[x] {
