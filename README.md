@@ -2,16 +2,19 @@ fregot
 ======
 
 `fregot` (**F**ugue **Rego** **T**oolkit) is a set of tools for working with the
-[Rego] policy language as part of the Open Policy Agent (OPA) policy engine.  `fregot` allows you to easily evaluate expressions, debug
-code, test policies, and more.
+[Rego] policy language, which is part of the Open Policy Agent (OPA) policy
+engine.  `fregot` allows you to easily evaluate expressions, debug code, test
+policies, and more.
 
 [![Demo: debugging with fregot](examples/break_example/break_example.gif)](https://asciinema.org/a/AfmqS0xB2g5ZuORW4siesYFRY?size=medium)
 
 [(Check out the text-based demo on asciinema so you can copy/paste commands.)](https://asciinema.org/a/AfmqS0xB2g5ZuORW4siesYFRY?size=medium)
 
 `fregot` can be seen an alternative REPL to [OPA]'s built-in interpreter.  The
-goals are a little different - whereas the OPA agent provides general-purpose components and functionality that are particularly useful with Kubernetes, `fregot` was developed internally at [Fugue] as a lightweight set of tools to enhance the Rego development
-experience.  It aims to provide:
+goals are a little different -- whereas the OPA agent provides general-purpose
+components and functionality that are particularly useful with Kubernetes,
+`fregot` was developed internally at [Fugue] as a lightweight set of tools to
+enhance the Rego development experience.  It aims to provide:
 
  -  Just the Rego language implementation rather than the full OPA agent
  -  Useful tools to debug Rego queries and modules
@@ -63,10 +66,6 @@ Table of Contents
 
 Installation
 ------------
-
-### Pre-built packages [SHOULD WE DELETE THIS SECTION?]
-
-TODO: We need to set up CircleCI to built Linux and Mac OS X binaries.
 
 ### From source
 
