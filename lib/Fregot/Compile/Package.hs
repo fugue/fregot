@@ -21,8 +21,8 @@ import           Control.Lens                 (at, forOf_, iforM_, ix,
                                                (^.), (^..), (^?))
 import           Control.Monad                (foldM, forM, guard, when)
 import           Control.Monad.Identity       (runIdentity)
-import           Control.Monad.Parachute      (ParachuteT, fatal, tellError,
-                                               tellErrors)
+import           Control.Monad.Parachute      (ParachuteT, catch, fatal,
+                                               tellError, tellErrors)
 import qualified Data.Graph                   as Graph
 import qualified Data.HashMap.Strict.Extended as HMS
 import qualified Data.HashSet.Extended        as HS
@@ -98,6 +98,8 @@ compilePackage builtins dependencies prep = do
         Graph.AcyclicSCC rule -> return [rule]
         Graph.CyclicSCC  cycl ->
             -- If rules have recursion errors, we drop them here.
+            --
+            -- TODO(jaspervdj): We'll want to replace them with error nodes.
             tellError (recursionError cycl) >> return []
 
     -- Simple compilation and checks.
@@ -117,10 +119,16 @@ compilePackage builtins dependencies prep = do
             , Infer._ieDependencies = vdependencies
             }
 
-    inferEnv1 <- foldM (\inferEnv rule -> do
-        tyRule <- Infer.runInfer inferEnv $ Infer.inferRule rule
-        return $ inferEnv & Infer.ieDependencies . ix pkgname . packageRules .
-            at (rule ^. ruleName) .~ Just tyRule)
+    inferEnv1 <- foldM (\inferEnv rule ->
+        (do
+            tyRule <- Infer.runInfer inferEnv $ Infer.inferRule rule
+            return $ inferEnv & Infer.ieDependencies . ix pkgname .
+                packageRules .  at (rule ^. ruleName) .~ Just tyRule) `catch`
+        -- TODO(jaspervdj): We'll want to replace them with error nodes and an
+        -- 'unknown' type.
+        (\errs -> do
+            tellErrors errs
+            return inferEnv))
         inferEnv0
         compiled0
 
