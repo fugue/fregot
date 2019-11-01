@@ -1,0 +1,26 @@
+fregot ([34mtypecheck error[0m):
+  "tabs-spaces.rego" (line 5, column 9):
+  Subtype error:
+
+    5| 	1 > "what?"
+       	[31m^^^^^^^^^^^[0m
+
+  Cannot use type [33m[34mstring[0m[0m as [33m[34mnumber[0m[0m
+
+fregot ([34mtypecheck error[0m):
+  "tabs-spaces.rego" (line 9, column 5):
+  Subtype error:
+
+    9|     1 > "what?"
+           [31m^^^^^^^^^^^[0m
+
+  Cannot use type [33m[34mstring[0m[0m as [33m[34mnumber[0m[0m
+
+fregot ([34mtypecheck error[0m):
+  "tabs-spaces.rego" (line 13, column 19):
+  Subtype error:
+
+    13| 	 	  1 > "what?"
+        	 	  [31m^^^^^^^^^^^[0m
+
+  Cannot use type [33m[34mstring[0m[0m as [33m[34mnumber[0m[0m
