@@ -40,6 +40,31 @@
     "subsystem": "compile"
   },
   {
+    "_text": "fregot (typecheck error):\n  \"invalid.rego\" (line 5, column 6):\n  Unbound variables:\n\n    5| rule[idx] = 2 {\n            ^^^\n\n  The variable idx is not defined",
+    "details": [],
+    "hints": [],
+    "severity": "error",
+    "sourceSpans": [
+      {
+        "body": "The variable idx is not defined",
+        "sourceSpan": {
+          "end": {
+            "column": 8,
+            "line": 5
+          },
+          "sourcePointer": "invalid.rego",
+          "start": {
+            "column": 6,
+            "line": 5
+          }
+        },
+        "title": "Unbound variables"
+      }
+    ],
+    "stack": [],
+    "subsystem": "typecheck"
+  },
+  {
     "_text": "fregot (var check error):\n  \"invalid.rego\" (line 5, column 6):\n  unsafe variable:\n\n    5| rule[idx] = 2 {\n            ^^^\n\n  Variable idx is referenced, but it is never\n  assigned a value.",
     "details": [],
     "hints": [],
