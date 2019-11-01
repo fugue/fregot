@@ -23,7 +23,6 @@ import           Control.Monad                (foldM, forM, guard, when)
 import           Control.Monad.Identity       (runIdentity)
 import           Control.Monad.Parachute      (ParachuteT, fatal, tellError,
                                                tellErrors)
-import           Data.Functor                 (($>))
 import qualified Data.Graph                   as Graph
 import qualified Data.HashMap.Strict.Extended as HMS
 import qualified Data.HashSet.Extended        as HS
@@ -97,7 +96,9 @@ compilePackage builtins dependencies prep = do
     -- Order rules according to dependency graph.
     ordering <- fmap concat $ forM (Graph.stronglyConnComp graph) $ \case
         Graph.AcyclicSCC rule -> return [rule]
-        Graph.CyclicSCC  cycl -> tellError (recursionError cycl) $> cycl
+        Graph.CyclicSCC  cycl ->
+            -- If rules have recursion errors, we drop them here.
+            tellError (recursionError cycl) >> return []
 
     -- Simple compilation and checks.
     compiled0 <- for ordering compileRule

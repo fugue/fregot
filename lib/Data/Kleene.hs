@@ -1,10 +1,29 @@
--- | Simple ternary Kleene logic
+-- | Simple ternary logic following Kleene's "strong logic of indeterminacy".
+--
+-- In Kleene logic, the knowledge of whether any particular unknown state
+-- secretly represents true or false at any moment in time is not available.
+--
+-- However, you can still derive useful results from logical operations, even if
+-- some operands are unknown.  For example:
+--
+-- > any [False, Unknown, True]   == True
+-- > all [Unkown, Unknown, False] == False
 module Data.Kleene
-    ( Ternary (..)
+    ( -- * Datatype
+      Ternary (..)
+
+      -- * Simple operations
     , not
-    , (&&), (||)
-    , and, or
-    , all, any
+    , (&&)
+    , (||)
+    , (~>)
+
+      -- * Derived functions
+    , and
+    , or
+    , all
+    , any
+
       -- Conversion to and from booleans.
     , fromTernary
     , fromBool
@@ -36,6 +55,10 @@ _       || True    = True
 Unknown || Unknown = Unknown
 Unknown || False   = Unknown
 infixr 2 ||
+
+(~>) :: Ternary -> Ternary -> Ternary
+x ~> y = not x || y
+infixr 4 ~>
 
 and :: Foldable f => f Ternary -> Ternary
 and = foldr (&&) True
