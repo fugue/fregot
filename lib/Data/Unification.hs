@@ -12,6 +12,7 @@ module Data.Unification
 
     , Unification
     , empty
+    , lookupMaybe
     ) where
 
 import           Data.Hashable       (Hashable (..))
@@ -84,6 +85,9 @@ unsafeInsert
     :: (Eq k, Hashable k)
     => k -> t -> Unification k t -> Unification k t
 unsafeInsert k t (Unification m) = Unification (HMS.insert k (Root t) m)
+
+lookupMaybe :: (Eq k, Hashable k) => k -> Unification k a -> Maybe a
+lookupMaybe v = snd . root v
 
 instance (PP.Pretty PP.Sem k, PP.Pretty PP.Sem a) =>
         PP.Pretty PP.Sem (Unification k a) where

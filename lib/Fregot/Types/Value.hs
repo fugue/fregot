@@ -1,18 +1,30 @@
 -- | Inferring already-evaluated values.
 module Fregot.Types.Value
-    ( inferValue
+    ( TypeContext
+    , inferContext
+    , inferValue
     ) where
 
-import           Control.Lens          (review)
+import           Control.Lens          (review, (^.))
 import           Data.Either           (partitionEithers)
 import qualified Data.HashMap.Strict   as HMS
 import qualified Data.HashSet          as HS
+import qualified Data.Unification      as Unification
 import qualified Data.Vector           as V
+import qualified Fregot.Eval.Monad     as Eval
 import qualified Fregot.Eval.Number    as Number
 import qualified Fregot.Eval.Value     as V
+import           Fregot.Names          (Var)
 import qualified Fregot.Prepare.Ast    as Ast
 import           Fregot.Types.Internal
 import           Prelude               hiding (null)
+
+type TypeContext = HMS.HashMap Var Type
+
+inferContext :: Eval.Context -> TypeContext
+inferContext ctx = HMS.mapMaybe
+    (\v -> inferValue <$> Unification.lookupMaybe v (ctx ^. Eval.unification))
+    (ctx ^. Eval.locals)
 
 inferValue :: V.Value -> Type
 inferValue (V.FreeV _)     = unknown
