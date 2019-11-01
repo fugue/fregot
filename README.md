@@ -2,7 +2,7 @@ fregot
 ======
 
 `fregot` (**F**ugue **Rego** **T**oolkit) is a set of tools for working with the
-[Rego] policy language.  It allows you to easily evaluate expressions, debug
+[Rego] policy language as part of the Open Policy Agent (OPA) policy engine.  `fregot` allows you to easily evaluate expressions, debug
 code, test policies, and more.
 
 [![Demo: debugging with fregot](examples/break_example/break_example.gif)](https://asciinema.org/a/AfmqS0xB2g5ZuORW4siesYFRY?size=medium)
@@ -10,11 +10,10 @@ code, test policies, and more.
 [(Check out the text-based demo on asciinema so you can copy/paste commands.)](https://asciinema.org/a/AfmqS0xB2g5ZuORW4siesYFRY?size=medium)
 
 `fregot` can be seen an alternative REPL to [OPA]'s built-in interpreter.  The
-goals are a little different -- whereas the OPA agent provides an enterprise
-ready, `fregot` was internally at [Fugue] to improve the Rego development
+goals are a little different - whereas the OPA agent provides general-purpose components and functionality that are particularly useful with Kubernetes, `fregot` was developed internally at [Fugue] as a lightweight set of tools to enhance the Rego development
 experience.  It aims to provide:
 
- -  Just the Rego language implementation rather than the full agent
+ -  Just the Rego language implementation rather than the full OPA agent
  -  Useful tools to debug Rego queries and modules
  -  Enhanced error messages
  -  Ease of extending and experimenting with different language features
@@ -65,14 +64,14 @@ Table of Contents
 Installation
 ------------
 
-### Pre-built packages
+### Pre-built packages [SHOULD WE DELETE THIS SECTION?]
 
 TODO: We need to set up CircleCI to built Linux and Mac OS X binaries.
 
 ### From source
 
 Installation through source is done using standard Haskell tooling -- [Cabal]
-and [stack] should both work fine.
+and [stack] both work well.
 
 #### Using stack
 
@@ -678,7 +677,7 @@ Example Use Case
 ----------------
 
 You can use fregot to determine whether a Terraform plan complies with a Rego
-policy.  Incorporate fregot into your CI/CD pipeline to prevent noncompliant
+policy.  Incorporate `fregot` into your CI/CD pipeline to prevent noncompliant
 infrastructure from being deployed.
 
 See [examples/ami_id/ami_id.rego](./examples/ami_id/ami_id.rego) for details.
