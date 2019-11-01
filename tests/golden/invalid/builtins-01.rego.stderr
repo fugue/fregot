@@ -1,0 +1,25 @@
+fregot ([34mtypecheck error[0m):
+  "builtins-01.rego" (line 5, column 3):
+  Subtype error:
+
+    5|   all({"foo": true, "bar": false, "baz": 100})
+         [31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+
+  Cannot use type [33m[34mobject[0m[33m{[0m
+    [31m"bar"[0m[33m:[0m [34mboolean[0m[33m,[0m
+    [31m"foo"[0m[33m:[0m [34mboolean[0m[33m,[0m
+    [31m"baz"[0m[33m:[0m [34mnumber[0m
+  [33m}[0m[0m as [33m[34mset[0m[33m{[0m[34mboolean[0m[33m}[0m[33m|[0m[34marray[0m[33m{[0m[34mboolean[0m[33m}[0m[33m|[0m[34mobject[0m[33m{[0m[34many[0m[33m:[0m [34mboolean[0m[33m}[0m[0m
+
+fregot ([34mtypecheck error[0m):
+  "builtins-01.rego" (line 9, column 3):
+  Subtype error:
+
+    9|   any({"foo": true, "bar": false, "baz": 100})
+         [31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+
+  Cannot use type [33m[34mobject[0m[33m{[0m
+    [31m"bar"[0m[33m:[0m [34mboolean[0m[33m,[0m
+    [31m"foo"[0m[33m:[0m [34mboolean[0m[33m,[0m
+    [31m"baz"[0m[33m:[0m [34mnumber[0m
+  [33m}[0m[0m as [33m[34mset[0m[33m{[0m[34mboolean[0m[33m}[0m[33m|[0m[34marray[0m[33m{[0m[34mboolean[0m[33m}[0m[33m|[0m[34mobject[0m[33m{[0m[34many[0m[33m:[0m [34mboolean[0m[33m}[0m[0m
