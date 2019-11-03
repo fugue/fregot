@@ -8,6 +8,10 @@ workflows:
         filters:
           tags:
             only: /.*/
+    - build-osx:
+        filters:
+          tags:
+            only: /.*/
 
 jobs:
   build:
@@ -33,3 +37,12 @@ jobs:
         key: 'v1-fregot-{{ arch }}-{{ .Branch }}-{{ .Revision }}'
         paths:
         - '~/.stack'
+
+  build-osx:
+    macos:
+      xcode: "10.0.0"
+    steps:
+    - checkout
+    - run:
+        name: 'Install stack'
+        command: 'curl -sSL https://get.haskellstack.org/ | sh'
