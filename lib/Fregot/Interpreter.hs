@@ -368,7 +368,7 @@ newResumeStep h pkgname query = do
     rquery <- runRenamerT renamerEnv $ Renamer.renameQuery query
 
     pquery <- Prepare.prepareQuery rquery
-    cquery <- Compile.compileQuery builtin comp pkg mempty pquery
+    cquery <- Compile.compileQuery builtin comp mempty pquery
 
     dieIfErrors
     return $ Eval.newResumeStep envctx (Eval.evalQuery cquery)
@@ -417,7 +417,7 @@ compileQuery h mbEvalEnvCtx pkgname query = do
     rquery <- runRenamerT renamerEnv $ Renamer.renameQuery query
 
     pquery <- Prepare.prepareQuery rquery
-    cquery <- Compile.compileQuery builtin comp pkg typeContext pquery
+    cquery <- Compile.compileQuery builtin comp typeContext pquery
     dieIfErrors
     return cquery
   where
@@ -444,8 +444,8 @@ compileExpr h mbEvalEnvCtx pkgname expr = do
             HS.empty
     rterm <- runRenamerT renamerEnv $ Renamer.renameExpr expr
 
-    pterm      <- Prepare.prepareExpr rterm
-    (cterm, ty) <- Compile.compileTerm builtin comp pkg typeContext pterm
+    pterm       <- Prepare.prepareExpr rterm
+    (cterm, ty) <- Compile.compileTerm builtin comp typeContext pterm
     dieIfErrors
     return (cterm, fst ty)
   where

@@ -12,19 +12,27 @@ module Fregot.Compile.Order
     , orderTermForSafety
     ) where
 
-import           Control.Lens                (traverseOf, (^.))
+import           Control.Lens                (traverseOf, view, (^.))
 import           Control.Monad.Extended      (mapAccumM)
+import           Control.Monad.Identity      (runIdentity)
+import           Control.Monad.Parachute     (runParachuteT)
 import           Control.Monad.Writer        (Writer, runWriter, writer)
+import           Data.Foldable               (for_)
+import           Data.Functor                (($>))
 import qualified Data.HashMap.Strict         as HMS
 import qualified Data.HashSet.Extended       as HS
 import           Data.List.NonEmpty.Extended (NonEmpty)
 import qualified Data.List.NonEmpty.Extended as NonEmpty
 import qualified Data.Map                    as Map
-import           Data.Maybe                  (fromMaybe)
+import           Data.Maybe                  (fromMaybe, listToMaybe)
+import qualified Data.Unification            as Unification
 import           Fregot.Names
 import           Fregot.Prepare.Ast
 import           Fregot.Prepare.Lens
-import           Fregot.Prepare.Vars
+import           Fregot.Prepare.Vars         hiding (ovLiteral, ovRuleBody)
+import           Fregot.Sources.SourceSpan   (SourceSpan)
+import qualified Fregot.Types.Infer          as Types
+import qualified Fregot.Types.Internal       as Types
 
 data OrderPredicate a e
     = OrderOk a
@@ -71,8 +79,9 @@ newtype Unsafe v a = Unsafe {unUnsafe :: HMS.HashMap v (NonEmpty a)}
     deriving (Eq, Monoid, Semigroup, Show)
 
 orderForClosures
-    :: Arities -> Safe Var -> RuleBody a -> (RuleBody a, Unsafe Var a)
-orderForClosures arities safe body =
+    :: Types.InferEnv -> Safe Var -> RuleBody SourceSpan
+    -> (RuleBody SourceSpan, Unsafe Var SourceSpan)
+orderForClosures inferEnv safe body =
     let (_, body', unsafes) = reorder step () body in
     (body', mconcat unsafes)
   where
@@ -95,7 +104,7 @@ orderForClosures arities safe body =
                 unSafe safe
 
             -- The current output variables.
-            Safe currentOutVars = ovRuleBody arities safe reordered
+            Safe currentOutVars = ovRuleBody inferEnv safe reordered
 
             -- Missing output variables.
             missing = needOutVars `HS.difference` currentOutVars
@@ -108,9 +117,9 @@ orderForClosures arities safe body =
         if HMS.null unsafes then OrderOk () else OrderError (Unsafe unsafes)
 
 orderForSafety
-    :: forall a.
-       Arities -> Safe Var -> RuleBody a -> (RuleBody a, Unsafe Var a)
-orderForSafety arities safe0 body0
+    :: Types.InferEnv -> Safe Var -> RuleBody SourceSpan
+    -> (RuleBody SourceSpan, Unsafe Var SourceSpan)
+orderForSafety inferEnv safe0 body0
     -- If ordering for closures fails, shortcut here.
     | not (HMS.null (unUnsafe unsafes1)) = (body1, unsafes1)
     -- Otherwise, do a proper ordering.
@@ -133,39 +142,67 @@ orderForSafety arities safe0 body0
             ((_, body3), unsafes3) = runWriter $ mapAccumM
                 (\safe lit -> do
                     lit' <- recurse safe lit
-                    return (safe <> ovLiteral arities safe lit', lit'))
+                    return (safe <> ovLiteral inferEnv safe lit', lit'))
                 safe0
                 (map snd body2) in
 
         (body3, unsafes1 <> mconcat unsafes2 <> unsafes3)
   where
-    (body1, unsafes1) = orderForClosures arities safe0 body0
+    (body1, unsafes1) = orderForClosures inferEnv safe0 body0
 
     step
         :: (Safe Var, Map.Map Int (HS.HashSet Var))
-        -> [(Int, Literal a)]
-        -> (Int, Literal a)
+        -> [(Int, Literal SourceSpan)]
+        -> (Int, Literal SourceSpan)
         -> OrderPredicate
             (Safe Var, Map.Map Int (HS.HashSet Var))
-            (Unsafe Var a)
+            (Unsafe Var SourceSpan)
 
     step (safe, unsafes) _ordered (idx, lit)
         -- Find the unsafes we previously stored for this literal.
         | HMS.null stillUnsafe = OrderOk (nowSafe, Map.delete idx unsafes)
         | otherwise            = OrderError (Unsafe stillUnsafe)
       where
-        nowSafe     = safe <> ovLiteral arities safe lit
+        nowSafe     = safe <> ovLiteral inferEnv safe lit
         prevUnsafes = fromMaybe mempty (Map.lookup idx unsafes)
         stillUnsafe =
             const (NonEmpty.singleton (lit ^. literalAnn)) <$>
             HS.toMap (prevUnsafes `HS.difference` unSafe nowSafe)
 
     -- Recursively rewrite all closures in a literal using the given safe list.
-    recurse :: Safe Var -> Literal a -> Writer (Unsafe Var a) (Literal a)
+    recurse
+        :: Safe Var -> Literal SourceSpan
+        -> Writer (Unsafe Var SourceSpan) (Literal SourceSpan)
     recurse rsafe =
-        traverseOf literalTerms (writer . orderTermForSafety arities rsafe)
+        traverseOf literalTerms (writer . orderTermForSafety inferEnv rsafe)
 
 orderTermForSafety
-    :: Arities -> Safe Var -> Term a -> (Term a, Unsafe Var a)
-orderTermForSafety arities safe =
-    runWriter . traverseOf termRuleBodies (writer . orderForSafety arities safe)
+    :: Types.InferEnv -> Safe Var -> Term SourceSpan
+    -> (Term SourceSpan, Unsafe Var SourceSpan)
+orderTermForSafety inferEnv safe =
+    runWriter .
+    traverseOf termRuleBodies (writer . orderForSafety inferEnv safe)
+
+inferOutVars
+    :: Types.InferEnv -> Safe Var -> Maybe SourceSpan -> Types.InferM a
+    -> Safe Var
+inferOutVars inferEnv safe mbSource infer =
+    case maybeInferred of
+        Nothing       -> Safe $ HS.empty
+        Just (_, env) -> Safe $ Unification.keys env
+  where
+    maybeInferred =
+        snd $ runIdentity $ runParachuteT $
+        Types.runInfer inferEnv {Types._ieInferClosures = False} $ do
+            for_ mbSource $ \source -> Types.setInferContext source $
+                HS.toMap (unSafe safe) $> Types.unknown
+            infer
+
+ovRuleBody :: Types.InferEnv -> Safe Var -> RuleBody SourceSpan -> Safe Var
+ovRuleBody inferEnv safe body =
+    inferOutVars inferEnv safe (view literalAnn <$> listToMaybe body) (Types.inferRuleBody body)
+
+ovLiteral :: Types.InferEnv -> Safe Var -> Literal SourceSpan -> Safe Var
+ovLiteral inferEnv safe lit =
+    inferOutVars inferEnv safe
+    (Just $ lit ^. literalAnn) (Types.inferLiteral lit)

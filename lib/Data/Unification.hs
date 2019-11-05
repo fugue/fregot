@@ -13,10 +13,12 @@ module Data.Unification
     , Unification
     , empty
     , lookupMaybe
+    , keys
     ) where
 
 import           Data.Hashable       (Hashable (..))
 import qualified Data.HashMap.Strict as HMS
+import qualified Data.HashSet        as HS
 import qualified Fregot.PrettyPrint  as PP
 import           Prelude             hiding (lookup)
 
@@ -88,6 +90,9 @@ unsafeInsert k t (Unification m) = Unification (HMS.insert k (Root t) m)
 
 lookupMaybe :: (Eq k, Hashable k) => k -> Unification k a -> Maybe a
 lookupMaybe v = snd . root v
+
+keys :: (Eq k, Hashable k) => Unification k a -> HS.HashSet k
+keys (Unification m) = HMS.keysSet m
 
 instance (PP.Pretty PP.Sem k, PP.Pretty PP.Sem a) =>
         PP.Pretty PP.Sem (Unification k a) where

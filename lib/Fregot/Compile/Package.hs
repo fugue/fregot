@@ -15,10 +15,9 @@ module Fregot.Compile.Package
     , compileTerm
     ) where
 
-import           Control.Applicative          ((<|>))
 import           Control.Lens                 (at, iforM_, ix, traverseOf, view,
                                                (&), (.~), (^.), (^?))
-import           Control.Monad                (foldM, forM, guard)
+import           Control.Monad                (foldM, forM)
 import           Control.Monad.Identity       (runIdentity)
 import           Control.Monad.Parachute      (ParachuteT, catch, fatal,
                                                tellError, tellErrors)
@@ -27,19 +26,17 @@ import qualified Data.HashMap.Strict.Extended as HMS
 import qualified Data.HashSet.Extended        as HS
 import           Data.List.NonEmpty.Extended  (NonEmpty (..))
 import           Data.Proxy                   (Proxy (..))
-import           Data.Traversable             (for)
 import           Data.Traversable.HigherOrder (htraverse)
 import           Fregot.Compile.Graph
 import           Fregot.Compile.Order
 import           Fregot.Error                 (Error)
 import qualified Fregot.Error                 as Error
 import           Fregot.Eval.Builtins         (Builtins)
-import qualified Fregot.Eval.Builtins         as Builtins
 import           Fregot.Names
 import           Fregot.Prepare.Ast
 import           Fregot.Prepare.Lens
 import           Fregot.Prepare.Package
-import           Fregot.Prepare.Vars          (Arities, Safe (..))
+import           Fregot.Prepare.Vars          (Safe (..))
 import           Fregot.PrettyPrint           ((<$$>), (<+>))
 import qualified Fregot.PrettyPrint           as PP
 import           Fregot.Sources.SourceSpan    (SourceSpan)
@@ -51,32 +48,6 @@ import           Prelude                      hiding (head, lookup)
 type CompiledPackage = Package RuleType
 
 type Dependencies = HMS.HashMap PackageName CompiledPackage
-
-aritiesFromPackage :: Builtins f -> Package ty -> Arities
-aritiesFromPackage builtins prep = \func ->
-    (do
-        builtin <- HMS.lookup func builtins
-        return $ Builtins.arity builtin) <|>
-    (do
-        NamedFunction (QualifiedName pkg fname) <- Just func
-        guard $ pkg == prep ^. packageName
-        userdef <- lookup fname prep
-        FunctionRule arity <- Just (userdef ^. ruleKind)
-        return arity)
-
-aritiesFromDependencies :: Dependencies -> Arities
-aritiesFromDependencies deps = \func -> do
-    NamedFunction (QualifiedName pkgname fname) <- Just func
-    pkg                                         <- HMS.lookup pkgname deps
-    userdef                                     <- lookup fname pkg
-    FunctionRule arity                          <- Just (userdef ^. ruleKind)
-    return arity
-
--- | Construct the safe-to-use global variables.  We don't need to look at the
--- rules in the package since the names referring to that have been turned into
--- 'QualifiedName' rather than 'LocalName' already.
-safeGlobals :: Package ty -> Safe Var
-safeGlobals _prep = Safe ["data", "input"]
 
 compilePackage
     :: Monad m
@@ -100,16 +71,13 @@ compilePackage builtins dependencies prep = do
             -- TODO(jaspervdj): We'll want to replace them with error nodes.
             tellError (recursionError cycl) >> return []
 
-    -- Simple compilation and checks.
-    compiled0 <- for ordering compileRule
-
     -- This is a version of dependencies with a placeholder for the current
     -- package, so we can access info about the current package the same as we
     -- could other package.
     let vdependencies = HMS.insert pkgname
             (prep & packageRules .~ HMS.empty) dependencies
 
-    let inferEnv0 = Infer.InferEnv
+    let inferEnv0 = Infer.emptyInferEnv
             -- TODO(jaspervdj): Builtins Proxy works quite well, we should move
             -- it up in the call stack.
             { Infer._ieBuiltins = runIdentity $
@@ -119,7 +87,9 @@ compilePackage builtins dependencies prep = do
 
     inferEnv1 <- foldM (\inferEnv rule ->
         (do
-            tyRule <- Infer.runInfer inferEnv $ Infer.inferRule rule
+            -- Simple compilation and checks.
+            cRule  <- compileRule inferEnv rule
+            tyRule <- Infer.evalInfer inferEnv $ Infer.inferRule cRule
             return $ inferEnv & Infer.ieDependencies . ix pkgname .
                 packageRules .  at (rule ^. ruleName) .~ Just tyRule) `catch`
         -- TODO(jaspervdj): We'll want to replace them with error nodes and an
@@ -128,25 +98,25 @@ compilePackage builtins dependencies prep = do
             tellErrors errs
             return inferEnv))
         inferEnv0
-        compiled0
+        ordering
 
     case inferEnv1 ^? Infer.ieDependencies . ix pkgname of
         Just p  -> return p
         Nothing -> fatal $ Error.mkErrorNoMeta
             "compile" "Package that we are compiling went missing"
   where
-    pkgname     = prep ^. packageName
-    selfArities = aritiesFromPackage builtins prep
+    pkgname = prep ^. packageName
 
     compileRule
-        :: Monad m => Rule' -> ParachuteT Error m Rule'
-    compileRule = traverseOf (ruleDefs . traverse) compileRuleDefinition
+        :: Monad m => Infer.InferEnv -> Rule' -> ParachuteT Error m Rule'
+    compileRule ie = traverseOf (ruleDefs . traverse) (compileRuleDefinition ie)
 
     compileRuleDefinition
         :: forall m. Monad m
-        => RuleDefinition SourceSpan
+        => Infer.InferEnv
+        -> RuleDefinition SourceSpan
         -> ParachuteT Error m (RuleDefinition SourceSpan)
-    compileRuleDefinition def = do
+    compileRuleDefinition ie def = do
         -- Order the bodies and terms.
         ordered <-
             traverseOf (ruleBodies . traverse) orderRuleBody def >>=
@@ -157,31 +127,28 @@ compilePackage builtins dependencies prep = do
         return ordered
       where
         -- Safe set before ordering.
-        safe = safeGlobals prep <> safeLocals
+        --
+        -- TODO(jaspervdj): With InferEnv, safeGlobals should not be necessary
+        -- anymore.
+        safe = safeLocals
 
         safeLocals = Safe $ HS.toHashSetOf
             (ruleArgs . traverse . traverse .
                 termCosmosNoClosures . termNames . traverse . _LocalName)
             def
 
-        orderRuleBody = runOrder . orderForSafety arities safe
-        orderTerm = runOrder . orderTermForSafety arities safe
-
-        arities = \f ->
-            selfArities f <|>
-            aritiesFromDependencies dependencies f
+        orderRuleBody = runOrder . orderForSafety ie safe
+        orderTerm = runOrder . orderTermForSafety ie safe
 
 compileQuery
     :: Monad m
     => Builtins f
     -> Dependencies
-    -> Package ty
     -> TypeContext
     -> Query SourceSpan
     -> ParachuteT Error m (Query SourceSpan)
-compileQuery builtins dependencies pkg typeContext query0 = do
-    query1 <- runOrder $ orderForSafety arities safe0 query0
-    let inferEnv = Infer.InferEnv
+compileQuery builtins dependencies typeContext query0 = do
+    let inferEnv = Infer.emptyInferEnv
             -- TODO(jaspervdj): Builtins Proxy works quite well, we should move
             -- it up in the call stack.
             { Infer._ieBuiltins = runIdentity $
@@ -189,28 +156,25 @@ compileQuery builtins dependencies pkg typeContext query0 = do
             , Infer._ieDependencies = dependencies
             }
 
-    Infer.runInfer inferEnv $ do
+    query1 <- runOrder $ orderForSafety inferEnv safe0 query0
+    Infer.evalInfer inferEnv $ do
         case query0 of
             []    -> pure ()
             l : _ -> Infer.setInferContext (l ^. literalAnn) typeContext
         Infer.inferQuery query1
     return query1
   where
-    safe0   = safeGlobals pkg <> Safe (HMS.keysSet typeContext)
-    arities = aritiesFromPackage builtins pkg
+    safe0 = Safe (HMS.keysSet typeContext)
 
 compileTerm
     :: Monad m
     => Builtins f
     -> Dependencies
-    -> Package ty
     -> TypeContext
     -> Term SourceSpan
     -> ParachuteT Error m (Term SourceSpan, Infer.SourceType)
-compileTerm builtins dependencies pkg typeContext term0 = do
-    ordered <- runOrder $ orderTermForSafety arities safe0 term0
-
-    let inferEnv = Infer.InferEnv
+compileTerm builtins dependencies typeContext term0 = do
+    let inferEnv = Infer.emptyInferEnv
             -- TODO(jaspervdj): Builtins Proxy works quite well, we should move
             -- it up in the call stack.
             { Infer._ieBuiltins = runIdentity $
@@ -218,13 +182,13 @@ compileTerm builtins dependencies pkg typeContext term0 = do
             , Infer._ieDependencies = dependencies
             }
 
-    ty <- Infer.runInfer inferEnv $ do
+    ordered <- runOrder $ orderTermForSafety inferEnv safe0 term0
+    ty <- Infer.evalInfer inferEnv $ do
         Infer.setInferContext (term0 ^. termAnn) typeContext
         Infer.inferTerm ordered
     return (ordered, ty)
   where
-    safe0   = safeGlobals pkg <> Safe (HMS.keysSet typeContext)
-    arities = aritiesFromPackage builtins pkg
+    safe0 = Safe (HMS.keysSet typeContext)
 
 -- | Designed to match the return type of `orderTermForSafety`.
 runOrder

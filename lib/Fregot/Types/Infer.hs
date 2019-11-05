@@ -12,16 +12,20 @@
 {-# LANGUAGE TupleSections         #-}
 {-# LANGUAGE TypeSynonymInstances  #-}
 module Fregot.Types.Infer
-    ( TypeError (..)
+    ( TypeError (..), _UnboundVars
     , SourceType
 
-    , InferEnv (..), ieBuiltins, ieDependencies
+    , InferEnv (..), ieBuiltins, ieDependencies, ieInferClosures
+    , emptyInferEnv
     , InferM
     , runInfer
+    , evalInfer
     , setInferContext
 
     , inferRule
+    , inferRuleBody
     , inferQuery
+    , inferLiteral
     , inferTerm
     ) where
 
@@ -35,8 +39,8 @@ import           Control.Monad.Except.Extended (catchError, catching,
                                                 throwError)
 import           Control.Monad.Parachute       (ParachuteT, fatal)
 import           Control.Monad.Reader          (ReaderT, ask, runReaderT)
-import           Control.Monad.State.Strict    (StateT, evalStateT, get, modify,
-                                                put)
+import           Control.Monad.State.Strict    (StateT, get, modify, put,
+                                                runStateT)
 import           Data.Bifunctor                (bimap, first, second)
 import           Data.Either                   (partitionEithers)
 import           Data.Foldable                 (for_)
@@ -83,9 +87,13 @@ data TypeError
     | InternalError PP.SemDoc
 
 data InferEnv = InferEnv
-    { _ieBuiltins     :: Builtins Proxy
-    , _ieDependencies :: HMS.HashMap PackageName (Package RuleType)
+    { _ieBuiltins      :: Builtins Proxy
+    , _ieDependencies  :: HMS.HashMap PackageName (Package RuleType)
+    , _ieInferClosures :: Bool
     }
+
+emptyInferEnv :: InferEnv
+emptyInferEnv = InferEnv HMS.empty HMS.empty True
 
 type InferState = Unify.Unification UnqualifiedVar SourceType
 
@@ -170,10 +178,14 @@ getRule source pkg var = do
         package <- HMS.lookup pkg (env ^. ieDependencies)
         Package.lookup var package
 
-runInfer :: Monad m => InferEnv -> InferM a -> ParachuteT Error m a
+runInfer
+    :: Monad m => InferEnv -> InferM a -> ParachuteT Error m (a, InferState)
 runInfer env mx =
-    let errOrA = evalStateT (runReaderT mx env) Unify.empty in
-    either (fatal . fromTypeError) return errOrA
+    let errOrX = runStateT (runReaderT mx env) Unify.empty in
+    either (fatal . fromTypeError) pure errOrX
+
+evalInfer :: Monad m => InferEnv -> InferM a -> ParachuteT Error m a
+evalInfer env = fmap fst . runInfer env
 
 setInferContext :: SourceSpan -> Types.TypeContext -> InferM ()
 setInferContext source ctx = for_ (HMS.toList ctx) $ \(var, ty) ->
@@ -390,23 +402,35 @@ inferTerm (ObjectT source obj) = do
         )
 
 inferTerm (ArrayCompT source headTerm body) = do
-    headTy <- isolateUnification $ do
-        inferRuleBody body
-        inferTerm headTerm
-    pure (Types.arrayOf (fst headTy), NonEmpty.singleton source)
+    inferClosures <- view ieInferClosures
+    if not inferClosures
+        then pure (Types.unknown, NonEmpty.singleton source)
+        else do
+            headTy <- isolateUnification $ do
+                inferRuleBody body
+                inferTerm headTerm
+            pure (Types.arrayOf (fst headTy), NonEmpty.singleton source)
 
 inferTerm (SetCompT source headTerm body) = do
-    headTy <- isolateUnification $ do
-        inferRuleBody body
-        inferTerm headTerm
-    pure (Types.setOf (fst headTy), NonEmpty.singleton source)
+    inferClosures <- view ieInferClosures
+    if not inferClosures
+        then pure (Types.unknown, NonEmpty.singleton source)
+        else do
+            headTy <- isolateUnification $ do
+                inferRuleBody body
+                inferTerm headTerm
+            pure (Types.setOf (fst headTy), NonEmpty.singleton source)
 
 inferTerm (ObjectCompT source keyTerm valueTerm body) = do
-    (keyTy, valueTy) <- isolateUnification $ do
-        inferRuleBody body
-        (,) <$> inferTerm keyTerm <*> inferTerm valueTerm
-    let objTy = Types.objectOf (fst keyTy) (fst valueTy)
-    pure (objTy, NonEmpty.singleton source)
+    inferClosures <- view ieInferClosures
+    if not inferClosures
+        then pure (Types.unknown, NonEmpty.singleton source)
+        else do
+            (keyTy, valueTy) <- isolateUnification $ do
+                inferRuleBody body
+                (,) <$> inferTerm keyTerm <*> inferTerm valueTerm
+            let objTy = Types.objectOf (fst keyTy) (fst valueTy)
+            pure (objTy, NonEmpty.singleton source)
 
 inferTerm (RefT source lhs rhs) = do
     lhsTy <- inferTerm lhs
