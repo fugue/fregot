@@ -4,9 +4,9 @@ module Data.Yaml.Extended
     ) where
 
 import qualified Data.Aeson      as Aeson
+import           Data.Bifunctor  (first)
 import           Data.Yaml
 import           System.FilePath (takeExtension)
-import Data.Bifunctor (first)
 
 yamlExtension :: FilePath -> Bool
 yamlExtension = (`elem` [".yaml", ".yml"]) . takeExtension
