@@ -93,6 +93,7 @@ Library
     Data.List.NonEmpty.Extended
     Data.Text.Extended
     Data.Vector.Extended
+    Data.Yaml.Extended
     Debug.Trace.Extended
     Options.Applicative.Extended
     System.Console.Haskeline.Extended
@@ -134,6 +135,7 @@ Library
     unordered-containers >= 0.2  && < 0.3,
     vector               >= 0.12 && < 0.13,
     vector-instances     >= 3.4  && < 3.5,
+    yaml                 >= 0.11 && < 0.12,
     zlib                 >= 0.6  && < 0.7
 
 Executable fregot
