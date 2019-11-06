@@ -19,7 +19,8 @@ parseRuleOrQuery
     => Sources.SourcePointer -> T.Text
     -> ParachuteT Error m (Either (Rule SourceSpan Var) (Query SourceSpan Var))
 parseRuleOrQuery sourcep input = do
-    ruleOrQuery <- Parachute.catch
+    ruleOrQuery <- Parachute.catching
+        (\errs -> if null errs then Nothing else Just errs)
         (Left <$> Parser.lexAndParse Parser.rule sourcep input)
         (\_ -> Right <$> Parser.lexAndParse Parser.query sourcep input)
 

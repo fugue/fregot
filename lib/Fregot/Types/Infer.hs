@@ -561,7 +561,7 @@ unifyTypeType (τ, l) (σ, r)
     | τ == σ                       = return ()
     | ρ <- τ ∩ σ, ρ /= Types.empty = return ()
     | otherwise                    =
-        fatal $ NoUnify Nothing (τ, l) (σ, r)
+        tellError $ NoUnify Nothing (τ, l) (σ, r)
 
 inferBuiltin
     :: SourceSpan
@@ -591,11 +591,11 @@ inferBuiltin
         , B.bcSubsetOf = \σ τ ->
             -- NOTE(jaspervdj): We map 'K.Unknown' to 'True' here.
             unless (K.fromTernary True $ σ ⊆ τ) $
-                fatal $ NoSubset source σ τ
+                tellError $ NoSubset source σ τ
 
-        , B.bcError = \err -> fatal $ BuiltinTypeError source err
-
-        , B.bcCatch = \mx my -> catch mx (\_ -> my)
+        , B.bcCatch = \mx my -> catching
+            (\errs -> if null errs then Nothing else Just errs)
+            mx (\_ -> my)
         }
 
 inferUserFunction

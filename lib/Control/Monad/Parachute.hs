@@ -14,9 +14,10 @@ module Control.Monad.Parachute
     , tellErrors
     , tellError
 
+    , trying
     , try
-    , catch
     , catching
+    , catch
     ) where
 
 import           Control.Monad.Except (MonadError (..))
@@ -113,6 +114,22 @@ tellErrors es = ParachuteT $ \errors -> return (es ++ errors, Ok ())
 tellError :: Monad m => e -> ParachuteT e m ()
 tellError e = ParachuteT $ \errors -> return (e : errors, Ok ())
 
+trying
+    :: Monad m
+    => ([e] -> Maybe a)
+    -> ParachuteT e m b
+    -> ParachuteT e m (Either a b)
+trying shouldCatch (ParachuteT mx) = ParachuteT $ \originalErrors -> do
+    -- Execute `mx` in isolation.
+    (xerrs, xres) <- mx []
+
+    -- Catch fatal errors only (for now).
+    case shouldCatch xerrs of
+        Just info -> return (originalErrors, Ok (Left info))
+        Nothing   -> case xres of
+            Fatal -> return (xerrs ++ originalErrors, Fatal)
+            Ok x  -> return (xerrs ++ originalErrors, Ok (Right x))
+
 try :: Monad m => ParachuteT e m a -> ParachuteT e m (Either [e] a)
 try (ParachuteT mx) = ParachuteT $ \originalErrors -> do
     -- Execute `mx` in isolation.
@@ -122,20 +139,16 @@ try (ParachuteT mx) = ParachuteT $ \originalErrors -> do
     case xres of
         Fatal -> return (originalErrors, Ok (Left xerrs))
         Ok x  -> return (xerrs ++ originalErrors, Ok (Right x))
+{-# DEPRECATED try "Use 'trying' instead" #-}
 
 catch
     :: Monad m
     => ParachuteT e m a -> ([e] -> ParachuteT e m a) -> ParachuteT e m a
 catch mx f = try mx >>= either f return
+{-# DEPRECATED catch "Use 'catching' instead" #-}
 
 catching
     :: Monad m
     => ([e] -> Maybe a) -> ParachuteT e m b -> (a -> ParachuteT e m b)
     -> ParachuteT e m b
-catching select mx my = do
-    errOrX <- try mx
-    case errOrX of
-        Right x -> pure x
-        Left errs -> case select errs of
-            Just info -> my info
-            Nothing   -> fatals errs
+catching shouldCatch mx my = trying shouldCatch mx >>= either my return

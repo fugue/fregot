@@ -49,7 +49,8 @@ runTest
     :: Interpreter.Handle -> TestName
     -> Interpreter.InterpreterM TestResults
 runTest h testname@(pkgname, rule) = do
-    errOrDoc <- Parachute.try $
+    errOrDoc <- Parachute.trying
+        (\errs -> if null errs then Nothing else Just errs) $
         Interpreter.evalVar h Nothing source pkgname rule
 
     results <- case errOrDoc of

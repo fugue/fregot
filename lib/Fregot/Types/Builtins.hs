@@ -13,7 +13,6 @@ module Fregot.Types.Builtins
     , (🡒)
     ) where
 
-import qualified Fregot.PrettyPrint    as PP
 import           Fregot.Types.Internal
 
 data InTypes (i :: [t]) where
@@ -23,7 +22,6 @@ data InTypes (i :: [t]) where
 data BuiltinChecker m = BuiltinChecker
     { bcUnify    :: Type -> Type -> m Type
     , bcSubsetOf :: Type -> Type -> m ()
-    , bcError    :: forall a. PP.SemDoc -> m a
     , bcCatch    :: forall a. m a -> m a -> m a
     }
 

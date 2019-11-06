@@ -19,7 +19,7 @@ import           Control.Lens                 (at, iforM_, ix, traverseOf, view,
                                                (&), (.~), (^.), (^?))
 import           Control.Monad                (foldM, forM)
 import           Control.Monad.Identity       (runIdentity)
-import           Control.Monad.Parachute      (ParachuteT, catch, fatal,
+import           Control.Monad.Parachute      (ParachuteT, catching, fatal,
                                                tellError, tellErrors)
 import qualified Data.Graph                   as Graph
 import qualified Data.HashMap.Strict.Extended as HMS
@@ -85,13 +85,14 @@ compilePackage builtins dependencies prep = do
             , Infer._ieDependencies = vdependencies
             }
 
-    inferEnv1 <- foldM (\inferEnv rule ->
+    inferEnv1 <- foldM (\inferEnv rule -> catching
+        (\errs -> if null errs then Nothing else Just errs)
         (do
             -- Simple compilation and checks.
             cRule  <- compileRule inferEnv rule
             tyRule <- Infer.evalInfer inferEnv $ Infer.inferRule cRule
             return $ inferEnv & Infer.ieDependencies . ix pkgname .
-                packageRules .  at (rule ^. ruleName) .~ Just tyRule) `catch`
+                packageRules .  at (rule ^. ruleName) .~ Just tyRule)
         -- TODO(jaspervdj): We'll want to replace them with error nodes and an
         -- 'unknown' type.
         (\errs -> do
