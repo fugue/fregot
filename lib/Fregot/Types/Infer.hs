@@ -29,49 +29,47 @@ module Fregot.Types.Infer
     , inferTerm
     ) where
 
-import           Control.Lens                  (forOf_, review, view, (&), (.~),
-                                                (^.), (^?))
-import           Control.Lens.Extras           (is)
-import           Control.Lens.TH               (makeLenses, makePrisms)
-import           Control.Monad                 (forM, join, unless, void,
-                                                zipWithM_)
-import           Control.Monad.Except.Extended (catchError, catching,
-                                                throwError)
-import           Control.Monad.Parachute       (ParachuteT, fatal)
-import           Control.Monad.Reader          (ReaderT, ask, runReaderT)
-import           Control.Monad.State.Strict    (StateT, get, modify, put,
-                                                runStateT)
-import           Data.Bifunctor                (bimap, first, second)
-import           Data.Either                   (partitionEithers)
-import           Data.Foldable                 (for_)
-import qualified Data.HashMap.Strict           as HMS
-import qualified Data.HashSet                  as HS
-import qualified Data.Kleene                   as K
-import           Data.List.NonEmpty.Extended   (NonEmpty (..))
-import qualified Data.List.NonEmpty.Extended   as NonEmpty
-import           Data.Maybe                    (catMaybes, fromMaybe,
-                                                maybeToList)
-import           Data.Proxy                    (Proxy)
-import           Data.Traversable              (for)
-import qualified Data.Unification              as Unify
+import           Control.Lens                (forOf_, review, view, (&), (.~),
+                                              (^.), (^?))
+import           Control.Lens.Extras         (is)
+import           Control.Lens.TH             (makeLenses, makePrisms)
+import           Control.Monad               (forM, join, unless, void,
+                                              zipWithM_)
+import           Control.Monad.Parachute
+import           Control.Monad.Reader        (ReaderT, ask, runReaderT)
+import           Control.Monad.State.Strict  (State, evalState, get, modify,
+                                              put)
+import           Data.Bifunctor              (bimap, first, second)
+import           Data.Either                 (partitionEithers)
+import           Data.Foldable               (for_)
+import qualified Data.HashMap.Strict         as HMS
+import qualified Data.HashSet                as HS
+import qualified Data.Kleene                 as K
+import           Data.List.NonEmpty.Extended (NonEmpty (..))
+import qualified Data.List.NonEmpty.Extended as NonEmpty
+import           Data.Maybe                  (catMaybes, fromMaybe, listToMaybe,
+                                              maybeToList)
+import           Data.Proxy                  (Proxy)
+import           Data.Traversable            (for)
+import qualified Data.Unification            as Unify
 import           Fregot.Arity
-import           Fregot.Error                  (Error)
-import qualified Fregot.Error                  as Error
-import           Fregot.Eval.Builtins          (Builtin, Builtins)
-import qualified Fregot.Eval.Builtins          as Builtin
+import           Fregot.Error                (Error)
+import qualified Fregot.Error                as Error
+import           Fregot.Eval.Builtins        (Builtin, Builtins)
+import qualified Fregot.Eval.Builtins        as Builtin
 import           Fregot.Names
 import           Fregot.Prepare.Ast
-import           Fregot.Prepare.Package        (Package)
-import qualified Fregot.Prepare.Package        as Package
-import           Fregot.PrettyPrint            ((<+>), (<+>?))
-import qualified Fregot.PrettyPrint            as PP
-import           Fregot.Sources.SourceSpan     (SourceSpan)
-import qualified Fregot.Types.Builtins         as B
-import           Fregot.Types.Internal         (Type, (∩), (⊆))
-import qualified Fregot.Types.Internal         as Types
-import           Fregot.Types.Rule             (RuleType (..))
-import qualified Fregot.Types.Rule             as Types
-import qualified Fregot.Types.Value            as Types
+import           Fregot.Prepare.Package      (Package)
+import qualified Fregot.Prepare.Package      as Package
+import           Fregot.PrettyPrint          ((<+>), (<+>?))
+import qualified Fregot.PrettyPrint          as PP
+import           Fregot.Sources.SourceSpan   (SourceSpan)
+import qualified Fregot.Types.Builtins       as B
+import           Fregot.Types.Internal       (Type, (∩), (⊆))
+import qualified Fregot.Types.Internal       as Types
+import           Fregot.Types.Rule           (RuleType (..))
+import qualified Fregot.Types.Rule           as Types
+import qualified Fregot.Types.Value          as Types
 
 type SourceType = (Type, NonEmpty SourceSpan)
 
@@ -97,7 +95,7 @@ emptyInferEnv = InferEnv HMS.empty HMS.empty True
 
 type InferState = Unify.Unification UnqualifiedVar SourceType
 
-type InferM = ReaderT InferEnv (StateT InferState (Either TypeError))
+type InferM = ParachuteT TypeError (ReaderT InferEnv (State InferState))
 
 $(makePrisms ''TypeError)
 $(makeLenses ''InferEnv)
@@ -173,16 +171,20 @@ getRule
 getRule source pkg var = do
     env <- ask
     maybe
-        (throwError $ UnboundName (QualifiedName pkg var) source)
+        (fatal $ UnboundName (QualifiedName pkg var) source)
         return $ do
         package <- HMS.lookup pkg (env ^. ieDependencies)
         Package.lookup var package
 
 runInfer
     :: Monad m => InferEnv -> InferM a -> ParachuteT Error m (a, InferState)
-runInfer env mx =
-    let errOrX = runStateT (runReaderT mx env) Unify.empty in
-    either (fatal . fromTypeError) pure errOrX
+runInfer env mx = withErrors fromTypeError $ mapParachuteT infer $ do
+    x     <- mx
+    state <- get
+    return (x, state)
+  where
+    infer :: Monad m => ReaderT InferEnv (State InferState) a -> m a
+    infer reader = return $ evalState (runReaderT reader env) Unify.empty
 
 evalInfer :: Monad m => InferEnv -> InferM a -> ParachuteT Error m a
 evalInfer env = fmap fst . runInfer env
@@ -231,7 +233,7 @@ inferRule rule = case rule ^. ruleKind of
                 _  -> Just (idxType, valType)
         pure $ rule & ruleInfo .~ Types.GenObjectRuleType objType
 
-    _ -> throwError $ InternalError
+    _ -> fatal $ InternalError
         -- Absurd: the 'kind' rule is exhaustive but GHC can't tell.
         "inferRule with absurd rule kind"
 
@@ -331,12 +333,12 @@ inferTerm (ScalarT source scalar) =
     return $ (, NonEmpty.singleton source) $ inferScalar scalar
 
 inferTerm (CallT source fun args) = do
-    let cannotCall = throwError $ CannotCall source fun
+    let cannotCall = fatal $ CannotCall source fun
     builtins <- view ieBuiltins
     case HMS.lookup fun builtins of
         Just b  -> inferBuiltin source fun b args
         Nothing -> case fun of
-            OperatorFunction o -> throwError $ InternalError $
+            OperatorFunction o -> fatal $ InternalError $
                 "builtin for operator" <+> PP.pretty o <+> "not found"
             NamedFunction (QualifiedName pkg var) -> do
                 rule <- getRule source pkg var
@@ -356,7 +358,7 @@ inferTerm (NameT source (BuiltinName _)) =
 inferTerm (NameT source (LocalName var)) = do
     mbRes <- Unify.lookup var
     case mbRes of
-        Nothing -> throwError $ UnboundVars (HMS.singleton var source)
+        Nothing -> fatal $ UnboundVars (HMS.singleton var source)
         Just ty -> return ty
 
 inferTerm (NameT source (QualifiedName pkg var)) = do
@@ -444,7 +446,7 @@ inferTerm (RefT source lhs rhs) = do
             return (Types.unknown, NonEmpty.singleton source)
 
         (Types.Union opts, _) -> case NonEmpty.fromList (HS.toList opts) of
-            Nothing    -> throwError $ CannotRef source lhsTy
+            Nothing    -> fatal $ CannotRef source lhsTy
             Just nopts -> do
                 (keytys, valtys) <- fmap NonEmpty.unzip $
                     mapM (inferElemRef lhsTy) nopts
@@ -490,13 +492,13 @@ inferTerm (RefT source lhs rhs) = do
 
         -- There is no static or dynamic part that matches, this is
         -- either an internal error or a known empty object.
-        _ -> throwError $ CannotRef source lhsTy
+        _ -> fatal $ CannotRef source lhsTy
 
-    inferElemRef lhsTy Types.String     = throwError $ CannotRef source lhsTy
-    inferElemRef lhsTy Types.Number     = throwError $ CannotRef source lhsTy
-    inferElemRef lhsTy Types.Boolean    = throwError $ CannotRef source lhsTy
-    inferElemRef lhsTy Types.Null       = throwError $ CannotRef source lhsTy
-    inferElemRef lhsTy (Types.Scalar _) = throwError $ CannotRef source lhsTy
+    inferElemRef lhsTy Types.String     = fatal $ CannotRef source lhsTy
+    inferElemRef lhsTy Types.Number     = fatal $ CannotRef source lhsTy
+    inferElemRef lhsTy Types.Boolean    = fatal $ CannotRef source lhsTy
+    inferElemRef lhsTy Types.Null       = fatal $ CannotRef source lhsTy
+    inferElemRef lhsTy (Types.Scalar _) = fatal $ CannotRef source lhsTy
 
 inferScalar :: Scalar -> Type
 inferScalar = Types.scalarType
@@ -510,7 +512,8 @@ unifyTermTerm _ l                       (NameT _ WildcardName)  =
 unifyTermTerm _ (NameT _ (LocalName α)) (NameT _ (LocalName β)) =
     Unify.bindVar α β
 
-unifyTermTerm source lhs rhs = catching _UnboundVars
+unifyTermTerm source lhs rhs = catching
+    (\errs -> listToMaybe [() | UnboundVars _ <- errs])
     (do
         rhsty <- inferTerm rhs
         unifyTermType source lhs rhsty)
@@ -558,7 +561,7 @@ unifyTypeType (τ, l) (σ, r)
     | τ == σ                       = return ()
     | ρ <- τ ∩ σ, ρ /= Types.empty = return ()
     | otherwise                    =
-        throwError $ NoUnify Nothing (τ, l) (σ, r)
+        fatal $ NoUnify Nothing (τ, l) (σ, r)
 
 inferBuiltin
     :: SourceSpan
@@ -576,7 +579,7 @@ inferBuiltin
     toInTypes Builtin.Out    _        = pure B.Nil
     toInTypes (Builtin.In s) (t : ts) = B.Cons t <$> toInTypes s ts
     toInTypes (Builtin.In _) []       =
-        throwError $ InternalError "internal arity mismatch for inTypes"
+        fatal $ InternalError "internal arity mismatch for inTypes"
 
     arity = Builtin.arity builtin
 
@@ -588,11 +591,11 @@ inferBuiltin
         , B.bcSubsetOf = \σ τ ->
             -- NOTE(jaspervdj): We map 'K.Unknown' to 'True' here.
             unless (K.fromTernary True $ σ ⊆ τ) $
-                throwError $ NoSubset source σ τ
+                fatal $ NoSubset source σ τ
 
-        , B.bcError = \err -> throwError $ BuiltinTypeError source err
+        , B.bcError = \err -> fatal $ BuiltinTypeError source err
 
-        , B.bcCatch = \mx my -> catchError mx (\_ -> my)
+        , B.bcCatch = \mx my -> catch mx (\_ -> my)
         }
 
 inferUserFunction
@@ -601,7 +604,7 @@ inferUserFunction
     -> InferM SourceType
 inferUserFunction source name rule args = do
     arity <- maybe
-        (throwError $ CannotCall source name) return
+        (fatal $ CannotCall source name) return
         (rule ^? ruleInfo . Types._FunctionType)
 
     inferCall source name arity args $ \inferredArgs -> do
@@ -621,7 +624,7 @@ inferCall
     -> InferM SourceType
 inferCall source name arity args check =
     case checkArity arity args of
-        ArityBad got         -> throwError $ ArityMismatch source name arity got
+        ArityBad got         -> fatal $ ArityMismatch source name arity got
         ArityOk inArgs mbOut -> do
             inferredArgs <- mapM inferTerm inArgs
             outTy        <- check inferredArgs

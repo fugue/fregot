@@ -7,6 +7,7 @@ module Control.Monad.Parachute
     ( ParachuteT (..)
     , runParachuteT
     , mapParachuteT
+    , withErrors
 
     , fatal
     , dieIfErrors
@@ -15,17 +16,24 @@ module Control.Monad.Parachute
 
     , try
     , catch
+    , catching
     ) where
 
 import           Control.Monad.Except (MonadError (..))
 import           Control.Monad.Reader (MonadReader (..))
 import           Control.Monad.State  (MonadState (..))
-import           Control.Monad.Trans  (MonadTrans (..), MonadIO (..))
+import           Control.Monad.Trans  (MonadIO (..), MonadTrans (..))
+import           Data.Bifunctor       (Bifunctor (..))
 
 data ParachuteResult e a
     = Ok a
     | Fatal
     deriving (Functor)
+
+instance Bifunctor ParachuteResult where
+    first _ (Ok x) = Ok x
+    first _ Fatal  = Fatal
+    second         = fmap
 
 newtype ParachuteT e m a = ParachuteT
     { unParachuteT :: [e] -> m ([e], ParachuteResult e a)
@@ -83,6 +91,11 @@ mapParachuteT
     -> ParachuteT e m a -> ParachuteT e n a
 mapParachuteT f (ParachuteT p) = ParachuteT (f . p)
 
+withErrors :: Monad m => (e -> f) -> ParachuteT e m a -> ParachuteT f m a
+withErrors f (ParachuteT p) = ParachuteT $ \errors0 -> do
+    (errors1, x) <- p []
+    return (errors0 ++ map f errors1, first f x)
+
 fatal :: Monad m => e -> ParachuteT e m a
 fatal x = ParachuteT $ \errors -> return (x : errors, Fatal)
 
@@ -114,3 +127,15 @@ catch
     :: Monad m
     => ParachuteT e m a -> ([e] -> ParachuteT e m a) -> ParachuteT e m a
 catch mx f = try mx >>= either f return
+
+catching
+    :: Monad m
+    => ([e] -> Maybe a) -> ParachuteT e m b -> (a -> ParachuteT e m b)
+    -> ParachuteT e m b
+catching select mx my = do
+    errOrX <- try mx
+    case errOrX of
+        Right x -> pure x
+        Left errs -> case select errs of
+            Just info -> my info
+            Nothing   -> fatals errs
