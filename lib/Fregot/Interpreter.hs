@@ -56,6 +56,7 @@ import qualified Data.IORef.Extended             as IORef
 import           Data.Maybe                      (fromMaybe)
 import qualified Data.Text.IO                    as T
 import           Data.Traversable.HigherOrder    (htraverse)
+import qualified Data.Yaml.Extended              as Yaml
 import           Fregot.Compile.Package          (CompiledPackage)
 import qualified Fregot.Compile.Package          as Compile
 import           Fregot.Error                    (Error, catchIO)
@@ -404,7 +405,7 @@ setInput h val = do
 
 setInputFile :: Handle -> FilePath -> InterpreterM ()
 setInputFile h path = do
-    errOrVal <- liftIO $ Aeson.eitherDecodeFileStrict' path
+    errOrVal <- liftIO $ Yaml.loadJsonOrYaml path
     val      <- case errOrVal of
         Right v  -> pure (v :: Aeson.Value)
         Left err -> fatal $ Error.mkErrorNoMeta "interpreter" $
