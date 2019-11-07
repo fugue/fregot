@@ -59,7 +59,6 @@ Library
     Fregot.Prepare.Ast
     Fregot.Prepare.Lens
     Fregot.Prepare.Package
-    Fregot.Prepare.Vars
     Fregot.PrettyPrint
     Fregot.PrettyPrint.Internal
     Fregot.PrettyPrint.Sem
@@ -192,7 +191,6 @@ Test-suite fregot-tests
     Fregot.Parser.Tests
     Fregot.Prepare.Dsl
     Fregot.Prepare.Lens.Tests
-    Fregot.Prepare.Vars.Tests
     Fregot.Types.Internal.Tests
     System.Console.Haskeline.Tests
     Test.Tasty.Extended
