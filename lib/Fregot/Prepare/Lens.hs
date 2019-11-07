@@ -114,7 +114,11 @@ instance Plated (Term a) where
 
 -- | Fold over the direct names of a term.
 termNames :: Traversal' (Term a) (a, Name)
-termNames = _NameT
+termNames f e = case e of
+    NameT a n -> uncurry NameT <$> f (a, n)
+    CallT a (NamedFunction n) args ->
+        (\(a', n') -> CallT a' (NamedFunction n') args) <$> f (a, n)
+    _ -> pure e
 
 termCosmosNames :: Fold (Term a) (a, Name)
 termCosmosNames = cosmos . termNames

@@ -6,6 +6,7 @@ module Fregot.Compile.Order.Tests
 
 import qualified Data.HashSet         as HS
 import           Fregot.Compile.Order
+import           Fregot.Names
 import           Fregot.Prepare.Ast
 import           Fregot.Prepare.Dsl
 import qualified Test.Tasty           as Tasty
@@ -63,7 +64,9 @@ tests_orderForSafety = Tasty.testGroup "orderForSafety"
     [ Tasty.testCase "01" $
         let program =
                 [ lit $ UnifyS 0 (name "a") (num 1)
-                , lit $ UnifyS 0 (name "x") (call "add" [name "a", name "b", name "x"])
+                , lit $ UnifyS 0
+                    (name "x")
+                    (call (BuiltinName "add") [name "a", name "b", name "x"])
                 , lit $ UnifyS 0 (name "b") (num 2)
                 ] in
         testOrderForSafety program @?=
