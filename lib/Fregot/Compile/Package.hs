@@ -127,12 +127,7 @@ compilePackage builtins dependencies prep = do
         return ordered
       where
         -- Safe set before ordering.
-        --
-        -- TODO(jaspervdj): With InferEnv, safeGlobals should not be necessary
-        -- anymore.
-        safe = safeLocals
-
-        safeLocals = Safe $ HS.toHashSetOf
+        safe = Safe $ HS.toHashSetOf
             (ruleArgs . traverse . traverse .
                 termCosmosNoClosures . termNames . traverse . _LocalName)
             def

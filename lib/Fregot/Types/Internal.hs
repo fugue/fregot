@@ -198,11 +198,10 @@ unions = foldl' union empty
 (∪) :: Type -> Type -> Type
 (∪) = union
 
--- TODO: abstract this.
 objectIntersection
-    :: Object Ast.Scalar Type -> Object Ast.Scalar Type
-    -> Maybe (Object Ast.Scalar Type)
-objectIntersection l r = do
+    :: (Eq k, Hashable k)
+    => (k -> Type) -> Object k Type -> Object k Type -> Maybe (Object k Type)
+objectIntersection keyTy l r = do
     static <- mbStatic
     pure $ Obj static dynamic
   where
@@ -213,12 +212,12 @@ objectIntersection l r = do
             (Just v,  Nothing) -> case objDynamic r of
                 Nothing           -> Nothing
                 Just (kdyn, wdyn) -> (,)
-                    <$> (intersectionMaybe (scalarType k) kdyn $> k)
+                    <$> (intersectionMaybe (keyTy k) kdyn $> k)
                     <*> intersectionMaybe v wdyn
             (Nothing, Just w)  -> case objDynamic l of
                 Nothing           -> Nothing
                 Just (kdyn, vdyn) -> (,)
-                    <$> (intersectionMaybe (scalarType k) kdyn $> k)
+                    <$> (intersectionMaybe (keyTy k) kdyn $> k)
                     <*> intersectionMaybe w vdyn
             (Just v,  Just w)  -> (,) k <$> intersectionMaybe v w
 
@@ -233,7 +232,7 @@ elemIntersection :: Elem Type -> Elem Type -> Maybe (Elem Type)
 elemIntersection x y                   | x == y = Just x
 elemIntersection (Scalar s) y          | scalarElem s == y = Just (Scalar s)
 elemIntersection x (Scalar s)          | scalarElem s == x = Just (Scalar s)
-elemIntersection (Object x) (Object y) = Object <$> objectIntersection x y
+elemIntersection (Object x) (Object y) = Object <$> objectIntersection scalarType x y
 elemIntersection (Set x) (Set y)       = Set <$> intersectionMaybe x y
 elemIntersection (Array x) (Array y)   = Array <$> intersectionMaybe x y
 elemIntersection _ _                   = Nothing
