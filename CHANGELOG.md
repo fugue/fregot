@@ -1,5 +1,8 @@
 # CHANGELOG
 
+ -  0.4.1 (2019-11-06)
+     *  Allow YAML input documents
+
  -  0.4.0 (2019-11-01)
      *  Re-license to Apache-2.0
      *  The `fregot repl` and `fregot eval` now take queries, not expressions
