@@ -36,7 +36,6 @@ import           Fregot.Names
 import           Fregot.Prepare.Ast
 import           Fregot.Prepare.Lens
 import           Fregot.Prepare.Package
-import           Fregot.Prepare.Vars          (Safe (..))
 import           Fregot.PrettyPrint           ((<$$>), (<+>))
 import qualified Fregot.PrettyPrint           as PP
 import           Fregot.Sources.SourceSpan    (SourceSpan)
@@ -128,12 +127,7 @@ compilePackage builtins dependencies prep = do
         return ordered
       where
         -- Safe set before ordering.
-        --
-        -- TODO(jaspervdj): With InferEnv, safeGlobals should not be necessary
-        -- anymore.
-        safe = safeLocals
-
-        safeLocals = Safe $ HS.toHashSetOf
+        safe = Safe $ HS.toHashSetOf
             (ruleArgs . traverse . traverse .
                 termCosmosNoClosures . termNames . traverse . _LocalName)
             def

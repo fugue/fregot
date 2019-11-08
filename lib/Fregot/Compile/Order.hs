@@ -6,6 +6,7 @@ module Fregot.Compile.Order
     ( OrderPredicate (..)
     , reorder
 
+    , Safe (..)
     , Unsafe (..)
     , orderForClosures
     , orderForSafety
@@ -29,7 +30,6 @@ import qualified Data.Unification            as Unification
 import           Fregot.Names
 import           Fregot.Prepare.Ast
 import           Fregot.Prepare.Lens
-import           Fregot.Prepare.Vars         hiding (ovLiteral, ovRuleBody)
 import           Fregot.Sources.SourceSpan   (SourceSpan)
 import qualified Fregot.Types.Infer          as Types
 import qualified Fregot.Types.Internal       as Types
@@ -74,6 +74,9 @@ reorder orderPredicate = \userAcc items ->
             | otherwise ->
                 -- Run again.
                 loop userAcc1 ordered1 errorMap1 itemMap1
+
+newtype Safe v = Safe {unSafe :: HS.HashSet v}
+    deriving (Eq, Monoid, Semigroup, Show)
 
 newtype Unsafe v a = Unsafe {unUnsafe :: HMS.HashMap v (NonEmpty a)}
     deriving (Eq, Monoid, Semigroup, Show)

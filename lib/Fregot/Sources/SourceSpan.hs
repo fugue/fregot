@@ -10,7 +10,8 @@
 {-# LANGUAGE TemplateHaskell            #-}
 module Fregot.Sources.SourceSpan
     ( -- * Snippets
-      SourceSpan (..), sourcePointer, start, end
+      SourcePointer (..)
+    , SourceSpan (..), sourcePointer, start, end
     , Position (..), line, column
 
     , prettyPos
