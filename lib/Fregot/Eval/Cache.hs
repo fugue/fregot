@@ -14,29 +14,49 @@ module Fregot.Eval.Cache
     , new
     , bump
     , disable
-    , insert
-    , lookup
+    , writeSingleton
+    , writeCollection
+    , flushCollection
+    , Result (..)
+    , read
     ) where
 
 import           Control.Lens        ((&), (.~), (^.))
 import           Control.Lens.TH     (makeLenses)
 import qualified Data.Cache          as C
 import           Data.Hashable       (Hashable)
+import qualified Data.HashMap.Strict as HMS
 import           Data.IORef.Extended (IORef)
 import qualified Data.IORef.Extended as IORef
 import           GHC.Generics        (Generic)
-import           Prelude             hiding (lookup)
+import           Prelude             hiding (read)
 
 -- | We just need to be able to bump this.
 type Version = Int
 
+-- | A versioned key.
 data Versioned k = Versioned {-# UNPACK #-} !Version !k
-    deriving (Eq, Generic, Ord)
+    deriving (Eq, Generic, Ord, Show)
 
 instance Hashable k => Hashable (Versioned k)
 
+-- | Values in the cache.
+--
+-- NOTE(jaspervdj): Adding a 'None' constructor here to avoid the 'Maybe'
+-- indirection may be worth a small speedup.
+data Result v
+    -- | Cached result from a complete rule, can only be a single value.
+    = Singleton !v
+    -- | Cached result from a set or object rule.  The value in the map is
+    -- always true for sets.
+    | Collection !(HMS.HashMap v v)
+    -- | Cached result from a set or object rule, that hasn't been completely
+    -- evaluated, so some values may not be here.
+    | Partial !(HMS.HashMap v v)
+    deriving (Show)
+
 data Cache k v = Cache
-    { _cache   :: !(IORef (C.Cache (Versioned k) v))
+    { _cache   :: !(IORef (C.Cache (Versioned k) (Result v)))
     , _next    :: !(IORef Version)
     , _version :: !Version
     , _enabled :: !Bool
@@ -59,15 +79,49 @@ bump c = IORef.atomicModifyIORef' (c ^. next) $ \n -> (succ n, c & version .~ n)
 disable :: Cache k v -> Cache k v
 disable = enabled .~ False
 
--- | Add a new row.
-insert :: (Hashable k, Ord k) => Cache k v -> k -> v -> IO ()
-insert c _ _ | not (c ^. enabled) = pure ()
-insert c k val = IORef.atomicModifyIORef_ (c ^. cache) $
-    C.insert (Versioned (c ^. version) k) val
+-- | Add a new singleton result.
+writeSingleton :: (Hashable k, Ord k) => Cache k v -> k -> v -> IO ()
+writeSingleton c _ _ | not (c ^. enabled) = pure ()
+writeSingleton c k val = IORef.atomicModifyIORef_ (c ^. cache) $
+    C.insert (Versioned (c ^. version) k) (Singleton val)
 
-lookup :: (Hashable k, Ord k) => Cache k v -> k -> IO (Maybe v)
-lookup c _ | not (c ^. enabled) = pure Nothing
-lookup c k = IORef.atomicModifyIORef' (c ^. cache) $ \c0 ->
+-- | Add a new key/value pair to a cached collection.
+writeCollection
+    :: (Hashable k, Ord k, Eq v, Hashable v)
+    => Cache k v -> k -> v -> v -> IO ()
+writeCollection c _ _ _ | not (c ^. enabled) = pure ()
+writeCollection c ck k v = IORef.atomicModifyIORef_ (c ^. cache) $ \c0 ->
+    case C.lookup vk c0 of
+        -- The collection currently doesn't exist so we create it.
+        Nothing -> C.insert vk (Partial $ HMS.singleton k v) c0
+        -- The collection is already finished so we don't need to do anything.
+        Just (Collection _, c1) -> c1
+        -- TODO(jaspervdj): Throw some kind of error, this is a mismatch.
+        Just (Singleton _, c1) -> c1
+        -- Partial collection.  First check if the key/value are already there.
+        Just (Partial p, c1) -> case HMS.lookup k p of
+            Just v' | v' == v -> c1
+            -- TODO(jaspervdj): Throw some kind of error here.
+            Just _            -> c1
+            Nothing           -> C.insert vk (Partial $ HMS.insert k v p) c1
+  where
+    vk = Versioned (c ^. version) ck
+
+-- | Indicate that we've traversed the entire collection, so we can change
+-- 'Partial' to 'Collection' if necessary.
+flushCollection
+    :: (Hashable k, Ord k, Eq v, Hashable v)
+    => Cache k v -> k -> IO ()
+flushCollection c ck = IORef.atomicModifyIORef_ (c ^. cache) $ \c0 ->
+    case C.lookup vk c0 of
+        Just (Partial p, c1) -> C.insert vk (Collection p) c1
+        _                    -> c0
+  where
+    vk = Versioned (c ^. version) ck
+
+read :: (Hashable k, Ord k) => Cache k v -> k -> IO (Maybe (Result v))
+read c _ | not (c ^. enabled) = pure Nothing
+read c k = IORef.atomicModifyIORef' (c ^. cache) $ \c0 ->
     case C.lookup (Versioned (c ^. version) k) c0 of
         Just (v, c1) -> (c1, Just v)
         _            -> (c0, Nothing)

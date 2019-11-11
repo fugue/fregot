@@ -282,14 +282,22 @@ evalCompiledRule
     -> Rule SourceSpan
     -> Maybe Value
     -> EvalM Value
-evalCompiledRule callerSource crule mbIndex = push $ case crule ^. ruleKind of
+evalCompiledRule callerSource crule mbIndex = case crule ^. ruleKind of
     -- Complete definitions
-    CompleteRule -> cached $ requireComplete (crule ^. ruleAnn) $
-        case crule ^. ruleDefault of
-            -- If there is a default, then we fill it in if the rule yields no
-            -- rows.
-            Just def -> withDefault (evalTerm def) $ snd <$> branches
-            Nothing  -> snd <$> branches
+    CompleteRule -> do
+        c        <- view cache
+        mbResult <- liftIO $ Cache.read c ckey
+        case mbResult of
+            Just (Cache.Singleton val) -> pure val
+            _                          -> do
+                val <- push $ requireComplete (crule ^. ruleAnn) $
+                    case crule ^. ruleDefault of
+                        -- If there is a default, then we fill it in if the rule
+                        -- yields no rows.
+                        Just def -> withDefault (evalTerm def) $ snd <$> branches
+                        Nothing  -> snd <$> branches
+                liftIO $ Cache.writeSingleton c ckey val
+                pure val
 
     -- TODO(jaspervdj): We currently treat objects and sets the same.  This is
     -- wrong.
@@ -318,19 +326,7 @@ evalCompiledRule callerSource crule mbIndex = push $ case crule ^. ruleKind of
         | def <- crule ^. ruleDefs
         ]
 
-    -- This is currently only used for complete rules.
-    cached :: EvalM Value -> EvalM Value
-    cached computeValue = do
-        let key = (crule ^. rulePackage, crule ^. ruleName)
-
-        c        <- view cache
-        mbResult <- liftIO $ Cache.lookup c key
-        case mbResult of
-            Just val -> return val
-            Nothing  -> do
-                x <- computeValue
-                liftIO $ Cache.insert c key x
-                return x
+    ckey = (crule ^. rulePackage, crule ^. ruleName)
 
 evalRuleDefinition
     :: SourceSpan -> RuleDefinition SourceSpan -> Maybe Value
