@@ -34,6 +34,7 @@ module Fregot.Eval
 import           Control.Exception         (try)
 import           Control.Lens              (review, to, use, view, (%=), (.=),
                                             (.~), (^.), (^?))
+import           Control.Monad             (when)
 import           Control.Monad.Extended    (foldM, forM, zipWithM_)
 import           Control.Monad.Identity    (Identity (..))
 import           Control.Monad.Reader      (local)
@@ -299,21 +300,64 @@ evalCompiledRule callerSource crule mbIndex = case crule ^. ruleKind of
                 liftIO $ Cache.writeSingleton c ckey val
                 pure val
 
-    -- TODO(jaspervdj): We currently treat objects and sets the same.  This is
-    -- wrong.
-    GenSetRule | isNothing mbIndex ->
-        -- If the rule takes an argument, e.g. `resources[id]`, but we refer to
-        -- it without argument, e.g. `count(resources)`, we want to evaluate the
-        -- document to an set again.
-        fmap (SetV . HS.fromList) (unbranch $ snd <$> branches)
+    -- Any kind of collection
+    rkind -> do
+        c             <- view cache
+        mbCacheResult <- liftIO $ Cache.read c ckey
 
-    GenObjectRule | isNothing mbIndex -> do
-        -- Same as above, but for objects.
-        bs <- unbranch $ branches
-        mkObject callerSource [(k, v) | (Just k, v) <- bs]
+        -- Figure out the keys we already know about, and whether or not we need
+        -- to do more computation.
+        let (partial, more) = case mbCacheResult of
+                Just (Cache.Collection p) -> (p, False)
+                Just (Cache.Partial p)    -> (p, True)
+                _                         -> (HMS.empty, True)
 
-    _ ->
-        snd <$> branches
+        -- Do more computation if necessary.
+        let moreBranches :: [EvalM (Maybe Value, Value)]
+            moreBranches = (do
+                def <- crule ^. ruleDefs
+                pure $ do
+                    (idxVal, val) <- evalRuleDefinition callerSource def mbIndex
+                    let (k, v) = case rkind of
+                            GenSetRule -> (fromMaybe val idxVal, BoolV True)
+                            _          -> (fromMaybe val idxVal, val)
+                    when (k `HMS.member` partial) cut  -- Already known.
+                    liftIO $ Cache.writeCollection c ckey k v
+                    return (idxVal, val)) ++
+                (pure $ do
+                    -- After all branches have executed, indicate that the
+                    -- collection is finished.
+                    let visitedAll = case mbIndex of
+                            Nothing        -> True
+                            Just (FreeV _) -> True
+                            Just WildcardV -> True
+                            _              -> False
+                    when visitedAll $ liftIO $ Cache.flushCollection c ckey
+                    cut)
+
+        case rkind of
+            GenSetRule | isNothing mbIndex -> do
+                moreElems <- unbranch $ branch $
+                    if more then moreBranches else []
+                return $ SetV $
+                    HMS.keysSet partial <> HS.fromList (snd <$> moreElems)
+            GenObjectRule | isNothing mbIndex -> do
+                moreElems <- unbranch $ branch $
+                    if more then moreBranches else []
+                return $ ObjectV $
+                    partial <> HMS.fromList [(k, v) | (Just k, v) <- moreElems]
+
+            _ | Just idx <- mbIndex -> branch $
+                -- First deal with known keys/values.
+                (do
+                    (k, v) <- HMS.toList partial
+                    pure $ case rkind of
+                        GenSetRule -> unify idx k >> return k
+                        _          -> unify idx k >> return v) ++
+                -- Then unknown ones.
+                (if more then fmap snd <$> moreBranches else [])
+
+            _ -> error "wat"
   where
     -- Update the stack
     push = pushRuleStackFrame callerSource
@@ -326,6 +370,7 @@ evalCompiledRule callerSource crule mbIndex = case crule ^. ruleKind of
         | def <- crule ^. ruleDefs
         ]
 
+    -- Cache key.
     ckey = (crule ^. rulePackage, crule ^. ruleName)
 
 evalRuleDefinition
