@@ -42,7 +42,7 @@ import           Control.Monad.Trans       (liftIO)
 import qualified Data.HashMap.Strict       as HMS
 import qualified Data.HashSet              as HS
 import           Data.Int                  (Int64)
-import           Data.Maybe                (fromMaybe, isNothing)
+import           Data.Maybe                (fromMaybe)
 import qualified Data.Unification          as Unification
 import qualified Data.Vector.Extended      as V
 import qualified Fregot.Compile.Package    as Package
@@ -290,7 +290,7 @@ evalCompiledRule callerSource crule mbIndex = do
         -- Cached and uncached complete definitions
         CompleteRule | Just (Cache.Singleton val) <- mbCacheResult -> pure val
         CompleteRule -> do
-            val <- push $ requireComplete (crule ^. ruleAnn) $
+            val <- requireComplete (crule ^. ruleAnn) $
                 case crule ^. ruleDefault of
                     -- If there is a default, then we fill it in if the rule
                     -- yields no rows.
@@ -300,20 +300,9 @@ evalCompiledRule callerSource crule mbIndex = do
             liftIO $ Cache.writeSingleton c ckey val
             pure val
 
-        -- Any kind of collection
-        GenSetRule | isNothing mbIndex -> do
-            let (partial, more) = moreBranches c mbCacheResult
-            moreElems <- unbranch $ branch more
-            return $ SetV $
-                HMS.keysSet partial <> HS.fromList (snd <$> moreElems)
-        GenObjectRule | isNothing mbIndex -> do
-            let (partial, more) = moreBranches c mbCacheResult
-            moreElems <- unbranch $ branch more
-            return $ ObjectV $
-                partial <> HMS.fromList [(k, v) | (Just k, v) <- moreElems]
-
+        -- If there is an index we want to branch for every possibility.
         rkind | Just idx <- mbIndex -> do
-            let (partial, more) = moreBranches c mbCacheResult
+            let (partial, more) = collectionBranches c mbCacheResult
             branch $
                 -- First deal with known keys/values.
                 (do
@@ -324,46 +313,68 @@ evalCompiledRule callerSource crule mbIndex = do
                 -- Then unknown ones.
                 map (fmap snd) more
 
-        _ -> error "wat"
+        -- Sets without an index need to evaluate to a set value.
+        GenSetRule -> do
+            let (partial, more) = collectionBranches c mbCacheResult
+            moreElems <- unbranch $ branch $ map (fmap snd) more
+            return $ SetV $ HMS.keysSet partial <> HS.fromList moreElems
+
+        -- Object without an index need evaluate to an object value.
+        GenObjectRule -> do
+            let (partial, more) = collectionBranches c mbCacheResult
+            moreElems <- unbranch $ branch more
+            return $ ObjectV $ partial <>
+                HMS.fromList [(k, v) | (Just k, v) <- moreElems]
+
+        FunctionRule _ -> raise' callerSource "type error" $
+            "Internal error:" <+>
+            PP.pretty (crule ^. ruleName) <+>
+            "is a partial rule an should be evaluated as one."
   where
-    -- Update the stack
-    push = pushRuleStackFrame callerSource
-        (QualifiedName (crule ^. rulePackage) (crule ^. ruleName))
-
-    -- Standard branching evaluation of rule definitions.
+    -- Standard branching evaluation of rule definitions; used for all
+    -- evaluations.
     branches :: [EvalM (Maybe Value, Value)]
-    branches =
-        [ evalRuleDefinition callerSource def mbIndex
-        | def <- crule ^. ruleDefs
-        ]
+    branches = do
+        def <- crule ^. ruleDefs
+        pure $
+            pushRuleStackFrame
+                callerSource
+                (QualifiedName (crule ^. rulePackage) (crule ^. ruleName)) $
+            evalRuleDefinition callerSource def mbIndex
 
-    -- Do more computation if necessary.
-    moreBranches
+    -- Branches for collection rules (objects or sets).  Returns a tuple of the
+    -- cached keys and values, and then a list of further branches.  The further
+    -- branches will only yield keys/values that are not in the first element of
+    -- the tuple.
+    collectionBranches
         :: Cache.Cache (PackageName, Var) Value
         -> Maybe (Cache.Result Value)
         -> (HMS.HashMap Value Value, [EvalM (Maybe Value, Value)])
-    moreBranches c mbCacheResult
+    collectionBranches c mbCacheResult
         | not more  = (partial, [])
-        | otherwise = (,) partial $ (do
-            compute <- branches
-            pure $ do
-                (idxVal, val) <- push $ compute
-                let (k, v) = case crule ^. ruleKind of
-                        GenSetRule -> (fromMaybe val idxVal, BoolV True)
-                        _          -> (fromMaybe val idxVal, val)
-                when (k `HMS.member` partial) cut  -- Already known.
-                liftIO $ Cache.writeCollection c ckey k v
-                return (idxVal, val)) ++
+        | otherwise = (,) partial $
+            (do
+                compute <- branches
+                pure $ do
+                    (idxVal, val) <- compute
+                    let (k, v) = case crule ^. ruleKind of
+                            GenSetRule -> (fromMaybe val idxVal, BoolV True)
+                            _          -> (fromMaybe val idxVal, val)
+                    when (k `HMS.member` partial) cut  -- Already known.
+                    liftIO $ Cache.writeCollection c ckey k v
+                    return (idxVal, val)) ++
+            -- After all branches have executed, indicate that the collection
+            -- is finished.
             (pure $ do
-                -- After all branches have executed, indicate that the
-                -- collection is finished.
+                -- We use a heuristic to know if we have actually visited all
+                -- keys/values, false negatives are possible here but false
+                -- positives are not.
                 let visitedAll = case mbIndex of
                         Nothing        -> True
                         Just (FreeV _) -> True
                         Just WildcardV -> True
                         _              -> False
-                when visitedAll $ do
-                    liftIO $ Cache.flushCollection c ckey
+                when visitedAll $ liftIO $ Cache.flushCollection c ckey
                 cut)
       where
         -- Figure n the keys we already know about, and whether or not we
