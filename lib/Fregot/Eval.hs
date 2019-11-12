@@ -39,6 +39,7 @@ import           Control.Monad.Extended    (foldM, forM, zipWithM_)
 import           Control.Monad.Identity    (Identity (..))
 import           Control.Monad.Reader      (local)
 import           Control.Monad.Trans       (liftIO)
+import           Data.Foldable             (for_)
 import qualified Data.HashMap.Strict       as HMS
 import qualified Data.HashSet              as HS
 import           Data.Int                  (Int64)
@@ -75,13 +76,8 @@ mkObject source assoc = fmap ObjectV $ foldM
     (\obj (k, v) -> case HMS.lookup k obj of
         Nothing           -> return $! HMS.insert k v obj
         Just v' | v' == v -> return obj
-        Just v'           -> raise' source "inconsistent object" $
-            "Object key-value pairs must be consistent, but got:" <$$>
-            PP.ind (PP.pretty v) <$$>
-            "And:" <$$>
-            PP.ind (PP.pretty v') <$$>
-            "For key:" <$$>
-            PP.ind (PP.pretty k))
+        Just v'           -> raiseCacheError source
+            (Cache.InconsistentCollection k v v'))
     HMS.empty assoc
 
 evalTerm :: Term SourceSpan -> EvalM Value
@@ -360,8 +356,13 @@ evalCompiledRule callerSource crule mbIndex = do
                     let (k, v) = case crule ^. ruleKind of
                             GenSetRule -> (fromMaybe val idxVal, BoolV True)
                             _          -> (fromMaybe val idxVal, val)
+                    -- TODO(jaspervdj): The next statement won't trigger if the
+                    -- two duplicates are part of the branches, and not of
+                    -- partial.  We need to move the duplicate/consistency check
+                    -- here.
                     when (k `HMS.member` partial) cut  -- Already known.
-                    liftIO $ Cache.writeCollection c ckey k v
+                    mbCacheErr <- liftIO $ Cache.writeCollection c ckey k v
+                    for_ mbCacheErr (raiseCacheError callerSource)
                     return (idxVal, val)) ++
             -- After all branches have executed, indicate that the collection
             -- is finished.
@@ -386,6 +387,18 @@ evalCompiledRule callerSource crule mbIndex = do
 
     -- Cache key.
     ckey = (crule ^. rulePackage, crule ^. ruleName)
+
+raiseCacheError :: SourceSpan -> Cache.Error Value -> EvalM a
+raiseCacheError source Cache.TypeMismatch = raise'
+    source "cache type mismatch" "Internal type error in cache"
+raiseCacheError source (Cache.InconsistentCollection k v v') = raise'
+    source "inconsistent object" $
+    "Object key-value pairs must be consistent, but got:" <$$>
+    PP.ind (PP.pretty v) <$$>
+    "And:" <$$>
+    PP.ind (PP.pretty v') <$$>
+    "For key:" <$$>
+    PP.ind (PP.pretty k)
 
 evalRuleDefinition
     :: SourceSpan -> RuleDefinition SourceSpan -> Maybe Value
