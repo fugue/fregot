@@ -283,71 +283,38 @@ evalCompiledRule
     -> Rule SourceSpan
     -> Maybe Value
     -> EvalM Value
-evalCompiledRule callerSource crule mbIndex = case crule ^. ruleKind of
-    -- Complete definitions
-    CompleteRule -> do
-        c        <- view cache
-        mbResult <- liftIO $ Cache.read c ckey
-        case mbResult of
-            Just (Cache.Singleton val) -> pure val
-            _                          -> do
-                val <- push $ requireComplete (crule ^. ruleAnn) $
-                    case crule ^. ruleDefault of
-                        -- If there is a default, then we fill it in if the rule
-                        -- yields no rows.
-                        Just def -> withDefault (evalTerm def) $ snd <$> branches
-                        Nothing  -> snd <$> branches
-                liftIO $ Cache.writeSingleton c ckey val
-                pure val
+evalCompiledRule callerSource crule mbIndex = do
+    c             <- view cache
+    mbCacheResult <- liftIO $ Cache.read c ckey
+    case crule ^. ruleKind of
+        -- Cached and uncached complete definitions
+        CompleteRule | Just (Cache.Singleton val) <- mbCacheResult -> pure val
+        CompleteRule -> do
+            val <- push $ requireComplete (crule ^. ruleAnn) $
+                case crule ^. ruleDefault of
+                    -- If there is a default, then we fill it in if the rule
+                    -- yields no rows.
+                    Nothing  -> snd <$> branch branches
+                    Just def -> withDefault (evalTerm def) $
+                                snd <$> branch branches
+            liftIO $ Cache.writeSingleton c ckey val
+            pure val
 
-    -- Any kind of collection
-    rkind -> do
-        c             <- view cache
-        mbCacheResult <- liftIO $ Cache.read c ckey
+        -- Any kind of collection
+        GenSetRule | isNothing mbIndex -> do
+            let (partial, more) = moreBranches c mbCacheResult
+            moreElems <- unbranch $ branch more
+            return $ SetV $
+                HMS.keysSet partial <> HS.fromList (snd <$> moreElems)
+        GenObjectRule | isNothing mbIndex -> do
+            let (partial, more) = moreBranches c mbCacheResult
+            moreElems <- unbranch $ branch more
+            return $ ObjectV $
+                partial <> HMS.fromList [(k, v) | (Just k, v) <- moreElems]
 
-        -- Figure out the keys we already know about, and whether or not we need
-        -- to do more computation.
-        let (partial, more) = case mbCacheResult of
-                Just (Cache.Collection p) -> (p, False)
-                Just (Cache.Partial p)    -> (p, True)
-                _                         -> (HMS.empty, True)
-
-        -- Do more computation if necessary.
-        let moreBranches :: [EvalM (Maybe Value, Value)]
-            moreBranches = (do
-                def <- crule ^. ruleDefs
-                pure $ do
-                    (idxVal, val) <- evalRuleDefinition callerSource def mbIndex
-                    let (k, v) = case rkind of
-                            GenSetRule -> (fromMaybe val idxVal, BoolV True)
-                            _          -> (fromMaybe val idxVal, val)
-                    when (k `HMS.member` partial) cut  -- Already known.
-                    liftIO $ Cache.writeCollection c ckey k v
-                    return (idxVal, val)) ++
-                (pure $ do
-                    -- After all branches have executed, indicate that the
-                    -- collection is finished.
-                    let visitedAll = case mbIndex of
-                            Nothing        -> True
-                            Just (FreeV _) -> True
-                            Just WildcardV -> True
-                            _              -> False
-                    when visitedAll $ liftIO $ Cache.flushCollection c ckey
-                    cut)
-
-        case rkind of
-            GenSetRule | isNothing mbIndex -> do
-                moreElems <- unbranch $ branch $
-                    if more then moreBranches else []
-                return $ SetV $
-                    HMS.keysSet partial <> HS.fromList (snd <$> moreElems)
-            GenObjectRule | isNothing mbIndex -> do
-                moreElems <- unbranch $ branch $
-                    if more then moreBranches else []
-                return $ ObjectV $
-                    partial <> HMS.fromList [(k, v) | (Just k, v) <- moreElems]
-
-            _ | Just idx <- mbIndex -> branch $
+        rkind | Just idx <- mbIndex -> do
+            let (partial, more) = moreBranches c mbCacheResult
+            branch $
                 -- First deal with known keys/values.
                 (do
                     (k, v) <- HMS.toList partial
@@ -355,20 +322,56 @@ evalCompiledRule callerSource crule mbIndex = case crule ^. ruleKind of
                         GenSetRule -> unify idx k >> return k
                         _          -> unify idx k >> return v) ++
                 -- Then unknown ones.
-                (if more then fmap snd <$> moreBranches else [])
+                map (fmap snd) more
 
-            _ -> error "wat"
+        _ -> error "wat"
   where
     -- Update the stack
     push = pushRuleStackFrame callerSource
         (QualifiedName (crule ^. rulePackage) (crule ^. ruleName))
 
-    -- Standard branching evaluation of rule definitions, with caching.
-    branches :: EvalM (Maybe Value, Value)
-    branches = branch
+    -- Standard branching evaluation of rule definitions.
+    branches :: [EvalM (Maybe Value, Value)]
+    branches =
         [ evalRuleDefinition callerSource def mbIndex
         | def <- crule ^. ruleDefs
         ]
+
+    -- Do more computation if necessary.
+    moreBranches
+        :: Cache.Cache (PackageName, Var) Value
+        -> Maybe (Cache.Result Value)
+        -> (HMS.HashMap Value Value, [EvalM (Maybe Value, Value)])
+    moreBranches c mbCacheResult
+        | not more  = (partial, [])
+        | otherwise = (,) partial $ (do
+            compute <- branches
+            pure $ do
+                (idxVal, val) <- push $ compute
+                let (k, v) = case crule ^. ruleKind of
+                        GenSetRule -> (fromMaybe val idxVal, BoolV True)
+                        _          -> (fromMaybe val idxVal, val)
+                when (k `HMS.member` partial) cut  -- Already known.
+                liftIO $ Cache.writeCollection c ckey k v
+                return (idxVal, val)) ++
+            (pure $ do
+                -- After all branches have executed, indicate that the
+                -- collection is finished.
+                let visitedAll = case mbIndex of
+                        Nothing        -> True
+                        Just (FreeV _) -> True
+                        Just WildcardV -> True
+                        _              -> False
+                when visitedAll $ do
+                    liftIO $ Cache.flushCollection c ckey
+                cut)
+      where
+        -- Figure n the keys we already know about, and whether or not we
+        -- need to do more computation -> n.
+        (partial, more) = case mbCacheResult of
+            Just (Cache.Collection p) -> (p, False)
+            Just (Cache.Partial p)    -> (p, True)
+            _                         -> (HMS.empty, True)
 
     -- Cache key.
     ckey = (crule ^. rulePackage, crule ^. ruleName)
