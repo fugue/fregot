@@ -89,7 +89,7 @@ and [stack] both work well.
 Usage
 -----
 
-    fregot v0.3.0
+    fregot v0.4.1
 
     Usage: fregot COMMAND
 
@@ -184,7 +184,7 @@ REPL
 ----
 
     F u g u e   R E G O   T o o l k i t
-    fregot v0.3.0 repl - use :help for usage info
+    fregot v0.4.1 repl - use :help for usage info
     repl% :help
     Enter an expression to evaluate it.
     Enter a rule to add it to the current package.
