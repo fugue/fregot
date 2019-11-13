@@ -34,8 +34,8 @@ module Fregot.Eval
 import           Control.Exception         (try)
 import           Control.Lens              (review, to, use, view, (%=), (.=),
                                             (.~), (^.), (^?))
-import           Control.Monad             (when)
-import           Control.Monad.Extended    (foldM, forM, zipWithM_)
+import           Control.Monad             (unless, when)
+import           Control.Monad.Extended    (forM, zipWithM_)
 import           Control.Monad.Identity    (Identity (..))
 import           Control.Monad.Reader      (local)
 import           Control.Monad.Trans       (liftIO)
@@ -51,6 +51,7 @@ import           Fregot.Eval.Builtins
 import qualified Fregot.Eval.Cache         as Cache
 import           Fregot.Eval.Monad
 import qualified Fregot.Eval.Number        as Number
+import qualified Fregot.Eval.TempObject    as TempObject
 import           Fregot.Eval.Value
 import           Fregot.Names
 import           Fregot.Prepare.Ast
@@ -72,13 +73,10 @@ ground source val = case val of
     _         -> return val
 
 mkObject :: SourceSpan -> [(Value, Value)] -> EvalM Value
-mkObject source assoc = fmap ObjectV $ foldM
-    (\obj (k, v) -> case HMS.lookup k obj of
-        Nothing           -> return $! HMS.insert k v obj
-        Just v' | v' == v -> return obj
-        Just v'           -> raiseCacheError source
-            (Cache.InconsistentCollection k v v'))
-    HMS.empty assoc
+mkObject source assoc = do
+    tempObj <- TempObject.new HMS.empty
+    for_ assoc $ \(k, v) -> TempObject.write tempObj source k v
+    fmap ObjectV $ TempObject.read tempObj
 
 evalTerm :: Term SourceSpan -> EvalM Value
 evalTerm (RefT source lhs arg) = do
@@ -279,126 +277,110 @@ evalCompiledRule
     -> Rule SourceSpan
     -> Maybe Value
     -> EvalM Value
-evalCompiledRule callerSource crule mbIndex = do
-    c             <- view cache
-    mbCacheResult <- liftIO $ Cache.read c ckey
-    case crule ^. ruleKind of
-        -- Cached and uncached complete definitions
-        CompleteRule | Just (Cache.Singleton val) <- mbCacheResult -> pure val
-        CompleteRule -> do
-            val <- requireComplete (crule ^. ruleAnn) $
-                case crule ^. ruleDefault of
-                    -- If there is a default, then we fill it in if the rule
-                    -- yields no rows.
-                    Nothing  -> snd <$> branch branches
-                    Just def -> withDefault (evalTerm def) $
-                                snd <$> branch branches
-            liftIO $ Cache.writeSingleton c ckey val
-            pure val
+evalCompiledRule callerSource crule mbIndex
+    -- Cached and uncached complete definitions
+    | crule ^. ruleKind == CompleteRule = pushStack $ do
+        c             <- view cache
+        mbCacheResult <- liftIO $ Cache.read c ckey
+        case mbCacheResult of
+            Just (Cache.Singleton val) -> pure val
+            _                          -> do
+                val <- requireComplete (crule ^. ruleAnn) $
+                    case crule ^. ruleDefault of
+                        -- If there is a default, then we fill it in if the rule
+                        -- yields no rows.
+                        Nothing  -> snd <$> branch branches
+                        Just def -> withDefault (evalTerm def) $
+                                    snd <$> branch branches
+                liftIO $ Cache.writeSingleton c ckey val
+                pure val
+
+    | otherwise = pushStack $ do
+        -- Figure n the keys we already know about, and whether or not we
+        -- need to do more computation -> n.
+        c             <- view cache
+        mbCacheResult <- liftIO $ Cache.read c ckey
+        let (partial, needCompute) = case mbCacheResult of
+                Just (Cache.Collection p) -> (p, False)
+                Just (Cache.Partial p)    -> (p, True)
+                _                         -> (HMS.empty, True)
+
+        tempObj <- TempObject.new partial
+
+        -- Branches for collection rules (objects or sets).  Returns a tuple of
+        -- the cached keys and values, and then a list of further branches.  The
+        -- further branches will only yield keys/values that are not in the
+        -- first element of the tuple.
+        let more
+                | not needCompute = []
+                | otherwise       = (do
+                    compute <- branches
+                    pure $ do
+                        (idxVal, val) <- compute
+                        let (k, v) = case crule ^. ruleKind of
+                                GenSetRule -> (fromMaybe val idxVal, BoolV True)
+                                _          -> (fromMaybe val idxVal, val)
+                        when (k `HMS.member` partial) cut  -- Already known.
+                        ok <- TempObject.write tempObj callerSource k v
+                        unless ok cut  -- We already visited this one.
+                        liftIO $ Cache.writeCollection c ckey k v
+                        return (idxVal, val)) ++ (pure $ do
+                    -- After all branches have executed, indicate that the
+                    -- collection is finished.
+                    --
+                    -- We use a heuristic to know if we have actually visited
+                    -- all keys/values, false negatives are possible here but
+                    -- false positives are not.
+                    let visitedAll = case mbIndex of
+                            Nothing        -> True
+                            Just (FreeV _) -> True
+                            Just WildcardV -> True
+                            _              -> False
+                    when visitedAll $ liftIO $ Cache.flushCollection c ckey
+                    cut)
 
         -- If there is an index we want to branch for every possibility.
-        rkind | Just idx <- mbIndex -> do
-            let (partial, more) = collectionBranches c mbCacheResult
-            branch $
-                -- First deal with known keys/values.
-                (do
-                    (k, v) <- HMS.toList partial
-                    pure $ case rkind of
-                        GenSetRule -> unify idx k >> return k
-                        _          -> unify idx k >> return v) ++
-                -- Then unknown ones.
-                map (fmap snd) more
+        case crule ^. ruleKind of
+            rkind | Just idx <- mbIndex -> do
+                branch $
+                    -- First deal with known keys/values.
+                    (do
+                        (k, v) <- HMS.toList partial
+                        pure $ case rkind of
+                            GenSetRule -> unify idx k >> return k
+                            _          -> unify idx k >> return v) ++
+                    -- Then unknown ones.
+                    map (fmap snd) more
 
-        -- Sets without an index need to evaluate to a set value.
-        GenSetRule -> do
-            let (partial, more) = collectionBranches c mbCacheResult
-            moreElems <- unbranch $ branch $ map (fmap snd) more
-            return $ SetV $ HMS.keysSet partial <> HS.fromList moreElems
+            -- Sets without an index need to evaluate to a set value.
+            GenSetRule -> do
+                moreElems <- unbranch $ branch $ map (fmap snd) more
+                return $ SetV $ HMS.keysSet partial <> HS.fromList moreElems
 
-        -- Object without an index need evaluate to an object value.
-        GenObjectRule -> do
-            let (partial, more) = collectionBranches c mbCacheResult
-            moreElems <- unbranch $ branch more
-            return $ ObjectV $ partial <>
-                HMS.fromList [(k, v) | (Just k, v) <- moreElems]
+            -- Object without an index need evaluate to an object value.
+            GenObjectRule -> do
+                moreElems <- unbranch $ branch more
+                return $ ObjectV $ partial <>
+                    HMS.fromList [(k, v) | (Just k, v) <- moreElems]
 
-        FunctionRule _ -> raise' callerSource "type error" $
-            "Internal error:" <+>
-            PP.pretty (crule ^. ruleName) <+>
-            "is a partial rule an should be evaluated as one."
+            _ -> raise' callerSource "type error" $
+                "Internal error:" <+>
+                PP.pretty (crule ^. ruleName) <+>
+                "is a not a rule that defined an object or set."
   where
     -- Standard branching evaluation of rule definitions; used for all
     -- evaluations.
     branches :: [EvalM (Maybe Value, Value)]
     branches = do
         def <- crule ^. ruleDefs
-        pure $
-            pushRuleStackFrame
-                callerSource
-                (QualifiedName (crule ^. rulePackage) (crule ^. ruleName)) $
-            evalRuleDefinition callerSource def mbIndex
+        pure $ evalRuleDefinition callerSource def mbIndex
 
-    -- Branches for collection rules (objects or sets).  Returns a tuple of the
-    -- cached keys and values, and then a list of further branches.  The further
-    -- branches will only yield keys/values that are not in the first element of
-    -- the tuple.
-    collectionBranches
-        :: Cache.Cache (PackageName, Var) Value
-        -> Maybe (Cache.Result Value)
-        -> (HMS.HashMap Value Value, [EvalM (Maybe Value, Value)])
-    collectionBranches c mbCacheResult
-        | not more  = (partial, [])
-        | otherwise = (,) partial $
-            (do
-                compute <- branches
-                pure $ do
-                    (idxVal, val) <- compute
-                    let (k, v) = case crule ^. ruleKind of
-                            GenSetRule -> (fromMaybe val idxVal, BoolV True)
-                            _          -> (fromMaybe val idxVal, val)
-                    -- TODO(jaspervdj): The next statement won't trigger if the
-                    -- two duplicates are part of the branches, and not of
-                    -- partial.  We need to move the duplicate/consistency check
-                    -- here.
-                    when (k `HMS.member` partial) cut  -- Already known.
-                    mbCacheErr <- liftIO $ Cache.writeCollection c ckey k v
-                    for_ mbCacheErr (raiseCacheError callerSource)
-                    return (idxVal, val)) ++
-            -- After all branches have executed, indicate that the collection
-            -- is finished.
-            (pure $ do
-                -- We use a heuristic to know if we have actually visited all
-                -- keys/values, false negatives are possible here but false
-                -- positives are not.
-                let visitedAll = case mbIndex of
-                        Nothing        -> True
-                        Just (FreeV _) -> True
-                        Just WildcardV -> True
-                        _              -> False
-                when visitedAll $ liftIO $ Cache.flushCollection c ckey
-                cut)
-      where
-        -- Figure n the keys we already know about, and whether or not we
-        -- need to do more computation -> n.
-        (partial, more) = case mbCacheResult of
-            Just (Cache.Collection p) -> (p, False)
-            Just (Cache.Partial p)    -> (p, True)
-            _                         -> (HMS.empty, True)
+    pushStack = pushRuleStackFrame
+        callerSource
+        (QualifiedName (crule ^. rulePackage) (crule ^. ruleName))
 
     -- Cache key.
     ckey = (crule ^. rulePackage, crule ^. ruleName)
-
-raiseCacheError :: SourceSpan -> Cache.Error Value -> EvalM a
-raiseCacheError source Cache.TypeMismatch = raise'
-    source "cache type mismatch" "Internal type error in cache"
-raiseCacheError source (Cache.InconsistentCollection k v v') = raise'
-    source "inconsistent object" $
-    "Object key-value pairs must be consistent, but got:" <$$>
-    PP.ind (PP.pretty v) <$$>
-    "And:" <$$>
-    PP.ind (PP.pretty v') <$$>
-    "For key:" <$$>
-    PP.ind (PP.pretty k)
 
 evalRuleDefinition
     :: SourceSpan -> RuleDefinition SourceSpan -> Maybe Value

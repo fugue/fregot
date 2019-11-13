@@ -9,8 +9,7 @@
 {-# LANGUAGE DeriveGeneric   #-}
 {-# LANGUAGE TemplateHaskell #-}
 module Fregot.Eval.Cache
-    ( Error (..)
-    , Version
+    ( Version
     , Cache
     , new
     , bump
@@ -56,11 +55,6 @@ data Result v
     | Partial !(HMS.HashMap v v)
     deriving (Show)
 
-data Error v
-    = TypeMismatch
-    | InconsistentCollection v v v
-    deriving (Show)
-
 data Cache k v = Cache
     { _cache   :: !(IORef (C.Cache (Versioned k) (Result v)))
     , _next    :: !(IORef Version)
@@ -94,23 +88,18 @@ writeSingleton c k val = IORef.atomicModifyIORef_ (c ^. cache) $
 -- | Add a new key/value pair to a cached collection.
 writeCollection
     :: (Hashable k, Ord k, Eq v, Hashable v)
-    => Cache k v -> k -> v -> v -> IO (Maybe (Error v))
-writeCollection c _ _ _ | not (c ^. enabled) = pure Nothing
-writeCollection c ck k v = IORef.atomicModifyIORef' (c ^. cache) $ \c0 ->
+    => Cache k v -> k -> v -> v -> IO ()
+writeCollection c _ _ _ | not (c ^. enabled) = pure ()
+writeCollection c ck k v = IORef.atomicModifyIORef_ (c ^. cache) $ \c0 ->
     case C.lookup vk c0 of
         -- The collection currently doesn't exist so we create it.
-        Nothing -> (C.insert vk (Partial $ HMS.singleton k v) c0, Nothing)
+        Nothing -> C.insert vk (Partial $ HMS.singleton k v) c0
         -- The collection is already finished so we don't need to do anything.
-        Just (Collection _, c1) -> (c1, Nothing)
-        -- TODO(jaspervdj): Throw some kind of error, this is a mismatch.
-        Just (Singleton _, c1) -> (c1, Just TypeMismatch)
-        -- Partial collection.  First check if the key/value are already there.
-        Just (Partial p, c1) -> case HMS.lookup k p of
-            Just v' | v' == v -> (c1, Nothing)
-            -- TODO(jaspervdj): Throw some kind of error here.
-            Just v'           -> (c1, Just (InconsistentCollection k v v'))
-            Nothing           ->
-                (C.insert vk (Partial $ HMS.insert k v p) c1, Nothing)
+        Just (Collection _, c1) -> c1
+        -- Should not happen.
+        Just (Singleton _, c1) -> c1
+        -- Partial collection.
+        Just (Partial p, c1) -> C.insert vk (Partial $ HMS.insert k v p) c1
   where
     vk = Versioned (c ^. version) ck
 
