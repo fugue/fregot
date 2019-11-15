@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE TemplateHaskell            #-}
@@ -34,14 +35,16 @@ module Fregot.Eval
 import           Control.Exception         (try)
 import           Control.Lens              (review, to, use, view, (%=), (.=),
                                             (.~), (^.), (^?))
-import           Control.Monad.Extended    (foldM, forM, zipWithM_)
+import           Control.Monad             (when)
+import           Control.Monad.Extended    (forM, zipWithM_)
 import           Control.Monad.Identity    (Identity (..))
 import           Control.Monad.Reader      (local)
 import           Control.Monad.Trans       (liftIO)
+import           Data.Foldable             (for_)
 import qualified Data.HashMap.Strict       as HMS
 import qualified Data.HashSet              as HS
 import           Data.Int                  (Int64)
-import           Data.Maybe                (fromMaybe, isNothing)
+import           Data.Maybe                (fromMaybe)
 import qualified Data.Unification          as Unification
 import qualified Data.Vector.Extended      as V
 import qualified Fregot.Compile.Package    as Package
@@ -49,6 +52,7 @@ import           Fregot.Eval.Builtins
 import qualified Fregot.Eval.Cache         as Cache
 import           Fregot.Eval.Monad
 import qualified Fregot.Eval.Number        as Number
+import qualified Fregot.Eval.TempObject    as TempObject
 import           Fregot.Eval.Value
 import           Fregot.Names
 import           Fregot.Prepare.Ast
@@ -71,18 +75,23 @@ ground source val = case val of
     _         -> return val
 
 mkObject :: SourceSpan -> [(Value, Value)] -> EvalM Value
-mkObject source assoc = fmap ObjectV $ foldM
-    (\obj (k, v) -> case HMS.lookup k obj of
-        Nothing           -> return $! HMS.insert k v obj
-        Just v' | v' == v -> return obj
-        Just v'           -> raise' source "inconsistent object" $
-            "Object key-value pairs must be consistent, but got:" <$$>
-            PP.ind (PP.pretty v) <$$>
-            "And:" <$$>
-            PP.ind (PP.pretty v') <$$>
-            "For key:" <$$>
-            PP.ind (PP.pretty k))
-    HMS.empty assoc
+mkObject source assoc = do
+    tempObj <- TempObject.new HMS.empty
+    for_ assoc $ \(k, v) ->
+        TempObject.write tempObj k v >>= \case
+        TempObject.Inconsistent v' -> raiseInconsistentObject source k v v'
+        _                          -> pure ()
+    fmap ObjectV $ TempObject.read tempObj
+
+raiseInconsistentObject
+    :: SourceSpan -> Value -> Value -> Value -> EvalM a
+raiseInconsistentObject source k v v' = raise' source "inconsistent object" $
+    "Object key-value pairs must be consistent, but got:" <$$>
+    PP.ind (PP.pretty v) <$$>
+    "And:" <$$>
+    PP.ind (PP.pretty v') <$$>
+    "For key:" <$$>
+    PP.ind (PP.pretty k)
 
 evalTerm :: Term SourceSpan -> EvalM Value
 evalTerm (RefT source lhs arg) = do
@@ -283,55 +292,116 @@ evalCompiledRule
     -> Rule RuleType SourceSpan
     -> Maybe Value
     -> EvalM Value
-evalCompiledRule callerSource crule mbIndex = push $ case crule ^. ruleKind of
-    -- Complete definitions
-    CompleteRule -> cached $ requireComplete (crule ^. ruleAnn) $
-        case crule ^. ruleDefault of
-            -- If there is a default, then we fill it in if the rule yields no
-            -- rows.
-            Just def -> withDefault (evalTerm def) $ snd <$> branches
-            Nothing  -> snd <$> branches
+evalCompiledRule callerSource crule mbIndex
+    -- Cached and uncached complete definitions
+    | crule ^. ruleKind == CompleteRule = pushStack $ do
+        c             <- view cache
+        mbCacheResult <- Cache.read c ckey
+        case mbCacheResult of
+            Just (Cache.Singleton val) -> pure val
+            _                          -> do
+                val <- requireComplete (crule ^. ruleAnn) $
+                    case crule ^. ruleDefault of
+                        -- If there is a default, then we fill it in if the rule
+                        -- yields no rows.
+                        Nothing  -> snd <$> branch branches
+                        Just def -> withDefault (evalTerm def) $
+                                    snd <$> branch branches
+                Cache.writeSingleton c ckey val
+                pure val
 
-    -- TODO(jaspervdj): We currently treat objects and sets the same.  This is
-    -- wrong.
-    GenSetRule | isNothing mbIndex ->
-        -- If the rule takes an argument, e.g. `resources[id]`, but we refer to
-        -- it without argument, e.g. `count(resources)`, we want to evaluate the
-        -- document to an set again.
-        fmap (SetV . HS.fromList) (unbranch $ snd <$> branches)
+    | otherwise = pushStack $ do
+        -- Figure n the keys we already know about, and whether or not we
+        -- need to do more computation.
+        c             <- view cache
+        mbCacheResult <- Cache.read c ckey
+        (tempObj, partial, needCompute) <- case mbCacheResult of
+            Just (Cache.Collection p) -> do
+                tempObj <- TempObject.new p
+                pure (tempObj, p, False)
+            Just (Cache.Partial tempObj) -> do
+                partial <- TempObject.read tempObj
+                pure (tempObj, partial, True)
+            _ -> do
+                tempObj <- TempObject.new HMS.empty
+                pure (tempObj, HMS.empty, True)
 
-    GenObjectRule | isNothing mbIndex -> do
-        -- Same as above, but for objects.
-        bs <- unbranch $ branches
-        mkObject callerSource [(k, v) | (Just k, v) <- bs]
+        -- Branches for collection rules (objects or sets).  Returns a tuple of
+        -- the cached keys and values, and then a list of further branches.  The
+        -- further branches will only yield keys/values that are not in the
+        -- first element of the tuple.
+        let more
+                | not needCompute = []
+                | otherwise       = (do
+                    compute <- branches
+                    pure $ do
+                        (idxVal, val) <- compute
+                        let (k, v) = case crule ^. ruleKind of
+                                GenSetRule -> (fromMaybe val idxVal, BoolV True)
+                                _          -> (fromMaybe val idxVal, val)
+                        write <- TempObject.write tempObj k v
+                        case write of
+                            TempObject.Ok              -> pure ()
+                            TempObject.Duplicate       -> cut
+                            TempObject.Inconsistent v' ->
+                                raiseInconsistentObject callerSource k v v'
+                        return (idxVal, val)) ++ (pure $ do
+                    -- After all branches have executed, indicate that the
+                    -- collection is finished.
+                    --
+                    -- We use a heuristic to know if we have actually visited
+                    -- all keys/values, false negatives are possible here but
+                    -- false positives are not.
+                    let visitedAll = case mbIndex of
+                            Nothing        -> True
+                            Just (FreeV _) -> True
+                            Just WildcardV -> True
+                            _              -> False
+                    when visitedAll $ Cache.flushCollection c ckey
+                    cut)
 
-    _ ->
-        snd <$> branches
+        -- If there is an index we want to branch for every possibility.
+        case crule ^. ruleKind of
+            rkind | Just idx <- mbIndex -> do
+                branch $
+                    -- First deal with known keys/values.
+                    (do
+                        (k, v) <- HMS.toList partial
+                        pure $ case rkind of
+                            GenSetRule -> unify idx k >> return k
+                            _          -> unify idx k >> return v) ++
+                    -- Then unknown ones.
+                    map (fmap snd) more
+
+            -- Sets without an index need to evaluate to a set value.
+            GenSetRule -> do
+                moreElems <- unbranch $ branch $ map (fmap snd) more
+                return $ SetV $ HMS.keysSet partial <> HS.fromList moreElems
+
+            -- Object without an index need evaluate to an object value.
+            GenObjectRule -> do
+                moreElems <- unbranch $ branch more
+                return $ ObjectV $ partial <>
+                    HMS.fromList [(k, v) | (Just k, v) <- moreElems]
+
+            _ -> raise' callerSource "type error" $
+                "Internal error:" <+>
+                PP.pretty (crule ^. ruleName) <+>
+                "is a not a rule that defined an object or set."
   where
-    -- Update the stack
-    push = pushRuleStackFrame callerSource
+    -- Standard branching evaluation of rule definitions; used for all
+    -- evaluations.
+    branches :: [EvalM (Maybe Value, Value)]
+    branches = do
+        def <- crule ^. ruleDefs
+        pure $ evalRuleDefinition callerSource def mbIndex
+
+    pushStack = pushRuleStackFrame
+        callerSource
         (QualifiedName (crule ^. rulePackage) (crule ^. ruleName))
 
-    -- Standard branching evaluation of rule definitions, with caching.
-    branches :: EvalM (Maybe Value, Value)
-    branches = branch
-        [ evalRuleDefinition callerSource def mbIndex
-        | def <- crule ^. ruleDefs
-        ]
-
-    -- This is currently only used for complete rules.
-    cached :: EvalM Value -> EvalM Value
-    cached computeValue = do
-        let key = (crule ^. rulePackage, crule ^. ruleName)
-
-        c        <- view cache
-        mbResult <- liftIO $ Cache.lookup c key
-        case mbResult of
-            Just val -> return val
-            Nothing  -> do
-                x <- computeValue
-                liftIO $ Cache.insert c key x
-                return x
+    -- Cache key.
+    ckey = (crule ^. rulePackage, crule ^. ruleName)
 
 evalRuleDefinition
     :: SourceSpan -> RuleDefinition SourceSpan -> Maybe Value
@@ -453,7 +523,7 @@ evalLiteral lit next
         -- Since we changed the input, we need to bump up the cache.  This will
         -- also be the case when we modify `data`.
         let updateInput input0 [] = do
-                c <- view cache >>= liftIO . Cache.bump
+                c <- view cache >>= Cache.bump
                 local (cache .~ c) $ local (inputDoc .~ input0) $ mx
             updateInput input0 (w : ws) = do
                 val    <- evalTerm (w ^. withAs)
