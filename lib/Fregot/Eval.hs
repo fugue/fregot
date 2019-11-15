@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE TemplateHaskell            #-}
@@ -34,7 +35,7 @@ module Fregot.Eval
 import           Control.Exception         (try)
 import           Control.Lens              (review, to, use, view, (%=), (.=),
                                             (.~), (^.), (^?))
-import           Control.Monad             (unless, when)
+import           Control.Monad             (when)
 import           Control.Monad.Extended    (forM, zipWithM_)
 import           Control.Monad.Identity    (Identity (..))
 import           Control.Monad.Reader      (local)
@@ -75,8 +76,21 @@ ground source val = case val of
 mkObject :: SourceSpan -> [(Value, Value)] -> EvalM Value
 mkObject source assoc = do
     tempObj <- TempObject.new HMS.empty
-    for_ assoc $ \(k, v) -> TempObject.write tempObj source k v
+    for_ assoc $ \(k, v) ->
+        TempObject.write tempObj k v >>= \case
+        TempObject.Inconsistent v' -> raiseInconsistentObject source k v v'
+        _                          -> pure ()
     fmap ObjectV $ TempObject.read tempObj
+
+raiseInconsistentObject
+    :: SourceSpan -> Value -> Value -> Value -> EvalM a
+raiseInconsistentObject source k v v' = raise' source "inconsistent object" $
+    "Object key-value pairs must be consistent, but got:" <$$>
+    PP.ind (PP.pretty v) <$$>
+    "And:" <$$>
+    PP.ind (PP.pretty v') <$$>
+    "For key:" <$$>
+    PP.ind (PP.pretty k)
 
 evalTerm :: Term SourceSpan -> EvalM Value
 evalTerm (RefT source lhs arg) = do
@@ -281,7 +295,7 @@ evalCompiledRule callerSource crule mbIndex
     -- Cached and uncached complete definitions
     | crule ^. ruleKind == CompleteRule = pushStack $ do
         c             <- view cache
-        mbCacheResult <- liftIO $ Cache.read c ckey
+        mbCacheResult <- Cache.read c ckey
         case mbCacheResult of
             Just (Cache.Singleton val) -> pure val
             _                          -> do
@@ -292,20 +306,24 @@ evalCompiledRule callerSource crule mbIndex
                         Nothing  -> snd <$> branch branches
                         Just def -> withDefault (evalTerm def) $
                                     snd <$> branch branches
-                liftIO $ Cache.writeSingleton c ckey val
+                Cache.writeSingleton c ckey val
                 pure val
 
     | otherwise = pushStack $ do
         -- Figure n the keys we already know about, and whether or not we
-        -- need to do more computation -> n.
+        -- need to do more computation.
         c             <- view cache
-        mbCacheResult <- liftIO $ Cache.read c ckey
-        let (partial, needCompute) = case mbCacheResult of
-                Just (Cache.Collection p) -> (p, False)
-                Just (Cache.Partial p)    -> (p, True)
-                _                         -> (HMS.empty, True)
-
-        tempObj <- TempObject.new partial
+        mbCacheResult <- Cache.read c ckey
+        (tempObj, partial, needCompute) <- case mbCacheResult of
+            Just (Cache.Collection p) -> do
+                tempObj <- TempObject.new p
+                pure (tempObj, p, False)
+            Just (Cache.Partial tempObj) -> do
+                partial <- TempObject.read tempObj
+                pure (tempObj, partial, True)
+            _ -> do
+                tempObj <- TempObject.new HMS.empty
+                pure (tempObj, HMS.empty, True)
 
         -- Branches for collection rules (objects or sets).  Returns a tuple of
         -- the cached keys and values, and then a list of further branches.  The
@@ -320,10 +338,12 @@ evalCompiledRule callerSource crule mbIndex
                         let (k, v) = case crule ^. ruleKind of
                                 GenSetRule -> (fromMaybe val idxVal, BoolV True)
                                 _          -> (fromMaybe val idxVal, val)
-                        when (k `HMS.member` partial) cut  -- Already known.
-                        ok <- TempObject.write tempObj callerSource k v
-                        unless ok cut  -- We already visited this one.
-                        liftIO $ Cache.writeCollection c ckey k v
+                        write <- TempObject.write tempObj k v
+                        case write of
+                            TempObject.Ok              -> pure ()
+                            TempObject.Duplicate       -> cut
+                            TempObject.Inconsistent v' ->
+                                raiseInconsistentObject callerSource k v v'
                         return (idxVal, val)) ++ (pure $ do
                     -- After all branches have executed, indicate that the
                     -- collection is finished.
@@ -336,7 +356,7 @@ evalCompiledRule callerSource crule mbIndex
                             Just (FreeV _) -> True
                             Just WildcardV -> True
                             _              -> False
-                    when visitedAll $ liftIO $ Cache.flushCollection c ckey
+                    when visitedAll $ Cache.flushCollection c ckey
                     cut)
 
         -- If there is an index we want to branch for every possibility.
@@ -501,7 +521,7 @@ evalLiteral lit next
         -- Since we changed the input, we need to bump up the cache.  This will
         -- also be the case when we modify `data`.
         let updateInput input0 [] = do
-                c <- view cache >>= liftIO . Cache.bump
+                c <- view cache >>= Cache.bump
                 local (cache .~ c) $ local (inputDoc .~ input0) $ mx
             updateInput input0 (w : ws) = do
                 val    <- evalTerm (w ^. withAs)

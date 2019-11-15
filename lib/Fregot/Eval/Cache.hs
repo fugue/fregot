@@ -15,21 +15,23 @@ module Fregot.Eval.Cache
     , bump
     , disable
     , writeSingleton
-    , writeCollection
     , flushCollection
     , Result (..)
     , read
     ) where
 
-import           Control.Lens        ((&), (.~), (^.))
-import           Control.Lens.TH     (makeLenses)
-import qualified Data.Cache          as C
-import           Data.Hashable       (Hashable)
-import qualified Data.HashMap.Strict as HMS
-import           Data.IORef.Extended (IORef)
-import qualified Data.IORef.Extended as IORef
-import           GHC.Generics        (Generic)
-import           Prelude             hiding (read)
+import           Control.Lens           ((&), (.~), (^.))
+import           Control.Lens.TH        (makeLenses)
+import           Control.Monad          (when)
+import           Control.Monad.Trans    (MonadIO, liftIO)
+import qualified Data.Cache             as C
+import           Data.Hashable          (Hashable)
+import qualified Data.HashMap.Strict    as HMS
+import           Data.IORef.Extended    (IORef)
+import qualified Data.IORef.Extended    as IORef
+import qualified Fregot.Eval.TempObject as TempObject
+import           GHC.Generics           (Generic)
+import           Prelude                hiding (read)
 
 -- | We just need to be able to bump this.
 type Version = Int
@@ -52,8 +54,7 @@ data Result v
     | Collection !(HMS.HashMap v v)
     -- | Cached result from a set or object rule, that hasn't been completely
     -- evaluated, so some values may not be here.
-    | Partial !(HMS.HashMap v v)
-    deriving (Show)
+    | Partial !(TempObject.TempObject v)
 
 data Cache k v = Cache
     { _cache   :: !(IORef (C.Cache (Versioned k) (Result v)))
@@ -64,60 +65,51 @@ data Cache k v = Cache
 
 $(makeLenses ''Cache)
 
-new :: IO (Cache k v)
-new = Cache
+new :: MonadIO m => m (Cache k v)
+new = liftIO $ Cache
     <$> IORef.newIORef (C.empty 100)
     <*> IORef.newIORef 1
     <*> pure 0
     <*> pure True
 
 -- | Obtain a new cache version.
-bump :: Cache k v -> IO (Cache k v)
-bump c = IORef.atomicModifyIORef' (c ^. next) $ \n -> (succ n, c & version .~ n)
+bump :: MonadIO m => Cache k v -> m (Cache k v)
+bump c = liftIO $
+    IORef.atomicModifyIORef' (c ^. next) $ \n -> (succ n, c & version .~ n)
 
 -- | Disable the cache.  Used during debugging.
 disable :: Cache k v -> Cache k v
 disable = enabled .~ False
 
 -- | Add a new singleton result.
-writeSingleton :: (Hashable k, Ord k) => Cache k v -> k -> v -> IO ()
-writeSingleton c _ _ | not (c ^. enabled) = pure ()
-writeSingleton c k val = IORef.atomicModifyIORef_ (c ^. cache) $
+writeSingleton
+    :: (Hashable k, Ord k, MonadIO m) => Cache k v -> k -> v -> m ()
+writeSingleton c k val = when (c ^. enabled) $ liftIO $
+    IORef.atomicModifyIORef_ (c ^. cache) $
     C.insert (Versioned (c ^. version) k) (Singleton val)
-
--- | Add a new key/value pair to a cached collection.
-writeCollection
-    :: (Hashable k, Ord k, Eq v, Hashable v)
-    => Cache k v -> k -> v -> v -> IO ()
-writeCollection c _ _ _ | not (c ^. enabled) = pure ()
-writeCollection c ck k v = IORef.atomicModifyIORef_ (c ^. cache) $ \c0 ->
-    case C.lookup vk c0 of
-        -- The collection currently doesn't exist so we create it.
-        Nothing -> C.insert vk (Partial $ HMS.singleton k v) c0
-        -- The collection is already finished so we don't need to do anything.
-        Just (Collection _, c1) -> c1
-        -- Should not happen.
-        Just (Singleton _, c1) -> c1
-        -- Partial collection.
-        Just (Partial p, c1) -> C.insert vk (Partial $ HMS.insert k v p) c1
-  where
-    vk = Versioned (c ^. version) ck
 
 -- | Indicate that we've traversed the entire collection, so we can change
 -- 'Partial' to 'Collection' if necessary.
 flushCollection
-    :: (Hashable k, Ord k, Eq v, Hashable v)
-    => Cache k v -> k -> IO ()
-flushCollection c ck = IORef.atomicModifyIORef_ (c ^. cache) $ \c0 ->
+    :: (Hashable k, Ord k, Eq v, Hashable v, MonadIO m)
+    => Cache k v -> k -> m ()
+flushCollection c ck = when (c ^. enabled) $ do
+    c0 <- liftIO $ IORef.readIORef (c ^. cache)
     case C.lookup vk c0 of
-        Just (Partial p, c1) -> C.insert vk (Collection p) c1
-        _                    -> c0
+        Just (Partial pref, _) -> do
+            obj <- TempObject.read pref
+            liftIO $ IORef.atomicModifyIORef_ (c ^. cache) $
+                \c1 -> C.insert vk (Collection obj) c1
+        _ -> pure ()
   where
     vk = Versioned (c ^. version) ck
 
-read :: (Hashable k, Ord k) => Cache k v -> k -> IO (Maybe (Result v))
+read
+    :: (Hashable k, Ord k, MonadIO m)
+    => Cache k v -> k -> m (Maybe (Result v))
 read c _ | not (c ^. enabled) = pure Nothing
-read c k = IORef.atomicModifyIORef' (c ^. cache) $ \c0 ->
+read c k = liftIO $
+    IORef.atomicModifyIORef' (c ^. cache) $ \c0 ->
     case C.lookup (Versioned (c ^. version) k) c0 of
         Just (v, c1) -> (c1, Just v)
         _            -> (c0, Nothing)

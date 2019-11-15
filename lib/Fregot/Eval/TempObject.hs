@@ -4,47 +4,36 @@
 module Fregot.Eval.TempObject
     ( TempObject
     , new
+    , Write (..)
     , write
     , read
     ) where
 
-import           Control.Monad.Trans       (liftIO)
-import qualified Data.HashMap.Strict       as HMS
-import qualified Data.IORef                as IORef
-import           Fregot.Eval.Monad
-import           Fregot.Eval.Value         (Value)
-import           Fregot.PrettyPrint        ((<$$>))
-import qualified Fregot.PrettyPrint        as PP
-import           Fregot.Sources.SourceSpan (SourceSpan)
-import           Prelude                   hiding (read)
+import           Control.Monad.Trans (MonadIO, liftIO)
+import           Data.Hashable       (Hashable)
+import qualified Data.HashMap.Strict as HMS
+import qualified Data.IORef          as IORef
+import           Prelude             hiding (read)
 
-type TempObject = IORef.IORef (HMS.HashMap Value Value)
+type TempObject v = IORef.IORef (HMS.HashMap v v)
 
-new :: HMS.HashMap Value Value -> EvalM TempObject
+new :: MonadIO m => HMS.HashMap v v -> m (TempObject v)
 new = liftIO . IORef.newIORef
+{-# INLINE new #-}
 
-data WriteResult = Ok | Duplicate | Inconsistent Value
+data Write v = Ok | Duplicate | Inconsistent v
 
 -- | Write a key/value into the temporary object.  Returns if the write
 -- succeeded (i.e. it was not already there).  May raise an exception if
 -- there is already a different value for this key.
-write :: TempObject -> SourceSpan -> Value -> Value -> EvalM Bool
-write ref source k v = do
-    result <- liftIO $ IORef.atomicModifyIORef' ref $ \obj ->
-        case HMS.lookup k obj of
-            Nothing           -> (HMS.insert k v obj, Ok)
-            Just v' | v == v' -> (obj, Duplicate)
-            Just v'           -> (obj, Inconsistent v')
-    case result of
-        Ok              -> pure True
-        Duplicate       -> pure False
-        Inconsistent v' -> raise' source "inconsistent object" $
-            "Object key-value pairs must be consistent, but got:" <$$>
-            PP.ind (PP.pretty v) <$$>
-            "And:" <$$>
-            PP.ind (PP.pretty v') <$$>
-            "For key:" <$$>
-            PP.ind (PP.pretty k)
+write :: (Eq v, Hashable v, MonadIO m) => TempObject v -> v -> v -> m (Write v)
+write ref k v = liftIO $ IORef.atomicModifyIORef' ref $
+    \obj -> case HMS.lookup k obj of
+        Nothing           -> (HMS.insert k v obj, Ok)
+        Just v' | v == v' -> (obj, Duplicate)
+        Just v'           -> (obj, Inconsistent v')
+{-# INLINE write #-}
 
-read :: TempObject -> EvalM (HMS.HashMap Value Value)
+read :: MonadIO m => TempObject v -> m (HMS.HashMap v v)
 read = liftIO . IORef.readIORef
+{-# INLINE read #-}
