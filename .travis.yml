@@ -1,7 +1,10 @@
-language: haskell
-ghc:
-- '8.6.4'
+sudo: false
+cache:
+  directories:
+  - $HOME/.stack
+before_install:
+- mkdir -p ~/.local/bin
+- export PATH=$HOME/.local/bin:$PATH
+- travis_retry curl -L https://get.haskellstack.org/stable/linux-x86_64.tar.gz | tar xz --wildcards --strip-components=1 -C ~/.local/bin '*/stack'
 script:
-- cd packages/pcre-simple && cabal install
-- cabal configure --enable-tests && cabal build && cabal test && cabal install
-- make test
+- make install test
