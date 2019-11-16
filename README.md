@@ -68,7 +68,7 @@ Table of Contents
 Installation
 ------------
 
-fregot is available for macOS and Linux.
+fregot works on all major platforms, and pre-built binaries are available for macOS and Linux.
 
 ### Binary
 
