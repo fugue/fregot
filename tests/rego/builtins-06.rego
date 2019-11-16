@@ -7,3 +7,9 @@ test_is_boolean {
   not is_boolean(1)
   not is_boolean([true])
 }
+
+test_is_set {
+  is_set(set())
+  is_set({set()})
+  not is_set([set()])
+}
