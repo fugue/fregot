@@ -228,7 +228,9 @@ defaultBuiltins = HMS.fromList
     , (NamedFunction (BuiltinName "indexof"),                   builtin_indexof)
     , (NamedFunction (BuiltinName "intersection"),              builtin_intersection)
     , (NamedFunction (BuiltinName "is_array"),                  builtin_is_array)
+    , (NamedFunction (BuiltinName "is_boolean"),                builtin_is_boolean)
     , (NamedFunction (BuiltinName "is_object"),                 builtin_is_object)
+    , (NamedFunction (BuiltinName "is_set"),                    builtin_is_set)
     , (NamedFunction (BuiltinName "is_string"),                 builtin_is_string)
     , (NamedFunction (QualifiedName "json" "unmarshal"),        builtin_json_unmarshal)
     , (NamedFunction (BuiltinName "lower"),                     builtin_lower)
@@ -352,6 +354,14 @@ builtin_is_array = Builtin
         ArrayV _ -> return True
         _        -> return False
 
+builtin_is_boolean :: Monad m => Builtin m
+builtin_is_boolean = Builtin
+    (In Out)
+    (Ty.any 🡒 Ty.out Ty.boolean) $ pure $
+    \(Cons val Nil) -> case val of
+        BoolV _ -> return True
+        _       -> return False
+
 builtin_is_object :: Monad m => Builtin m
 builtin_is_object = Builtin
     (In Out)
@@ -359,6 +369,14 @@ builtin_is_object = Builtin
     \(Cons val Nil) -> case val of
         ObjectV _ -> return True
         _         -> return False
+
+builtin_is_set :: Monad m => Builtin m
+builtin_is_set = Builtin
+    (In Out)
+    (Ty.any 🡒 Ty.out Ty.boolean) $ pure $
+    \(Cons val Nil) -> case val of
+        SetV _ -> return True
+        _      -> return False
 
 builtin_is_string :: Monad m => Builtin m
 builtin_is_string = Builtin
