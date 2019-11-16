@@ -32,6 +32,7 @@ Table of Contents
 --------------------
 
 - [Installation](#installation)
+	- [Binary](#binary)
 	- [From source](#from-source)
 		- [Using stack](#using-stack)
 		- [Using Cabal](#using-cabal)
@@ -66,6 +67,14 @@ Table of Contents
 
 Installation
 ------------
+
+fregot is available for macOS and Linux.
+
+### Binary
+
+1. Download the latest binary for macOS or Linux from [Releases](https://github.com/fugue/fregot/releases).
+
+2. Place the binary somewhere in your `$PATH`.
 
 ### From source
 
