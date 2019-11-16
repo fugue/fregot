@@ -220,6 +220,7 @@ defaultBuiltins = HMS.fromList
     , (NamedFunction (BuiltinName "indexof"),                   builtin_indexof)
     , (NamedFunction (BuiltinName "intersection"),              builtin_intersection)
     , (NamedFunction (BuiltinName "is_array"),                  builtin_is_array)
+    , (NamedFunction (BuiltinName "is_boolean"),                builtin_is_boolean)
     , (NamedFunction (BuiltinName "is_object"),                 builtin_is_object)
     , (NamedFunction (BuiltinName "is_string"),                 builtin_is_string)
     , (NamedFunction (QualifiedName "json" "unmarshal"),        builtin_json_unmarshal)
@@ -319,6 +320,12 @@ builtin_is_array = Builtin (In Out) $ pure $
     \(Cons val Nil) -> case val of
         ArrayV _ -> return True
         _        -> return False
+
+builtin_is_boolean :: Monad m => Builtin m
+builtin_is_boolean = Builtin (In Out) $ pure $
+    \(Cons val Nil) -> case val of
+        BoolV _ -> return True
+        _       -> return False
 
 builtin_is_object :: Monad m => Builtin m
 builtin_is_object = Builtin (In Out) $ pure $
