@@ -1,5 +1,8 @@
 # CHANGELOG
 
+ -  0.4.3 (2019-11-16)
+     *  Add `is_set` and `is_boolean` builtin functions.
+
  -  0.4.2 (2019-11-14)
      *  Fixes an issue where depth-first iteration over collection rules would
         enumerate certain elements more than once.
@@ -11,7 +14,7 @@
         causing fregot to throw a renamer error.
 
  -  0.4.1 (2019-11-06)
-     *  Allow YAML input documents
+     *  Allow YAML input documents.
 
  -  0.4.0 (2019-11-01)
      *  Re-license to Apache-2.0
