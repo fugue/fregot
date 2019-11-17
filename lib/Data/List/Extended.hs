@@ -2,6 +2,7 @@ module Data.List.Extended
     ( module Data.List
     , unsnoc
     , splits
+    , maybeLast
     ) where
 
 import           Data.List
@@ -20,3 +21,6 @@ splits = go []
     go acc l = (reverse acc, l) : case l of
         []       -> []
         (x : xs) -> go (x : acc) xs
+
+maybeLast :: [a] -> Maybe a
+maybeLast l = if null l then Nothing else Just (last l)

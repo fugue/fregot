@@ -27,8 +27,6 @@ module Fregot.Names
     , nameToText
     , nameFromText
 
-    , Imports
-
     , InstVar (..)
 
     , packageNameFromFilePath
@@ -42,7 +40,6 @@ import qualified Data.Aeson            as Aeson
 import           Data.Binary           (Binary)
 import qualified Data.Binary           as Binary
 import           Data.Hashable         (Hashable (..))
-import qualified Data.HashMap.Strict   as HMS
 import qualified Data.List             as L
 import           Data.String           (IsString (..))
 import qualified Data.Text.Extended    as T
@@ -225,8 +222,6 @@ nameFromText txt = case T.breakOnEnd "." txt of
     (pkgName, var) -> QualifiedName
         <$> T.init pkgName ^? packageNameFromText
         <*> var ^? varFromText
-
-type Imports a = HMS.HashMap Var (a, PackageName)
 
 -- | An instantiated variable.  These have a unique (within the evaluation
 -- context) number identifying them.  The var is just there for debugging
