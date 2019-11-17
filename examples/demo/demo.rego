@@ -7,8 +7,7 @@ approved_amis = {
 
 # All AMIs in the input
 amis[ami] { 
-#    ami = input.resource_changes.change.after.ami # UNCOMMENT LINE FOR DEMO
-    ami = input.resource_changes[_].change.after.ami # COMMENT LINE FOR DEMO
+    ami = input.resource_changes.change.after.ami
 }
 
 # If the AMI does not appear in the list of whitelisted AMIs,
