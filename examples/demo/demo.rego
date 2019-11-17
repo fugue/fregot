@@ -1,4 +1,4 @@
-package fregot.examples.ami_id_debug
+package fregot.examples.demo
 
 # Whitelisted AMIs
 approved_amis = {
