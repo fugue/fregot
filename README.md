@@ -32,6 +32,7 @@ Table of Contents
 --------------------
 
 - [Installation](#installation)
+	- [Binary](#binary)
 	- [From source](#from-source)
 		- [Using stack](#using-stack)
 		- [Using Cabal](#using-cabal)
@@ -67,6 +68,14 @@ Table of Contents
 Installation
 ------------
 
+fregot works on all major platforms, and pre-built binaries are available for macOS and Linux.
+
+### Binary
+
+1. Download the latest binary for macOS or Linux from [Releases].
+
+2. Place the binary somewhere in your `$PATH`.
+
 ### From source
 
 Installation through source is done using standard Haskell tooling -- [Cabal]
@@ -89,7 +98,7 @@ and [stack] both work well.
 Usage
 -----
 
-    fregot v0.4.1
+    fregot v0.4.3
 
     Usage: fregot COMMAND
 
@@ -184,7 +193,7 @@ REPL
 ----
 
     F u g u e   R E G O   T o o l k i t
-    fregot v0.4.1 repl - use :help for usage info
+    fregot v0.4.3 repl - use :help for usage info
     repl% :help
     Enter an expression to evaluate it.
     Enter a rule to add it to the current package.
@@ -410,8 +419,10 @@ However, if you set a breakpoint at `function_a`, activate it, and
 ### :input
 
 While in the REPL, you can directly change the input document by using the
-`:input` command to specify the path of your input document. For example, if you
-want to load the input in `example.json`, you would do this:
+`:input` command to specify the path of your input document. Input can be
+JSON or YAML.
+
+For example, if you want to load the input in `example.json`, you would do this:
 
     repl% :input example.json
 
@@ -698,6 +709,7 @@ Want to learn more? Check out these resources:
  -  [De Morgan's laws](https://en.wikipedia.org/wiki/De_Morgan%27s_laws):
     a deep dive into transformation rules useful for writing Rego logic.
 
+[Releases]: https://github.com/fugue/fregot/releases
 [Cabal]: https://www.haskell.org/cabal/
 [Fugue]: https://www.fugue.co/
 [OPA]: https://www.openpolicyagent.org/
