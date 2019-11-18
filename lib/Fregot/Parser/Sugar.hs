@@ -13,7 +13,7 @@ module Fregot.Parser.Sugar
 
 import           Control.Applicative         ((<|>))
 import           Control.Lens                ((^.))
-import           Control.Lens.TH (makeLenses)
+import           Control.Lens.TH             (makeLenses)
 import           Data.Either                 (partitionEithers)
 import           Data.Functor                (($>))
 import qualified Data.Scientific             as Scientific
@@ -24,6 +24,7 @@ import           Fregot.Sources.SourceSpan
 import           Fregot.Sugar
 import           Prelude                     hiding (head)
 import qualified Text.Parsec.Expr            as Parsec
+import           Text.Parsec.Extended        ((<?>))
 import qualified Text.Parsec.Extended        as Parsec
 import qualified Text.Parsec.Indent.Explicit as Indent
 
@@ -65,7 +66,8 @@ parseModuleHead po = case po ^. poDefaultPackageName of
     Nothing  -> parser
     Just def -> Parsec.option def parser
   where
-    parser = Tok.symbol Tok.TPackage *> parsePackageName
+    parser = (<?> "'package' declaration") $
+        Tok.symbol Tok.TPackage *> parsePackageName
 
 parseModuleImport :: FregotParser (Import SourceSpan)
 parseModuleImport = withSourceSpan $ do
