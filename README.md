@@ -175,10 +175,10 @@ policy file using a JSON file as input.
 _Tip: You can run this command yourself from the root of this repo!_
 
 This command evaluates the `data.fregot.examples.ami_id.allow` expression from
-`ami_id.rego` using the input file `repl-input.json`:
+`ami_id.rego` using the input file `repl_input.json`:
 
     fregot eval \
-        --input examples/ami_id/repl-input.json \
+        --input examples/ami_id/repl_input.json \
         'data.fregot.examples.ami_id.allow' \
         examples/ami_id/ami_id.rego
 
@@ -651,19 +651,19 @@ Here's an example. Start the REPL with the `--watch` flag:
 
 Load the Rego and input files:
 
-    repl% :load ami_id.rego
-    Loading ami_id.rego...
+    repl% :load examples/ami_id/ami_id.rego
+    Loading examples/ami_id/ami_id.rego...
     Loaded package fregot.examples.ami_id
-    fregot.examples.ami_id% :input repl-input.json
+    fregot.examples.ami_id% :input examples/ami_id/repl_input.json
 
 Now you can make changes to the Rego and/or input files and `fregot`
 automatically reloads them:
 
     fregot.examples.ami_id%
-    Reloaded ami_id.rego
+    Reloaded examples/ami_id/ami_id.rego
 
     fregot.examples.ami_id%
-    Reloaded repl-input.json
+    Reloaded examples/ami_id/repl_input.json
 
 This allows you to evaluate expressions as you like, and they'll automatically
 be up-to-date.
@@ -680,7 +680,7 @@ re-evaluates the expression and prints the evaluation:
     = false
 
     fregot.examples.ami_id%
-    Reloaded repl-input.json
+    Reloaded repl_input.json
     = true
 
 Example Use Case
