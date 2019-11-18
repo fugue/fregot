@@ -29,7 +29,7 @@ valid_two_different_amis = {
       {
          "change": {
             "after": {
-               "ami": "ami-04b762b4289fba92b"
+               "ami": "ami-04b9e92b5572fa0d1"
                }
          }
       },
@@ -67,14 +67,14 @@ valid_two_same_amis = {
       {
          "change": {
             "after": {
-               "ami": "ami-04b762b4289fba92b"
+               "ami": "ami-04b9e92b5572fa0d1"
                }
          }
       },
       {
          "change": {
             "after": {
-               "ami": "ami-04b762b4289fba92b"
+               "ami": "ami-04b9e92b5572fa0d1"
                }
          }
       }
@@ -114,7 +114,7 @@ valid_single_ami_from_tf_plan = {
                "provider_name": "aws",
                "schema_version": 1,
                "values": {
-                  "ami": "ami-04b762b4289fba92b",
+                  "ami": "ami-04b9e92b5572fa0d1",
                   "credit_specification": [],
                   "disable_api_termination": null,
                   "ebs_optimized": null,
@@ -146,7 +146,7 @@ valid_single_ami_from_tf_plan = {
             ],
             "before": null,
             "after": {
-               "ami": "ami-04b762b4289fba92b",
+               "ami": "ami-04b9e92b5572fa0d1",
                "credit_specification": [],
                "disable_api_termination": null,
                "ebs_optimized": null,
@@ -216,7 +216,7 @@ valid_single_ami_from_tf_plan = {
                "provider_config_key": "aws",
                "expressions": {
                   "ami": {
-                     "constant_value": "ami-04b762b4289fba92b"
+                     "constant_value": "ami-04b9e92b5572fa0d1"
                   },
                   "instance_type": {
                      "constant_value": "t2.micro"
