@@ -4,7 +4,7 @@ default allow = false
  
 # Whitelisted AMIs
 approved_amis = {
-  'ami-04b762b4289fba92b', 'ami-0b69ea66ff7391e80'
+  "ami-04b9e92b5572fa0d1", "ami-0b69ea66ff7391e80"
 }
 
 # All AMIs in the input
@@ -26,7 +26,7 @@ allow {
 # This test should allow the specified AMIs
 test_allow {
     allow with input as {"resource_changes": [
-  {"change": {"after": {"ami": "ami-04b762b4289fba92b"}}},
+  {"change": {"after": {"ami": "ami-04b9e92b5572fa0d1"}}},
   {"change": {"after": {"ami": "ami-0b69ea66ff7391e80"}}}
 ]}
 }
