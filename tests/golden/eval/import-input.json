@@ -1,0 +1,7 @@
+{
+    "pods": {
+        "nginx": {
+            "ssl_enabled": false
+        }
+    }
+}

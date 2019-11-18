@@ -46,14 +46,16 @@ parsePackageName :: FregotParser PackageName
 parsePackageName =
     mkPackageName <$> Parsec.sepBy1 Tok.var (Tok.symbol Tok.TPeriod)
 
-parseDataPackageName :: FregotParser PackageName
-parseDataPackageName = do
+parseImportGut :: FregotParser ImportGut
+parseImportGut = do
     pos     <- Parsec.getPosition
     pkgname <- parsePackageName
     case unPackageName pkgname of
-        ("data" : vs) -> return (mkPackageName vs)
+        ("data"  : vs) -> return $! ImportData  (mkPackageName vs)
+        ("input" : vs) -> return $! ImportInput (mkPackageName vs)
         _             -> Parsec.unexpectedAt pos $
-            show (PP.pretty pkgname) ++ " (imports should start with `data.`)"
+            show (PP.pretty pkgname) ++
+            " (imports should start with `data.` or `input.`)"
 
 parseModule :: ParserOptions -> FregotParser (Module SourceSpan Var)
 parseModule po = Module
@@ -72,8 +74,8 @@ parseModuleHead po = case po ^. poDefaultPackageName of
 parseModuleImport :: FregotParser (Import SourceSpan)
 parseModuleImport = withSourceSpan $ do
     Tok.symbol Tok.TImport
-    _importPackage <- parseDataPackageName
-    _importAs <- Parsec.optionMaybe $ do
+    _importGut <- parseImportGut
+    _importAs  <- Parsec.optionMaybe $ do
         Tok.symbol Tok.TAs
         var
     return $ \_importAnn -> Import {..}

@@ -12,7 +12,8 @@ module Fregot.Sugar
     , packageNameFromString, packageNameFromText
     , dataPackageNameFromString
 
-    , Import (..), importAnn, importPackage, importAs
+    , ImportGut (..), _ImportInput, _ImportData
+    , Import (..), importAnn, importGut, importAs
     , Module (..), modulePackage, moduleImports, modulePolicy
 
     , Var, unVar, mkVar
@@ -57,10 +58,17 @@ import           Fregot.PrettyPrint ((<$$>), (<+>), (<+>?), (?<+>))
 import qualified Fregot.PrettyPrint as PP
 import           GHC.Generics       (Generic)
 
+data ImportGut
+    = ImportInput !PackageName
+    | ImportData  !PackageName
+    deriving (Generic, Show)
+
+instance Binary ImportGut
+
 data Import a = Import
-    { _importAnn     :: !a
-    , _importPackage :: !PackageName
-    , _importAs      :: !(Maybe UnqualifiedVar)
+    { _importAnn :: !a
+    , _importGut :: !ImportGut
+    , _importAs  :: !(Maybe UnqualifiedVar)
     } deriving (Generic, Show)
 
 instance Binary a => Binary (Import a)
@@ -201,6 +209,7 @@ data With a n = With
 
 instance (Binary a, Binary n) => Binary (With a n)
 
+$(makePrisms ''ImportGut)
 $(makeLenses ''Import)
 $(makeLenses ''Module)
 $(makeLenses ''Rule)
@@ -211,9 +220,15 @@ $(makeLenses ''Literal)
 $(makeLenses ''With)
 $(makePrisms ''Expr)
 
+instance PP.Pretty PP.Sem ImportGut where
+    pretty (ImportData pkg) =
+        PP.keyword "data" <> PP.punctuation "." <> PP.pretty pkg
+    pretty (ImportInput pkg) =
+        PP.keyword "input" <> PP.punctuation "." <> PP.pretty pkg
+
 instance PP.Pretty PP.Sem (Import a) where
     pretty imp =
-        PP.keyword "import" <+> PP.pretty (imp ^. importPackage) <+>?
+        PP.keyword "import" <+> PP.pretty (imp ^. importGut) <+>?
         fmap PP.pretty (imp ^. importAs)
 
 instance PP.Pretty PP.Sem n => PP.Pretty PP.Sem (Module a n) where
