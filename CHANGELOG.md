@@ -1,5 +1,11 @@
 # CHANGELOG
 
+ -  0.4.4 (2019-11-18)
+     *  Minor README improvements.
+     *  Allow importing `input.` paths.
+     *  Improve error when `package` declaration at the start of a file is
+        missing.
+
  -  0.4.3 (2019-11-16)
      *  Add `is_set` and `is_boolean` builtin functions.
 
