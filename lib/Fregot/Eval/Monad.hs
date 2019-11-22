@@ -1,79 +1,29 @@
-{-# LANGUAGE BangPatterns               #-}
-{-# LANGUAGE DeriveFunctor              #-}
-{-# LANGUAGE FlexibleContexts           #-}
-{-# LANGUAGE FlexibleInstances          #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE MultiParamTypeClasses      #-}
-{-# LANGUAGE OverloadedStrings          #-}
-{-# LANGUAGE TemplateHaskell            #-}
-module Fregot.Eval.Monad
-    ( Context (..), unification, locals, nextInstVar
-    , emptyContext
+-- | Monad and utilities for query evaluation.
+{-# LANGUAGE BangPatterns          #-}
+{-# LANGUAGE DeriveFunctor         #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE TemplateHaskell       #-}
+module Fregot.Eval.Monad where
 
-    , Row (..), rowContext, rowValue
-    , Document
-
-    , EvalCache
-
-    , Environment (..), builtins, packages, inputDoc
-    , cache, stack
-
-    , EvalException (..)
-
-    , EnvContext (..), ecEnvironment, ecContext
-    , EvalM
-    , runEvalM
-
-    , ResumeStep
-    , newResumeStep
-    , Step (..)
-    , runStep
-
-    , suspend
-    , branch
-    , unbranch
-    , cut
-
-    , negation
-    , orElse
-    , orElses
-    , withDefault
-    , requireComplete
-
-    , toInstVar
-    , lookupRule
-    , clearLocals
-
-    , lookupPackage
-
-    , pushStackFrame
-    , pushRuleStackFrame
-    , pushFunctionStackFrame
-
-    , raise
-    , raise'
-    ) where
-
-import           Control.Exception         (Exception, catch, throwIO)
 import           Control.Lens              (view, (%~), (&), (.~), (^.))
 import           Control.Lens.TH           (makeLenses)
-import           Control.Monad.Reader      (MonadReader (..), ask)
-import           Control.Monad.State       (MonadState (..), modify)
-import           Control.Monad.Stream      (Stream)
-import qualified Control.Monad.Stream      as Stream
-import           Control.Monad.Trans       (MonadIO (..))
+import           Control.Monad.Reader      (MonadReader (..))
+import           Control.Monad.State       (MonadState (..))
+import           Data.Bifunctor            (first)
 import qualified Data.HashMap.Strict       as HMS
 import           Data.List                 (find)
 import           Data.Unification          (Unification)
 import qualified Data.Unification          as Unification
 import qualified Data.Unique               as Unique
-import           Fregot.Compile.Package    (CompiledPackage)
-import qualified Fregot.Compile.Package    as Package
 import           Fregot.Error              (Error)
 import qualified Fregot.Error              as Error
 import qualified Fregot.Error.Stack        as Stack
+import           Fregot.Eval.Bistream      (Bistream)
+import qualified Fregot.Eval.Bistream      as Bistream
 import           Fregot.Eval.Builtins      (ReadyBuiltin)
-import           Fregot.Eval.Cache         (Cache)
+import           Fregot.Eval.Tree
 import           Fregot.Eval.Value
 import           Fregot.Names
 import           Fregot.Prepare.Ast
@@ -81,13 +31,13 @@ import           Fregot.PrettyPrint        ((<$$>))
 import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources.SourceSpan (SourceSpan)
 
+-- | Context is the state for query evaluation; i.e. parts that change from one
+-- literal to the next.
 data Context = Context
     { _unification :: !(Unification InstVar Value)
     , _locals      :: !(HMS.HashMap Var InstVar)
     , _nextInstVar :: !Unique.Unique
     }
-
-$(makeLenses ''Context)
 
 emptyContext :: Context
 emptyContext = Context
@@ -96,31 +46,27 @@ emptyContext = Context
     , _nextInstVar = 0
     }
 
+-- | A row is a single result from a query.  This consists of the actual value,
+-- and the corresponding 'Context', since the latter may be different for every
+-- row.
 data Row a = Row
     { _rowContext :: !Context
     , _rowValue   :: !a
     } deriving (Functor)
-
-$(makeLenses ''Row)
 
 instance PP.Pretty PP.Sem a => PP.Pretty PP.Sem (Row a) where
     pretty (Row _ v) = PP.pretty v
 
 type Document a = [Row a]
 
-type EvalCache = Cache (PackageName, Var) Value
-
---------------------------------------------------------------------------------
-
 data Environment = Environment
     { _builtins :: !(HMS.HashMap Function ReadyBuiltin)
-    , _packages :: !(HMS.HashMap PackageName CompiledPackage)
+    -- | Values in the data document tree are lazily computed.  Because we have
+    -- the recursion check, we shouldn't get into an infite recursion here.
+    , _dataDoc  :: !(Tree (Bistream EvalException Suspension Value))
     , _inputDoc :: !Value
-    , _cache    :: !EvalCache
     , _stack    :: !Stack.StackTrace
     }
-
-$(makeLenses ''Environment)
 
 data EvalException = EvalException Environment Context Error
 
@@ -129,13 +75,24 @@ instance Show EvalException where
     -- pretty-print the thing inside.
     show _ = "EvalException _ _ _"
 
-instance Exception EvalException
-
 type Suspension = (SourceSpan, Context, Environment)
 
 newtype EvalM a = EvalM
-    { unEvalM :: Environment -> Context -> Stream Suspension IO (Row a)
+    { unEvalM
+        :: Environment -> Context
+        -> Bistream EvalException Suspension (Row a)
     } deriving (Functor)
+
+-- | Everything you need to evaluate something in a context.
+data EnvContext = EnvContext
+    { _ecContext     :: !Context
+    , _ecEnvironment :: !Environment
+    }
+
+$(makeLenses ''Context)
+$(makeLenses ''Row)
+$(makeLenses ''Environment)
+$(makeLenses ''EnvContext)
 
 instance Applicative EvalM where
     pure x = EvalM $ \_ ctx -> return (Row ctx x)
@@ -170,50 +127,38 @@ instance MonadState Context EvalM where
     state f = EvalM $ \_ ctx0 -> let (x, ctx1) = f ctx0 in return (Row ctx1 x)
     {-# INLINE state #-}
 
-instance MonadIO EvalM where
-    liftIO mio = EvalM $ \_ ctx -> fmap (Row ctx) (liftIO mio)
-    {-# INLINE liftIO #-}
+runEvalM :: EnvContext -> EvalM a -> Either Error (Document a)
+runEvalM (EnvContext ctx0 env0) (EvalM f) =
+    first (\(EvalException _env _context err) -> err) $
+    Bistream.toErrorOrList (f env0 ctx0)
 
--- | Everything you need to evaluate something in a context.
-data EnvContext = EnvContext
-    { _ecContext     :: !Context
-    , _ecEnvironment :: !Environment
-    }
-
-$(makeLenses ''EnvContext)
-
-runEvalM :: EnvContext -> EvalM a -> IO (Either Error (Document a))
-runEvalM (EnvContext ctx0 env0) (EvalM f) = catch
-    (Right <$> Stream.toList (f env0 ctx0))
-    (\(EvalException _env _context err) -> return (Left err))
-
-type ResumeStep a = (EnvContext, Stream Suspension IO (Row a))
+type ResumeStep a = (EnvContext, Bistream EvalException Suspension (Row a))
 
 newResumeStep :: EnvContext -> EvalM a -> ResumeStep a
 newResumeStep envctx@(EnvContext ctx env) (EvalM f) = (envctx, f env ctx)
 
 data Step a
-    = Yield   (Row a)    EnvContext (Stream Suspension IO (Row a))
-    | Suspend SourceSpan EnvContext (Stream Suspension IO (Row a))
+    = Yield   (Row a)    EnvContext (Bistream EvalException Suspension (Row a))
+    | Suspend SourceSpan EnvContext (Bistream EvalException Suspension (Row a))
     | Error              EnvContext Error
     | Done
 
-runStep :: ResumeStep a -> IO (Step a)
-runStep (ss, stream) = catch
-    (do
-        sstep <- Stream.step stream
-        case sstep of
-            Stream.Yield r ns ->
-                return $ Yield r (ss & ecContext .~ (r ^. rowContext)) ns
-            Stream.Suspend (i, ctx, env') ns ->
-                return $ Suspend i (EnvContext ctx env') ns
-            Stream.Done         -> return Done)
-    (\(EvalException env context err) ->
-        return (Error (EnvContext context env) err))
+runStep :: ResumeStep a -> Step a
+runStep (ss, stream) = case stream of
+    Bistream.Done ->
+        Done
+    Bistream.RCons r bs ->
+        Yield r (ss & ecContext .~ (r ^. rowContext)) bs
+    Bistream.RSingle r ->
+        Yield r (ss & ecContext .~ (r ^. rowContext)) Bistream.Done
+    Bistream.LCons (i, ctx, env') bs ->
+        Suspend i (EnvContext ctx env') bs
+    Bistream.Error (EvalException env context err) ->
+        Error (EnvContext context env) err
 
 suspend :: SourceSpan -> EvalM a -> EvalM a
 suspend source (EvalM f) =
-    EvalM $ \env ctx -> Stream.suspend (source, ctx, env) (f env ctx)
+    EvalM $ \env ctx -> Bistream.LCons (source, ctx, env) (f env ctx)
 {-# INLINE suspend #-}
 
 branch :: [EvalM a] -> EvalM a
@@ -232,7 +177,7 @@ unbranch :: EvalM a -> EvalM [a]
 unbranch (EvalM f) = EvalM $ \rs ctx ->
     -- NOTE(jaspervdj): We are effectively dropping a part of the context here
     -- which I'm not sure is safe.
-    Row ctx . map (view rowValue) <$> Stream.collapse (f rs ctx)
+    Row ctx . map (view rowValue) <$> Bistream.collapse (f rs ctx)
 {-# INLINE unbranch #-}
 
 cut :: EvalM a
@@ -241,17 +186,14 @@ cut = EvalM $ \_ _ -> mempty
 
 negation :: (a -> Bool) -> EvalM a -> EvalM ()
 negation true (EvalM f) = EvalM $ \rs ctx -> do
-    peek <- Stream.peek $ Stream.filter (true . view rowValue) (f rs ctx)
-    case peek of
-        Nothing -> pure (Row ctx ())
-        Just _  -> mempty
+    isNull <- Bistream.null $ Bistream.filter (true . view rowValue) (f rs ctx)
+    if isNull then pure (Row ctx ()) else mempty
 
 orElse :: EvalM a -> EvalM a -> EvalM a
 orElse (EvalM x) (EvalM alt) = EvalM $ \env ctx -> do
-    peek <- Stream.peek (x env ctx)
-    case peek of
-        Nothing -> alt env ctx
-        Just x' -> x'
+    let stream = x env ctx
+    isNull <- Bistream.null (x env ctx)
+    if isNull then alt env ctx else stream
 
 orElses :: EvalM a -> [EvalM a] -> EvalM a
 orElses x []           = x
@@ -263,11 +205,12 @@ withDefault = flip orElse
 requireComplete
     :: (Eq a, PP.Pretty PP.Sem a) => SourceSpan -> EvalM a -> EvalM a
 requireComplete source (EvalM f) = EvalM $ \env ctx -> do
-    rows <- Stream.collapse (f env ctx)
+    rows <- Bistream.collapse (f env ctx)
     case rows of
         (r : more)
             | Just d <- find ((/= r ^. rowValue) . view rowValue) more ->
-                liftIO $ throwIO $ EvalException env (r ^. rowContext) $ Error.mkError
+                Bistream.Error $
+                EvalException env (r ^. rowContext) $ Error.mkError
                     "eval" source "inconsistent result" $
                     "Inconsistent result for complete rule, but got:" <$$>
                     PP.ind (PP.pretty $ r ^. rowValue) <$$>
@@ -288,27 +231,6 @@ toInstVar v = state $ \ctx -> case HMS.lookup v (ctx ^. locals) of
             !lcls = HMS.insert v iv (ctx ^. locals) in
         (iv, ctx {_nextInstVar = _nextInstVar ctx + 1, _locals = lcls})
 
-lookupRule :: Name -> EvalM (Maybe (Rule SourceSpan))
-lookupRule (LocalName _) = pure Nothing
-lookupRule (QualifiedName pkgname name) = do
-    env0 <- ask
-    pure $ do
-        pkg <- HMS.lookup pkgname (env0 ^. packages)
-        Package.lookup name pkg
-lookupRule _ = pure Nothing
-
-clearLocals :: EvalM a -> EvalM a
-clearLocals mx = do
-    oldLocals <- state $ \ctx -> (_locals ctx, ctx {_locals = mempty})
-    x         <- mx
-    modify $ \ctx -> ctx {_locals = oldLocals}
-    return x
-
-lookupPackage :: PackageName -> EvalM (Maybe CompiledPackage)
-lookupPackage pkgname = do
-    pkgs <- view packages
-    return $! HMS.lookup pkgname pkgs
-
 pushStackFrame :: Stack.StackFrame -> EvalM a -> EvalM a
 pushStackFrame frame = local (stack %~ Stack.push frame)
 
@@ -326,7 +248,7 @@ pushFunctionStackFrame src n = local $ \env -> env
 -- handled at the top level `runEvalM` and converted to an `Either`.
 raise :: Error -> EvalM a
 raise err = EvalM $ \env ctx ->
-    liftIO $ throwIO $ EvalException env ctx $
+    Bistream.Error $ EvalException env ctx $
     err & Error.stack .~ (env ^. stack)
 
 raise' :: SourceSpan -> PP.SemDoc -> PP.SemDoc -> EvalM a

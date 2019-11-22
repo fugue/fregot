@@ -27,12 +27,14 @@ Library
     Fregot.Error.Stack
     Fregot.Eval
     Fregot.Eval.Builtins
+    Fregot.Eval.Bistream
     Fregot.Eval.Cache
     Fregot.Eval.Json
     Fregot.Eval.Monad
     Fregot.Eval.Number
     Fregot.Eval.TempObject
     Fregot.Eval.Value
+    Fregot.Eval.Tree
     Fregot.Find
     Fregot.Interpreter
     Fregot.Interpreter.Bundle
