@@ -63,7 +63,7 @@ data Environment = Environment
     { _builtins :: !(HMS.HashMap Function ReadyBuiltin)
     -- | Values in the data document tree are lazily computed.  Because we have
     -- the recursion check, we shouldn't get into an infite recursion here.
-    , _dataDoc  :: !(Tree (Bistream EvalException Suspension Value))
+    , _dataDoc  :: !(Tree ReifiedRule)
     , _inputDoc :: !Value
     , _stack    :: !Stack.StackTrace
     }
@@ -77,10 +77,11 @@ instance Show EvalException where
 
 type Suspension = (SourceSpan, Context, Environment)
 
+-- | This is more a shortcut for the concrete stream type we use in this module.
+type Stream = Bistream EvalException Suspension
+
 newtype EvalM a = EvalM
-    { unEvalM
-        :: Environment -> Context
-        -> Bistream EvalException Suspension (Row a)
+    { unEvalM :: Environment -> Context -> Stream (Row a)
     } deriving (Functor)
 
 -- | Everything you need to evaluate something in a context.
@@ -88,6 +89,17 @@ data EnvContext = EnvContext
     { _ecContext     :: !Context
     , _ecEnvironment :: !Environment
     }
+
+type LazyObject = (HMS.HashMap Value Value)
+
+-- | A node in the evaluation tree.  We generally pretend it's already evaluated
+-- but this is not the case due to laziness and the bag of tricks contained in
+-- LazyObject (TODO).
+data ReifiedRule
+    = ReifiedComplete (Stream Value)
+    | ReifiedSet (Stream LazyObject)
+    | ReifiedObject (Stream LazyObject)
+    | ReifiedFunction Int ([Value] -> Stream Value)
 
 $(makeLenses ''Context)
 $(makeLenses ''Row)
@@ -176,7 +188,8 @@ branch options = EvalM $ \rs ctx ->
 unbranch :: EvalM a -> EvalM [a]
 unbranch (EvalM f) = EvalM $ \rs ctx ->
     -- NOTE(jaspervdj): We are effectively dropping a part of the context here
-    -- which I'm not sure is safe.
+    -- which we need to do because we are "reifying" the different results into
+    -- a single list.
     Row ctx . map (view rowValue) <$> Bistream.collapse (f rs ctx)
 {-# INLINE unbranch #-}
 

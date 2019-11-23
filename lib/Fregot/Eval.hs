@@ -405,9 +405,7 @@ evalCompiledRule callerSource crule mbIndex
 evalRuleDefinition
     :: SourceSpan -> RuleDefinition SourceSpan -> Maybe Value
     -> EvalM (Maybe Value, Value)
-evalRuleDefinition callerSource rule mbIndex =
-    clearLocals $ do
-
+evalRuleDefinition callerSource rule mbIndex = do
     mbIdxVal <- case (mbIndex, rule ^. ruleIndex) of
         (Nothing, Nothing) -> return Nothing
         (Just arg, Just tpl) -> do
@@ -465,8 +463,7 @@ evalUserFunction callerSource crule callerArgs =
         Nothing   -> return (BoolV True)
         Just term -> ground (crule ^. ruleAnn) =<< evalTerm term
 
-    evalFunctionDefinition def =
-        clearLocals $ do
+    evalFunctionDefinition def = do
         -- TODO(jaspervdj): Check arity.
         calleeArgs <- mapM evalTerm $ fromMaybe [] (def ^. ruleArgs)
         zipWithM_ unify callerArgs calleeArgs
@@ -517,6 +514,9 @@ evalLiteral lit next
         next r
   where
     localWiths []    mx = mx
+    {-
+    TODO (jaspervdj): we need a 'makeTree' as well as a concrete tree in the
+    eval environment.
     localWiths withs mx = do
         -- Since we changed the input, we need to bump up the cache.  This will
         -- also be the case when we modify `data`.
@@ -535,6 +535,7 @@ evalLiteral lit next
 
         input <- view inputDoc
         updateInput input withs
+    -}
 {-# INLINE evalLiteral #-}
 
 evalStatement :: Statement SourceSpan -> EvalM Value
