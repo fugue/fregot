@@ -13,7 +13,13 @@ This tutorial shows how to use fregot to debug a Rego policy. The policy checks 
 - Move to the `demo` directory
   - `cd fregot/examples/demo`
 - [Install fregot](https://github.com/fugue/fregot/blob/master/README.md#installation)
-- *Optional:* Install [Terraform v0.12 or later](https://www.terraform.io/downloads.html) if you'd like to generate the Terraform plan JSON yourself
+
+### Optional Steps
+
+If you'd like to generate the Terraform plan JSON yourself:
+
+- [Install Terraform v0.12 or later](https://www.terraform.io/downloads.html)
+- *Optional:* [Install jq](https://stedolan.github.io/jq/download/)
 
 ## Steps
 
@@ -25,15 +31,21 @@ This tutorial shows how to use fregot to debug a Rego policy. The policy checks 
 
 [repl_demo_input.json](repl_demo_input.json) is the Terraform plan formatted as JSON so fregot can evaluate it. We've done this for you, but if you've installed [Terraform v0.12 or later](https://www.terraform.io/downloads.html) and you'd like to generate the output yourself, you can do so with the following commands:
 
+[Initialize Terraform directory:](https://www.terraform.io/docs/commands/init.html)
+
     terraform init
+
+[Create Terraform plan:](https://www.terraform.io/docs/commands/plan.html)
 
     terraform plan -out=tfplan
 
-    terraform show -json tfplan > repl_demo_input.json
+[Generate JSON representation of plan and pretty-print it with jq:](https://www.terraform.io/docs/commands/show.html)
+
+    terraform show -json tfplan | jq . > repl_demo_input.json
 
 ### Evaluate Terraform Plan with Fregot
 
-Now it's time to validate our Terraform plan against the Rego policy. We'll use [fregot eval](https://github.com/fugue/fregot/blob/master/README.md#fregot-eval) to specify the input file (`repl_demo_input.json`), the function we want to evaluate (`data.fregot.examples.demo.deny`), and the Rego file it is in (`demo.rego`):
+Let's start by validating the Terraform plan JSON against the Rego policy. We'll use [`fregot eval`](https://github.com/fugue/fregot/blob/master/README.md#fregot-eval) to specify the input file (`repl_demo_input.json`), the function we want to evaluate (`data.fregot.examples.demo.deny`), and the Rego file it is in (`demo.rego`):
 
     fregot eval --input \
       repl_demo_input.json  \
@@ -56,27 +68,27 @@ Uh oh! There's an error in the Rego file. Evaluating `deny` produces this messag
 
       Stack trace:
         rule fregot.examples.demo.amis at demo.rego:21:11
-        rule fregot.examples.demo.deny at data.fregot.examples.demo.deny:1:1
+        rule fregot.examples.demo.deny at cli:1:1
 
-Sounds like an opportunity to try interactive debugging with fregot!
+Well, it's a good thing we just installed fregot! Let's use the REPL to interactively debug the code.
 
 ### Launch REPL
 
-We'll start by launching the REPL:
+We'll start by [launching the REPL](https://github.com/fugue/fregot#fregot-repl):
 
     fregot repl demo.rego --watch
 
-The [--watch](https://github.com/fugue/fregot#watch) flag tells fregot to automatically reload the loaded files (including input) when it detects a change.
+The [`--watch`](https://github.com/fugue/fregot#watch) flag tells fregot to automatically reload the loaded files (including input) when it detects a change.
 
-(Handy, right? We'll take the `watch` feature one step further in a little bit!)
+(Handy, right? We'll take the `watch` feature one step further in a little while!)
 
 ### Load Policy and Input
 
-First, load the policy:
+First, [load the policy](https://github.com/fugue/fregot#load):
 
     :load demo.rego
 
-Next, set the input:
+Next, [set the input](https://github.com/fugue/fregot#input):
 
     :input repl_demo_input.json
 
@@ -84,11 +96,11 @@ We're going to take a closer look at `data.fregot.examples.demo.deny`. Let's set
 
 ### Set and Activate Breakpoint
 
-To set the breakpoint at `deny`, you can use the `:break` command with the rule name. Since the policy has already been loaded in the REPL, rather than using the full name `data.fregot.examples.demo.deny`, you can simplify it like so:
+To set the breakpoint at `deny`, you can use the [`:break`](https://github.com/fugue/fregot#break) command with the rule name. Since the policy has already been loaded in the REPL, rather than using the full name `data.fregot.examples.demo.deny`, you can simplify it like so:
 
     :break deny
 
-(We set the breakpoint with the rule name here, but we could also have used the line number: `:break demo.rego:20`)
+(We set the breakpoint with the rule name here, but we could also have [used the line number](https://github.com/fugue/fregot#step-1-set-breakpoint): `:break demo.rego:20`)
 
 Now, evaluate the rule to activate the breakpoint:
 
@@ -105,7 +117,7 @@ Great! We've entered debugging mode and fregot is showing us the first line of t
 
 ### Step Forward
 
-Nothing seems out of order yet, so step forward into the next query:
+Nothing seems out of order yet, so step forward into the next query with the [`:step`](https://github.com/fugue/fregot#step) command:
 
     :step
 
@@ -149,7 +161,7 @@ Consider the error reason:
 
     evalRefArg: cannot index array with a string
 
-In this case, that means the policy references an array incorrectly. There's something wrong with this syntax:
+In this case, that means the policy is referencing an array incorrectly. There's something wrong with this syntax:
 
     input.resource_changes.change.after.ami
 
@@ -161,7 +173,7 @@ We can see the entire input document by evaluating `input`:
 
     input
 
-We get the expected result, which is the entirety of `repl_demo_input.json`. No problems yet, so evaluate the next level of the nested document:
+We get the expected result, which is the information in `repl_demo_input.json`. No problems yet, so evaluate the next nested level:
 
     input.resource_changes
 
@@ -186,7 +198,7 @@ Looks like we found the problem! You should see this error message:
 
 ### Diagnose Error
 
-If you look at `repl_demo_input.json`, you'll see the JSON follows this structure:
+If you look at `repl_demo_input.json`, you'll see the JSON follows this basic structure:
 
     {
       "resource_changes": [
@@ -207,7 +219,7 @@ If you look at `repl_demo_input.json`, you'll see the JSON follows this structur
       ]
     }
 
-As you can see, `resource_changes` is an array with two items. We need to account for this when we assign a value to the `ami` variable. We need to iterate through `resource_changes` so we can assign _each_ `change.after.ami` to the `ami` variable. We can do this with `[_]`, so let's add that to the previous expression and evaluate it again:
+As you can see, `resource_changes` is an array with two items, and we should account for this when we assign a value to the `ami` variable. We need to iterate through `resource_changes` so we can assign _each_ `change.after.ami` value to the `ami` variable. We can do this with `[_]`, so let's add that to the previous expression and evaluate it again:
 
     input.resource_changes[_].change
 
@@ -226,11 +238,13 @@ Now that we know how to fix the policy, let's add `[_]` to line 10 of `demo.rego
 
     ami = input.resource_changes[_].change.after.ami
 
-Save your changes and go back to fregot -- you'll see that the updated policy has been reloaded:
+Save your changes and go back to fregot -- you'll see that the updated policy has [automatically been reloaded](https://github.com/fugue/fregot#watch):
 
-    Reloaded examples/demo/demo.rego
+    Reloaded demo.rego
 
-You're still in error mode, so quit out of it to return to normal fregot mode:
+(Note: If you didn't launch the REPL with `--watch`, you can manually reload all modified files with [`:reload`](https://github.com/fugue/fregot#reload).)
+
+You're still in error mode, so [quit](https://github.com/fugue/fregot#quit) error mode to return to normal fregot mode:
 
     :quit
 
@@ -245,19 +259,19 @@ You'll see the first query of `deny` again:
     21|     ami = amis[ami]
             ^^^^^^^^^^^^^^^
 
-Instead of stepping _into_ the next query, we'll step _over_ it with the `:next` command:
+Instead of stepping _into_ the next query, we'll step _over_ it with the [`:next`](https://github.com/fugue/fregot#next) command:
 
     :next
 
-This brings us to line 22, and you'll see this output, where fregot is calling the `invalid_ami` function on the first AMI ID :
+This brings us to line 22 of `demo.rego`, and you'll see this output, where the `invalid_ami` function determines whether the first AMI ID is whitelisted:
 
     22|     invalid_ami(ami)
             ^^^^^^^^^^^^^^^^
 
-Let's step over the next couple queries until we see the results of the evaluation:
+Let's step over the next couple queries until we see the final results of the `deny` evaluation:
 
     :next
-    
+
 You'll see this output, as fregot evaluates the second AMI ID for validity:
 
     22|     invalid_ami(ami)
@@ -266,7 +280,7 @@ You'll see this output, as fregot evaluates the second AMI ID for validity:
 Step over the next query again:
 
     :next
-    
+
 You'll see this output:
 
     (debug) = true
@@ -277,7 +291,6 @@ This means fregot has finished evaluating the input. `deny` returns true because
 fregot has automatically exited debugging mode. Now, quit the REPL:
 
     :quit
-    
 
 Let's evaluate the policy as we did before -- this time, it should work properly:
 
@@ -288,10 +301,10 @@ Let's evaluate the policy as we did before -- this time, it should work properly
 And it does!
 
     [true]
-    
-`deny` returns `true`, which means we've successfully evaluated the Terraform plan against the Rego policy.
 
-But why stop there? Let's make some changes and use the `:watch` command to automatically print the updated output.
+`deny` returns `true`, which means we've successfully tested the Terraform plan against the Rego policy and determined that the plan fails validation.
+
+But why stop there? Let's make some changes and use the [`:watch`](https://github.com/fugue/fregot#watch) command to automatically print the updated output.
 
 ### Launch REPL Again
 
@@ -318,7 +331,7 @@ We're going to modify the input to prove that `deny` works as expected. In `repl
     Reloaded repl_demo_input.json
     {}
 
-This means the Terraform plan input has passed validation because both AMI IDs are on the whitelisted.
+The empty braces mean that `deny` does not return `true`. The Terraform plan input has passed validation because both AMI IDs are on the whiteliste.
 
 Back in the input, undo the change so `ami-04b9e92b5572fa0d1` is replaced with `ami-atotallyfakeamiid`, then save again. fregot produces this output:
 
@@ -344,25 +357,27 @@ Now that we've changed the whitelist, the Terraform plan passes validation -- ho
 
 ### Evaluate the Terraform Plan
 
-Now that you've successfully debugged the policy, you can exit fregot:
+Since you've successfully debugged the policy, you can exit fregot:
 
     :quit
 
-You may use the same policy to evaluate other Terraform plans by executing the same `fregot eval` command from earlier:
+You may use the same policy to evaluate other JSON Terraform plans by executing the same `fregot eval` command from earlier:
 
     fregot eval --input \
-      repl_demo_input.json  \
+      your_input_file_here  \
       'data.fregot.examples.demo.deny' demo.rego
 
-If the AMIs are whitelisted and the plan passes validation, you'll see output like this because `deny` does not return true:
+(Note: fregot also works with YAML input!)
+
+If the AMIs in the Terraform plan are whitelisted and the plan passes validation, you'll see output like this because `deny` does not return true:
 
     []
 
-If the AMI IDs in the plan aren't whitelisted, the output looks like this, as you saw earlier:
+If the AMI IDs in the plan aren't whitelisted, the output looks like this because `deny` returns true, as you saw earlier:
 
     [true]
 
-You can check any other Terraform plan for whitelisted AMIs by outputting the plan as JSON and evaluating it with fregot and our `demo.rego` policy.
+You can check any other Terraform plan for whitelisted AMIs by outputting the plan as JSON and evaluating it with fregot and the `demo.rego` policy.
 
 ## What's Next?
 
