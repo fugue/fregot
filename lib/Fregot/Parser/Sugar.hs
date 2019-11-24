@@ -13,7 +13,7 @@ module Fregot.Parser.Sugar
 
 import           Control.Applicative         ((<|>))
 import           Control.Lens                ((^.))
-import           Control.Lens.TH (makeLenses)
+import           Control.Lens.TH             (makeLenses)
 import           Data.Either                 (partitionEithers)
 import           Data.Functor                (($>))
 import qualified Data.Scientific             as Scientific
@@ -24,6 +24,7 @@ import           Fregot.Sources.SourceSpan
 import           Fregot.Sugar
 import           Prelude                     hiding (head)
 import qualified Text.Parsec.Expr            as Parsec
+import           Text.Parsec.Extended        ((<?>))
 import qualified Text.Parsec.Extended        as Parsec
 import qualified Text.Parsec.Indent.Explicit as Indent
 
@@ -45,14 +46,16 @@ parsePackageName :: FregotParser PackageName
 parsePackageName =
     mkPackageName <$> Parsec.sepBy1 Tok.var (Tok.symbol Tok.TPeriod)
 
-parseDataPackageName :: FregotParser PackageName
-parseDataPackageName = do
+parseImportGut :: FregotParser ImportGut
+parseImportGut = do
     pos     <- Parsec.getPosition
     pkgname <- parsePackageName
     case unPackageName pkgname of
-        ("data" : vs) -> return (mkPackageName vs)
+        ("data"  : vs) -> return $! ImportData  (mkPackageName vs)
+        ("input" : vs) -> return $! ImportInput (mkPackageName vs)
         _             -> Parsec.unexpectedAt pos $
-            show (PP.pretty pkgname) ++ " (imports should start with `data.`)"
+            show (PP.pretty pkgname) ++
+            " (imports should start with `data.` or `input.`)"
 
 parseModule :: ParserOptions -> FregotParser (Module SourceSpan Var)
 parseModule po = Module
@@ -65,13 +68,14 @@ parseModuleHead po = case po ^. poDefaultPackageName of
     Nothing  -> parser
     Just def -> Parsec.option def parser
   where
-    parser = Tok.symbol Tok.TPackage *> parsePackageName
+    parser = (<?> "'package' declaration") $
+        Tok.symbol Tok.TPackage *> parsePackageName
 
 parseModuleImport :: FregotParser (Import SourceSpan)
 parseModuleImport = withSourceSpan $ do
     Tok.symbol Tok.TImport
-    _importPackage <- parseDataPackageName
-    _importAs <- Parsec.optionMaybe $ do
+    _importGut <- parseImportGut
+    _importAs  <- Parsec.optionMaybe $ do
         Tok.symbol Tok.TAs
         var
     return $ \_importAnn -> Import {..}

@@ -5,4 +5,4 @@ fregot ([34mfatal parse error[0m):
     3| import wat.foo
               [31m^[0m
 
-  unexpected wat.foo (imports should start with `data.`)
+  unexpected wat.foo (imports should start with `data.` or `input.`)

@@ -1,0 +1,9 @@
+fregot ([34mfatal parse error[0m):
+  "missing-package-decl.rego" (line 1, column 1):
+  parse failed:
+
+    1| default allow = false
+       [31m^[0m
+
+  unexpected keyword 'default'
+  expecting 'package' declaration

@@ -127,7 +127,8 @@ readDependencyGraph h = do
     let dependencies k = maybe [] (^.. deps) (HMS.lookup k mods)
     return $ Deps.Graph done dependencies
   where
-    deps = traverse . _2 . Sugar.moduleImports . traverse . Sugar.importPackage
+    deps = traverse . _2 . Sugar.moduleImports . traverse .
+        Sugar.importGut . Sugar._ImportData
 
 -- | Auxiliary function for hooking into the renamer.
 runRenamerT :: Renamer.RenamerEnv -> Renamer.RenamerM a -> InterpreterM a

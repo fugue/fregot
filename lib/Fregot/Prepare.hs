@@ -4,6 +4,7 @@ module Fregot.Prepare
     ( prepareRule
     , mergeRules
 
+    , Imports
     , prepareImports
     , prepareQuery
     , prepareExpr
@@ -15,7 +16,7 @@ import           Control.Lens              (view, (%~), (&), (^.))
 import           Control.Monad.Extended    (foldM, unless, when)
 import           Control.Monad.Parachute   (ParachuteT, fatal, tellError)
 import qualified Data.HashMap.Strict       as HMS
-import qualified Data.List                 as L
+import qualified Data.List.Extended        as L
 import           Data.Maybe                (catMaybes, isJust, isNothing,
                                             mapMaybe)
 import           Fregot.Error              (Error)
@@ -177,13 +178,13 @@ prepareImports =
     prepareImport imp = do
         let mbAlias =
                 (imp ^. Sugar.importAs) <|>
-                (case unPackageName (imp ^. Sugar.importPackage) of
-                    []   -> Nothing
-                    bits -> return $ mkVar $ last bits)
+                (case imp ^. Sugar.importGut of
+                    ImportData  p -> mkVar <$> L.maybeLast (unPackageName p)
+                    ImportInput p -> mkVar <$> L.maybeLast (unPackageName p))
 
         return $ do
             alias <- mbAlias
-            return $ (alias, (imp ^. Sugar.importAnn, imp ^. Sugar.importPackage))
+            return $ (alias, (imp ^. Sugar.importAnn, imp ^. Sugar.importGut))
 
 prepareRuleBody
     :: Monad m

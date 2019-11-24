@@ -31,7 +31,7 @@ import           Fregot.Error              (Error)
 import qualified Fregot.Error              as Error
 import           Fregot.Eval.Builtins      (ReadyBuiltin)
 import           Fregot.Names
-import           Fregot.Prepare.Ast        (Function (..))
+import           Fregot.Prepare.Ast        (Function (..), Imports)
 import           Fregot.PrettyPrint        ((<+>))
 import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources.SourceSpan (SourceSpan)
@@ -168,13 +168,25 @@ resolveRef source var refArgs = do
             remainder' <- traverse renameRefArg remainder
             return (QualifiedName pkg rname, remainder')
 
-        _       | Just (_, pkg) <- HMS.lookup var imports
-                , (ra1 : ras)   <- refArgs
-                , Just rname    <- refArgToVar ra1 -> do
+        _       | Just (_, ImportData pkg) <- HMS.lookup var imports
+                , (ra1 : ras)              <- refArgs
+                , Just rname               <- refArgToVar ra1 -> do
 
             checkExists pkg rname
             ras' <- traverse renameRefArg ras
             return (QualifiedName pkg rname, ras')
+
+        -- For input imports, it's relatively simple.  If we have something like
+        --
+        --     import input.foo as blah
+        --
+        -- Then `blah.bar` needs to resolve to `input.foo.bar`.  This means we
+        -- first put the references mentioned in the import, and then the
+        -- remaining ones.
+        _       | Just (src, ImportInput pkg) <- HMS.lookup var imports -> do
+            let importRefs = map (RefDotArg src . mkVar) (unPackageName pkg)
+            refArgs' <- traverse renameRefArg refArgs
+            return (BuiltinName "input", importRefs ++ refArgs')
 
         -- Nothing was found.  We will assume it is a local var.
         _ -> do
@@ -250,8 +262,9 @@ renameTerm = \case
                     pure $ CallT source [QualifiedName thispkg n] args'
 
             -- Calling a rule in another package.
-            Just ([imp], n) | Just (_, pkg) <- HMS.lookup (mkVar imp) imports ->
-                pure $ CallT source [QualifiedName pkg n] args'
+            Just ([imp], n)
+                | Just (_, ImportData pkg) <- HMS.lookup (mkVar imp) imports ->
+                    pure $ CallT source [QualifiedName pkg n] args'
 
             _ -> fatal $ Error.mkError "renamer" source "unknown call" $
                 -- NOTE(jaspervdj): We can use ErrorT here.

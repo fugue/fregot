@@ -17,12 +17,13 @@ module Fregot.Prepare.Ast
     , Sugar.PackageName (..)
     , Sugar.packageNameFromString, Sugar.packageNameFromText
 
-    , Sugar.Import (..), Sugar.importAnn, Sugar.importPackage, Sugar.importAs
+    , Imports
+    , Sugar.ImportGut (..), Sugar._ImportInput, Sugar._ImportData
+    , Sugar.Import (..), Sugar.importAnn, Sugar.importGut, Sugar.importAs
 
     , Sugar.Var, Sugar.unVar, Sugar.mkVar
     , Sugar.varToString, Sugar.varToText
 
-    , Imports
     , RuleBody, Query
     , Literal (..), literalAnn, literalNegation, literalStatement, literalWith
     , Statement (..)
@@ -45,6 +46,7 @@ module Fregot.Prepare.Ast
 import           Control.Lens              ((^.))
 import           Control.Lens.TH           (makeLenses, makePrisms)
 import           Data.Hashable             (Hashable)
+import qualified Data.HashMap.Strict       as HMS
 import qualified Data.List                 as L
 import           Fregot.Names
 import           Fregot.PrettyPrint        ((<+>), (<+>?), (?<+>))
@@ -71,6 +73,8 @@ data Rule i a = Rule
     } deriving (Show)
 
 type Rule' = Rule () SourceSpan
+
+type Imports a = HMS.HashMap Var (a, Sugar.ImportGut)
 
 data RuleDefinition a = RuleDefinition
     { _ruleDefName    :: !Var
