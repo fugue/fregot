@@ -293,7 +293,7 @@ has [automatically been reloaded](https://github.com/fugue/fregot#watch):
 modified files with [`:reload`](https://github.com/fugue/fregot#reload).)
 
 You're still in error mode, so [quit](https://github.com/fugue/fregot#quit)
-error mode to return to normal fregot mode:
+error mode to return to normal REPL mode:
 
     :quit
 
@@ -390,10 +390,11 @@ We're going to modify the input to prove that `deny` works as expected. In
 `ami-04b9e92b5572fa0d1` on lines 39, 131, and 217 and save your changes. fregot
 automatically reloads the input and outputs the evaluation, so you'll see this:
 
-    Reloaded repl_demo_input.json {}
+    Reloaded repl_demo_input.json 
+    {}
 
 The empty braces mean that `deny` does not return `true`. The Terraform plan
-input has passed validation because both AMI IDs are on the whiteliste.
+input has passed validation because both AMI IDs are on the whitelist.
 
 Back in the input, undo the change so `ami-04b9e92b5572fa0d1` is replaced with
 `ami-atotallyfakeamiid`, then save again. fregot produces this output:
@@ -415,7 +416,8 @@ On line 5 of `demo.rego`, change `ami-04b9e92b5572fa0d1` to
 
 Save the file. fregot reloads the policy and prints the updated evaluation:
 
-    Reloaded demo.rego {}
+    Reloaded demo.rego 
+    {}
 
 Now that we've changed the whitelist, the Terraform plan passes validation --
 hooray! Everything works as expected, thanks to a little help from fregot.
@@ -427,10 +429,10 @@ Since you've successfully debugged the policy, you can exit fregot:
     :quit
 
 You may use the same policy to evaluate other JSON Terraform plans by executing
-the same `fregot eval` command from earlier:
+the same `fregot eval` command from earlier, substituting `your_input_file_here` for your own input:
 
     fregot eval --input \
-      repl_demo_input.json \
+      your_input_file_here \
       'data.fregot.examples.demo.deny' demo.rego
 
 (Note: fregot also works with YAML input!)
