@@ -11,10 +11,8 @@ presentations/demos can be accessed at
 
 ## Prerequisites
 
-- `git clone` the [fregot repo](https://github.com/fugue/fregot) 
-  - `git clone <SSH or HTTPS URL>` 
-- Move to the `demo` directory 
-  - `cd fregot/examples/demo`
+- `git clone https://github.com/fugue/fregot.git` 
+- `cd fregot/examples/demo`
 - [Install 
 fregot](https://github.com/fugue/fregot/blob/master/README.md#installation)
 
@@ -29,9 +27,13 @@ If you'd like to generate the Terraform plan JSON yourself:
 
 ### Generate Terraform Plan as JSON
 
-[demo.rego](demo.rego) is a Rego policy that checks AWS AMI IDs in a Terraform
-plan against a whitelist. The policy contains an error that we'll debug in this
-tutorial.
+Let's say your organization requires Amazon Web Services EC2 instances to
+_only_ use hardened Linux Amazon Machine Images (AMIs) that are on a whitelist. 
+Your boss wants to prevent any Terraform with a non-blessed AMI ID from being 
+deployed, so you've installed fregot and have written a Rego policy to validate 
+the Terraform plan before it is applied. You'll be working with these files:
+
+[demo.rego](demo.rego) is a Rego policy that checks AWS AMI IDs in a Terraform plan against a whitelist of hardened images. The policy contains an error that we'll debug in this tutorial.
 
 [demo.tf](demo.tf) is a Terraform file that will deploy two EC2 instances. If
 you take a look, you'll see that `ami-0b69ea66ff7391e80` is listed in
@@ -393,8 +395,9 @@ automatically reloads the input and outputs the evaluation, so you'll see this:
     Reloaded repl_demo_input.json 
     {}
 
-The empty braces mean that `deny` does not return `true`. The Terraform plan
-input has passed validation because both AMI IDs are on the whitelist.
+The empty braces means that `deny` returns no results -- concretely meaning
+that the request will not be denied. The Terraform plan input has passed
+validation because both AMI IDs are on the whitelist.
 
 Back in the input, undo the change so `ami-04b9e92b5572fa0d1` is replaced with
 `ami-atotallyfakeamiid`, then save again. fregot produces this output:
@@ -438,7 +441,7 @@ the same `fregot eval` command from earlier, substituting `your_input_file_here`
 (Note: fregot also works with YAML input!)
 
 If the AMIs in the Terraform plan are whitelisted and the plan passes
-validation, you'll see output like this because `deny` does not return true:
+validation, you'll see output like this because `deny` returns no results:
 
     []
 
