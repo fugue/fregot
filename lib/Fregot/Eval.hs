@@ -60,6 +60,7 @@ import           Fregot.Prepare.Lens
 import           Fregot.PrettyPrint        ((<$$>), (<+>))
 import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources.SourceSpan (SourceSpan)
+import           Fregot.Types.Rule         (RuleType (..))
 
 ground :: SourceSpan -> Value -> EvalM Value
 ground source val = case val of
@@ -185,7 +186,7 @@ evalVar _source v = do
         Nothing -> FreeV <$> toInstVar v
 
 evalBuiltin :: SourceSpan -> Builtin Identity -> [Value] -> EvalM Value
-evalBuiltin source (Builtin sig (Identity impl)) args0 = do
+evalBuiltin source (Builtin sig _ (Identity impl)) args0 = do
     -- There are two possible scenarios if we have an N-ary function, e.g.:
     --
     --     add(x, y) = z {
@@ -288,7 +289,7 @@ evalRefArg source indexee refArg = do
 -- the rule.
 evalCompiledRule
     :: SourceSpan
-    -> Rule SourceSpan
+    -> Rule RuleType SourceSpan
     -> Maybe Value
     -> EvalM Value
 evalCompiledRule callerSource crule mbIndex
@@ -448,7 +449,8 @@ evalRuleDefinition callerSource rule mbIndex =
             ]
 
 evalUserFunction
-    :: SourceSpan -> Rule SourceSpan -> [Value] -> EvalM Value
+    :: SourceSpan -> Rule RuleType SourceSpan -> [Value]
+    -> EvalM Value
 evalUserFunction callerSource crule callerArgs =
     pushFunctionStackFrame callerSource
         (QualifiedName (crule ^. rulePackage) (crule ^. ruleName)) $

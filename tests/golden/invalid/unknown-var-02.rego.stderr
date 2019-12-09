@@ -1,19 +1,8 @@
-fregot ([34mvar check error[0m):
+fregot ([34mtypecheck error[0m):
   "unknown-var-02.rego" (line 3, column 9):
-  unsafe variable:
+  Unbound variables:
 
     3| test_kv[k] = v {
                [31m^[0m
 
-  Variable k is referenced, but it is never
-  assigned a value.
-
-fregot ([34mvar check error[0m):
-  "unknown-var-02.rego" (line 3, column 14):
-  unsafe variable:
-
-    3| test_kv[k] = v {
-                    [31m^[0m
-
-  Variable v is referenced, but it is never
-  assigned a value.
+  The variable [33mk[0m is referenced, but it is never assigned a value

@@ -35,11 +35,13 @@ module Fregot.Interpreter
 
     , setInput
     , setInputFile
+
+    , typeExpr
     ) where
 
 import qualified Codec.Compression.GZip          as GZip
 import           Control.Lens                    (forOf_, ifor_, over, review,
-                                                  to, (^.), (^..), _2)
+                                                  (^.), (^..), _2)
 import           Control.Lens.TH                 (makeLenses)
 import           Control.Monad                   (foldM, unless)
 import           Control.Monad.Identity          (Identity (..))
@@ -75,7 +77,7 @@ import           Fregot.Names
 import qualified Fregot.Names.Renamer            as Renamer
 import qualified Fregot.Parser                   as Parser
 import qualified Fregot.Prepare                  as Prepare
-import           Fregot.Prepare.Ast              (Function (..))
+import           Fregot.Prepare.Ast              (Function (..), Query, Term)
 import           Fregot.Prepare.Package          (PreparedPackage)
 import qualified Fregot.Prepare.Package          as Prepare
 import           Fregot.PrettyPrint              ((<$$>), (<+>))
@@ -84,6 +86,8 @@ import           Fregot.Sources                  (SourcePointer)
 import qualified Fregot.Sources                  as Sources
 import           Fregot.Sources.SourceSpan       (SourceSpan)
 import qualified Fregot.Sugar                    as Sugar
+import qualified Fregot.Types.Internal           as Types
+import qualified Fregot.Types.Value              as Types
 import           System.FilePath.Extended        (listExtensions)
 
 type InterpreterM a = ParachuteT Error IO a
@@ -333,28 +337,8 @@ evalQuery
     :: Handle -> Maybe Eval.EnvContext -> PackageName
     -> Sugar.Query SourceSpan Var -> InterpreterM (Eval.Document Eval.Value)
 evalQuery h mbEvalEnvCtx pkgname query = do
-    comp    <- liftIO $ IORef.readIORef (h ^. compiled)
-    pkg     <- readCompiledPackage h pkgname
-    builtin <- liftIO $ IORef.readIORef (h ^. builtins)
-
-    -- Rename expression.
-    let renamerEnv = Renamer.RenamerEnv
-            builtin
-            mempty  -- No imports?
-            pkgname
-            (HS.fromList $ Compile.rules pkg)
-            comp
-            HS.empty
-    rquery <- runRenamerT renamerEnv $ Renamer.renameQuery query
-
-    pquery <- Prepare.prepareQuery rquery
-    cquery  <- Compile.compileQuery builtin pkg safeLocals pquery
-    dieIfErrors
+    cquery <- compileQuery h mbEvalEnvCtx pkgname query
     eval h mbEvalEnvCtx pkgname (Eval.evalQuery cquery)
-  where
-    safeLocals = Compile.Safe $ HS.fromList $ case mbEvalEnvCtx of
-        Nothing -> mempty
-        Just ec -> ec ^. Eval.ecContext . Eval.locals . to HMS.keys
 
 evalVar
     :: Handle -> Maybe Eval.EnvContext -> SourceSpan -> PackageName -> Var
@@ -372,6 +356,7 @@ newResumeStep h pkgname query = do
     envctx <- over (Eval.ecEnvironment . Eval.cache) Cache.disable <$>
                 newEvalContext h
     pkg    <- readCompiledPackage h pkgname
+    comp   <- liftIO $ IORef.readIORef (h ^. compiled)
 
     -- Rename expression.
     let builtin    = envctx ^. Eval.ecEnvironment . Eval.builtins
@@ -385,7 +370,7 @@ newResumeStep h pkgname query = do
     rquery <- runRenamerT renamerEnv $ Renamer.renameQuery query
 
     pquery <- Prepare.prepareQuery rquery
-    cquery <- Compile.compileQuery builtin pkg mempty pquery
+    cquery <- Compile.compileQuery builtin comp mempty pquery
 
     dieIfErrors
     return $ Eval.newResumeStep envctx (Eval.evalQuery cquery)
@@ -413,3 +398,65 @@ setInputFile h path = do
             "Loading input file" <+> PP.pretty path <+> "failed:" <$$>
             PP.ind (PP.pretty err)
     setInput h val
+
+compileQuery
+    :: Handle -> Maybe Eval.EnvContext -> PackageName
+    -> Sugar.Query SourceSpan Var
+    -> InterpreterM (Query SourceSpan)
+compileQuery h mbEvalEnvCtx pkgname query = do
+    comp    <- liftIO $ IORef.readIORef (h ^. compiled)
+    pkg     <- readCompiledPackage h pkgname
+    builtin <- liftIO $ IORef.readIORef (h ^. builtins)
+
+    -- Rename expression.
+    let renamerEnv = Renamer.RenamerEnv
+            builtin
+            mempty  -- No imports?
+            pkgname
+            (HS.fromList $ Compile.rules pkg)
+            comp
+            HS.empty
+    rquery <- runRenamerT renamerEnv $ Renamer.renameQuery query
+
+    pquery <- Prepare.prepareQuery rquery
+    cquery <- Compile.compileQuery builtin comp typeContext pquery
+    dieIfErrors
+    return cquery
+  where
+    typeContext = case mbEvalEnvCtx of
+        Nothing -> mempty
+        Just ec -> Types.inferContext $ ec ^. Eval.ecContext
+
+compileExpr
+    :: Handle -> Maybe Eval.EnvContext -> PackageName
+    -> Sugar.Expr SourceSpan Var
+    -> InterpreterM (Term SourceSpan, Types.Type)
+compileExpr h mbEvalEnvCtx pkgname expr = do
+    comp    <- liftIO $ IORef.readIORef (h ^. compiled)
+    pkg     <- readCompiledPackage h pkgname
+    builtin <- liftIO $ IORef.readIORef (h ^. builtins)
+
+    -- Rename expression.
+    let renamerEnv = Renamer.RenamerEnv
+            builtin
+            mempty  -- No imports?
+            pkgname
+            (HS.fromList $ Compile.rules pkg)
+            comp
+            HS.empty
+    rterm <- runRenamerT renamerEnv $ Renamer.renameExpr expr
+
+    pterm       <- Prepare.prepareExpr rterm
+    (cterm, ty) <- Compile.compileTerm builtin comp typeContext pterm
+    dieIfErrors
+    return (cterm, fst ty)
+  where
+    typeContext = case mbEvalEnvCtx of
+        Nothing -> mempty
+        Just ec -> Types.inferContext $ ec ^. Eval.ecContext
+
+typeExpr
+    :: Handle -> Maybe Eval.EnvContext -> PackageName
+    -> Sugar.Expr SourceSpan Var -> InterpreterM Types.Type
+typeExpr h mbEvalEnvCtx pkgname expr =
+    snd <$> compileExpr h mbEvalEnvCtx pkgname expr

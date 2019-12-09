@@ -1,0 +1,8 @@
+fregot ([34mtypecheck error[0m):
+  "invalid_badtypes.rego" (line 5, column 5):
+  Subtype error:
+
+    5|     b + "wat" = c
+           [31m^^^^^^^^^[0m
+
+  Cannot use type [33m[34mstring[0m[0m as [33m[34mnumber[0m[0m

@@ -64,9 +64,6 @@ import qualified Control.Monad.Stream      as Stream
 import           Control.Monad.Trans       (MonadIO (..))
 import qualified Data.HashMap.Strict       as HMS
 import           Data.List                 (find)
-import           Data.Unification          (Unification)
-import qualified Data.Unification          as Unification
-import qualified Data.Unique               as Unique
 import           Fregot.Compile.Package    (CompiledPackage)
 import qualified Fregot.Compile.Package    as Package
 import           Fregot.Error              (Error)
@@ -74,27 +71,14 @@ import qualified Fregot.Error              as Error
 import qualified Fregot.Error.Stack        as Stack
 import           Fregot.Eval.Builtins      (ReadyBuiltin)
 import           Fregot.Eval.Cache         (Cache)
+import           Fregot.Eval.Internal
 import           Fregot.Eval.Value
 import           Fregot.Names
 import           Fregot.Prepare.Ast
 import           Fregot.PrettyPrint        ((<$$>))
 import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources.SourceSpan (SourceSpan)
-
-data Context = Context
-    { _unification :: !(Unification InstVar Value)
-    , _locals      :: !(HMS.HashMap Var InstVar)
-    , _nextInstVar :: !Unique.Unique
-    }
-
-$(makeLenses ''Context)
-
-emptyContext :: Context
-emptyContext = Context
-    { _unification = Unification.empty
-    , _locals      = mempty
-    , _nextInstVar = 0
-    }
+import           Fregot.Types.Rule         (RuleType)
 
 data Row a = Row
     { _rowContext :: !Context
@@ -288,7 +272,7 @@ toInstVar v = state $ \ctx -> case HMS.lookup v (ctx ^. locals) of
             !lcls = HMS.insert v iv (ctx ^. locals) in
         (iv, ctx {_nextInstVar = _nextInstVar ctx + 1, _locals = lcls})
 
-lookupRule :: Name -> EvalM (Maybe (Rule SourceSpan))
+lookupRule :: Name -> EvalM (Maybe (Rule RuleType SourceSpan))
 lookupRule (LocalName _) = pure Nothing
 lookupRule (QualifiedName pkgname name) = do
     env0 <- ask

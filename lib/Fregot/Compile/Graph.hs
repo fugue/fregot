@@ -8,6 +8,6 @@ import           Fregot.Names
 import           Fregot.Prepare.Ast
 import           Fregot.Prepare.Lens
 
-ruleDependencies :: Rule a -> HS.HashSet (PackageName, Var)
+ruleDependencies :: Rule ty a -> HS.HashSet (PackageName, Var)
 ruleDependencies = HS.toHashSetOf $
     ruleTerms . termCosmosNames . traverse . _QualifiedName

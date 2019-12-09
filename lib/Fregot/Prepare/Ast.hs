@@ -7,7 +7,9 @@
 {-# LANGUAGE TemplateHaskell            #-}
 module Fregot.Prepare.Ast
     ( RuleKind (..), _CompleteRule, _GenSetRule, _GenObjectRule, _FunctionRule
-    , Rule (..), rulePackage, ruleName, ruleAnn, ruleDefault, ruleKind, ruleDefs
+    , Rule (..), rulePackage, ruleName, ruleAnn, ruleDefault, ruleKind, ruleInfo
+    , ruleDefs
+    , Rule'
     , RuleDefinition (..), ruleDefName, ruleDefImports, ruleDefAnn, ruleArgs
     , ruleIndex, ruleValue, ruleBodies, ruleElses
     , RuleElse (..), ruleElseAnn, ruleElseValue, ruleElseBody
@@ -60,14 +62,17 @@ data RuleKind
     | FunctionRule Int  -- Arity.
     deriving (Eq, Show)
 
-data Rule a = Rule
+data Rule i a = Rule
     { _rulePackage :: !PackageName
     , _ruleName    :: !Var
     , _ruleAnn     :: !SourceSpan
-    , _ruleDefault :: !(Maybe (Term a))
     , _ruleKind    :: !RuleKind
+    , _ruleInfo    :: !i
+    , _ruleDefault :: !(Maybe (Term a))
     , _ruleDefs    :: [RuleDefinition a]
     } deriving (Show)
+
+type Rule' = Rule () SourceSpan
 
 type Imports a = HMS.HashMap Var (a, Sugar.ImportGut)
 

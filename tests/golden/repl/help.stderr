@@ -16,6 +16,7 @@ Other commands:
   [33m:next      [0mstep (over) the next rule in the debugged program
   [33m:rewind    [0mgo back to the previous debug suspension
   [33m:test      [0mrun tests in the current package
+  [33m:type      [0mprint the type of a term
   [33m:where     [0mprint your location
   [33m:watch     [0mevaluate input after file changes
 

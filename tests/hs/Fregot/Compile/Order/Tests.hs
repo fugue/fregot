@@ -48,44 +48,44 @@ tests_orderForClosures = Tasty.testGroup "orderForClosures"
     [ Tasty.testCase "01" $
         let program =
                 [ lit $ TermS $
-                    ArrayCompT 0 (name "b") [lit $ UnifyS 0 (name "a") (name "b")]
+                    ArrayCompT source (name "b") [lit $ UnifyS source (name "a") (name "b")]
                 , lit $ TermS $
-                    ArrayCompT 0 (name "c") [lit $ UnifyS 0 (name "a") (name "c")]
-                , lit $ UnifyS 0 (name "a") (num 1)
+                    ArrayCompT source (name "c") [lit $ UnifyS source (name "a") (name "c")]
+                , lit $ UnifyS source (name "a") (num 1)
                 ] in
         testOrderForClosures program @?=
         [program !! 2, program !! 0, program !! 1]
     ]
   where
-    testOrderForClosures = fst . orderForClosures (const $ Just 2) mempty
+    testOrderForClosures = fst . orderForClosures inferEnv mempty
 
 tests_orderForSafety :: Tasty.TestTree
 tests_orderForSafety = Tasty.testGroup "orderForSafety"
     [ Tasty.testCase "01" $
         let program =
-                [ lit $ UnifyS 0 (name "a") (num 1)
-                , lit $ UnifyS 0
+                [ lit $ UnifyS source (name "a") (num 1)
+                , lit $ UnifyS source
                     (name "x")
                     (call (BuiltinName "add") [name "a", name "b", name "x"])
-                , lit $ UnifyS 0 (name "b") (num 2)
+                , lit $ UnifyS source (name "b") (num 2)
                 ] in
         testOrderForSafety program @?=
         [program !! 0, program !! 2, program !! 1]
     , Tasty.testCase "02" $ testOrderForSafety
         [ lit $ TermS $
-            ArrayCompT 0 (name "c")
-                [ lit $ UnifyS 0 (name "c") (name "b")
-                , lit $ UnifyS 0 (name "b") (name "a")
+            ArrayCompT source (name "c")
+                [ lit $ UnifyS source (name "c") (name "b")
+                , lit $ UnifyS source (name "b") (name "a")
                 ]
-        , lit $ UnifyS 0 (name "a") (num 1)
+        , lit $ UnifyS source (name "a") (num 1)
         ] @?=
-        [ lit $ UnifyS 0 (name "a") (num 1)
+        [ lit $ UnifyS source (name "a") (num 1)
         , lit $ TermS $
-            ArrayCompT 0 (name "c")
-                [ lit $ UnifyS 0 (name "b") (name "a")
-                , lit $ UnifyS 0 (name "c") (name "b")
+            ArrayCompT source (name "c")
+                [ lit $ UnifyS source (name "b") (name "a")
+                , lit $ UnifyS source (name "c") (name "b")
                 ]
         ]
     ]
   where
-    testOrderForSafety = fst . orderForSafety (const $ Just 2) mempty
+    testOrderForSafety = fst . orderForSafety inferEnv mempty

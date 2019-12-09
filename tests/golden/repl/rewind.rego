@@ -2,7 +2,7 @@ package rewind
 
 crashing_rule {
   x = 1
-  x + "hi" > "wat"
+  x + input.msg with input as {"msg": "crash"}
 }
 
 failing_rule {

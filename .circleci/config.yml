@@ -13,7 +13,7 @@ jobs:
   build:
     # This image has most Haskell stuff preinstalled.
     docker:
-    - image: 'fugue2/aws-haskell:0.0.2'
+    - image: 'fugue2/aws-haskell:0.0.3'
 
     steps:
     - checkout

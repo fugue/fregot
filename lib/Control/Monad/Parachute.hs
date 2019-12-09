@@ -7,25 +7,34 @@ module Control.Monad.Parachute
     ( ParachuteT (..)
     , runParachuteT
     , mapParachuteT
+    , withErrors
 
     , fatal
     , dieIfErrors
     , tellErrors
     , tellError
 
+    , trying
     , try
+    , catching
     , catch
     ) where
 
 import           Control.Monad.Except (MonadError (..))
 import           Control.Monad.Reader (MonadReader (..))
 import           Control.Monad.State  (MonadState (..))
-import           Control.Monad.Trans  (MonadIO (..))
+import           Control.Monad.Trans  (MonadIO (..), MonadTrans (..))
+import           Data.Bifunctor       (Bifunctor (..))
 
 data ParachuteResult e a
     = Ok a
     | Fatal
     deriving (Functor)
+
+instance Bifunctor ParachuteResult where
+    first _ (Ok x) = Ok x
+    first _ Fatal  = Fatal
+    second         = fmap
 
 newtype ParachuteT e m a = ParachuteT
     { unParachuteT :: [e] -> m ([e], ParachuteResult e a)
@@ -64,6 +73,11 @@ instance Monad m => MonadError [e] (ParachuteT e m) where
     throwError = fatals
     catchError = catch
 
+instance MonadTrans (ParachuteT e) where
+    lift mx = ParachuteT $ \errors -> do
+        x <- mx
+        pure (errors, Ok x)
+
 runParachuteT :: Monad m => ParachuteT e m a -> m ([e], Maybe a)
 runParachuteT p = do
     (errors, ma) <- unParachuteT p []
@@ -77,6 +91,11 @@ mapParachuteT
     => (forall b. m b -> n b)
     -> ParachuteT e m a -> ParachuteT e n a
 mapParachuteT f (ParachuteT p) = ParachuteT (f . p)
+
+withErrors :: Monad m => (e -> f) -> ParachuteT e m a -> ParachuteT f m a
+withErrors f (ParachuteT p) = ParachuteT $ \errors0 -> do
+    (errors1, x) <- p []
+    return (errors0 ++ map f errors1, first f x)
 
 fatal :: Monad m => e -> ParachuteT e m a
 fatal x = ParachuteT $ \errors -> return (x : errors, Fatal)
@@ -95,6 +114,22 @@ tellErrors es = ParachuteT $ \errors -> return (es ++ errors, Ok ())
 tellError :: Monad m => e -> ParachuteT e m ()
 tellError e = ParachuteT $ \errors -> return (e : errors, Ok ())
 
+trying
+    :: Monad m
+    => ([e] -> Maybe a)
+    -> ParachuteT e m b
+    -> ParachuteT e m (Either a b)
+trying shouldCatch (ParachuteT mx) = ParachuteT $ \originalErrors -> do
+    -- Execute `mx` in isolation.
+    (xerrs, xres) <- mx []
+
+    -- Catch fatal errors only (for now).
+    case shouldCatch xerrs of
+        Just info -> return (originalErrors, Ok (Left info))
+        Nothing   -> case xres of
+            Fatal -> return (xerrs ++ originalErrors, Fatal)
+            Ok x  -> return (xerrs ++ originalErrors, Ok (Right x))
+
 try :: Monad m => ParachuteT e m a -> ParachuteT e m (Either [e] a)
 try (ParachuteT mx) = ParachuteT $ \originalErrors -> do
     -- Execute `mx` in isolation.
@@ -104,8 +139,16 @@ try (ParachuteT mx) = ParachuteT $ \originalErrors -> do
     case xres of
         Fatal -> return (originalErrors, Ok (Left xerrs))
         Ok x  -> return (xerrs ++ originalErrors, Ok (Right x))
+{-# DEPRECATED try "Use 'trying' instead" #-}
 
 catch
     :: Monad m
     => ParachuteT e m a -> ([e] -> ParachuteT e m a) -> ParachuteT e m a
 catch mx f = try mx >>= either f return
+{-# DEPRECATED catch "Use 'catching' instead" #-}
+
+catching
+    :: Monad m
+    => ([e] -> Maybe a) -> ParachuteT e m b -> (a -> ParachuteT e m b)
+    -> ParachuteT e m b
+catching shouldCatch mx my = trying shouldCatch mx >>= either my return

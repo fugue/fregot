@@ -20,6 +20,7 @@ Library
   Hs-source-dirs:   lib
 
   Exposed-modules:
+    Fregot.Arity
     Fregot.Compile.Graph
     Fregot.Compile.Order
     Fregot.Compile.Package
@@ -28,6 +29,7 @@ Library
     Fregot.Eval
     Fregot.Eval.Builtins
     Fregot.Eval.Cache
+    Fregot.Eval.Internal
     Fregot.Eval.Json
     Fregot.Eval.Monad
     Fregot.Eval.Number
@@ -58,7 +60,6 @@ Library
     Fregot.Prepare.Ast
     Fregot.Prepare.Lens
     Fregot.Prepare.Package
-    Fregot.Prepare.Vars
     Fregot.PrettyPrint
     Fregot.PrettyPrint.Internal
     Fregot.PrettyPrint.Sem
@@ -71,18 +72,24 @@ Library
     Fregot.Sources.SourceSpan
     Fregot.Sugar
     Fregot.Test
-    Fregot.TypeCheck.Types
+    Fregot.Types.Builtins
+    Fregot.Types.Infer
+    Fregot.Types.Internal
+    Fregot.Types.Rule
+    Fregot.Types.Value
     Fregot.Version
 
     Control.Monad.Parachute
     Control.Monad.Stream
     Data.Cache
+    Data.Kleene
     Data.SafeVar
     Data.Traversable.HigherOrder
     Data.Unification
     Data.Unique
     Language.Dot
 
+    Control.Monad.Except.Extended
     Control.Monad.Extended
     Data.Aeson.Extended
     Data.Aeson.TH.Extended
@@ -176,6 +183,7 @@ Test-suite fregot-tests
   Ghc-options:       -Wall -rtsopts -threaded
 
   Other-modules:
+    Data.Kleene.Tests
     Data.SafeVar.Tests
     Fregot.Compile.Order.Tests
     Fregot.Interpreter.Dependencies.Tests
@@ -184,7 +192,7 @@ Test-suite fregot-tests
     Fregot.Parser.Tests
     Fregot.Prepare.Dsl
     Fregot.Prepare.Lens.Tests
-    Fregot.Prepare.Vars.Tests
+    Fregot.Types.Internal.Tests
     System.Console.Haskeline.Tests
     Test.Tasty.Extended
 

@@ -34,7 +34,7 @@ import           Prelude                   hiding (head)
 prepareRule
     :: Monad m
     => PackageName -> Imports SourceSpan -> Sugar.Rule SourceSpan Name
-    -> ParachuteT Error m (Rule SourceSpan)
+    -> ParachuteT Error m Rule'
 prepareRule pkgname imports rule
     | head ^. Sugar.ruleDefault = do
         -- NOTE(jaspervdj): Perform sanity checks on default rules.
@@ -62,6 +62,7 @@ prepareRule pkgname imports rule
             , _ruleAnn     = head ^. Sugar.ruleAnn
             , _ruleDefault = def
             , _ruleKind    = CompleteRule
+            , _ruleInfo    = ()
             , _ruleDefs    = []
             }
 
@@ -84,7 +85,8 @@ prepareRule pkgname imports rule
             , _ruleName    = head ^. Sugar.ruleName
             , _ruleAnn     = head ^. Sugar.ruleAnn
             , _ruleDefault = Nothing
-            , _ruleKind    = FunctionRule (length args)
+            , _ruleKind    = FunctionRule (maybe 0 length args)
+            , _ruleInfo    = ()
             , _ruleDefs    =
                 [ RuleDefinition
                     { _ruleDefName    = head ^. Sugar.ruleName
@@ -117,6 +119,7 @@ prepareRule pkgname imports rule
             , _ruleAnn     = head ^. Sugar.ruleAnn
             , _ruleDefault = Nothing
             , _ruleKind    = kind
+            , _ruleInfo    = ()
             , _ruleDefs    =
                 [ RuleDefinition
                     { _ruleDefName    = head ^. Sugar.ruleName
@@ -135,10 +138,7 @@ prepareRule pkgname imports rule
 
 -- | Merge two rules that have the same name.  This can go wrong in all sorts of
 -- ways.
-mergeRules
-    :: Monad m
-    => Rule SourceSpan -> Rule SourceSpan
-    -> ParachuteT Error m (Rule SourceSpan)
+mergeRules :: Monad m => Rule' -> Rule' -> ParachuteT Error m Rule'
 mergeRules x y = do
     let defaults = mapMaybe (view ruleDefault) [x, y]
     when (length defaults > 1) $ tellError $ Error.mkMultiError

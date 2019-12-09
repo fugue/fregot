@@ -15,12 +15,11 @@ fregot ([34mcompile error[0m):
 
   generates an object
 
-fregot ([34mvar check error[0m):
+fregot ([34mtypecheck error[0m):
   "default-index.rego" (line 5, column 26):
-  unsafe variable:
+  Unbound variables:
 
     5| power_level[character] = level {
                                 [31m^^^^^[0m
 
-  Variable level is referenced, but it is never
-  assigned a value.
+  The variable [33mlevel[0m is referenced, but it is never assigned a value

@@ -40,13 +40,13 @@
     "subsystem": "compile"
   },
   {
-    "_text": "fregot (var check error):\n  \"invalid.rego\" (line 5, column 6):\n  unsafe variable:\n\n    5| rule[idx] = 2 {\n            ^^^\n\n  Variable idx is referenced, but it is never\n  assigned a value.",
+    "_text": "fregot (typecheck error):\n  \"invalid.rego\" (line 5, column 6):\n  Unbound variables:\n\n    5| rule[idx] = 2 {\n            ^^^\n\n  The variable idx is referenced, but it is never assigned a value",
     "details": [],
     "hints": [],
     "severity": "error",
     "sourceSpans": [
       {
-        "body": "Variable idx is referenced, but it is never\nassigned a value.",
+        "body": "The variable idx is referenced, but it is never assigned a value",
         "sourceSpan": {
           "end": {
             "column": 8,
@@ -58,10 +58,10 @@
             "line": 5
           }
         },
-        "title": "unsafe variable"
+        "title": "Unbound variables"
       }
     ],
     "stack": [],
-    "subsystem": "var check"
+    "subsystem": "typecheck"
   }
 ]

@@ -2,11 +2,11 @@
 package fregot.tests.builtins_05
 
 test_any_array_true {
-    any([false, true, 100, "foo"])
+    any([false, true])
 }
 
 test_any_array_false {
-    any([false, 100, "foo"]) == false
+    any([false, false]) == false
 }
 
 test_any_array_empty {
@@ -14,11 +14,11 @@ test_any_array_empty {
 }
 
 test_any_set_true {
-    any({false, true, 100, "foo"})
+    any({false, true})
 }
 
 test_any_set_false {
-    any({false, 100, "foo"}) == false
+    any({false}) == false
 }
 
 test_any_set_empty {
@@ -30,7 +30,7 @@ test_all_array_true {
 }
 
 test_all_array_false {
-    all([100, true, "foo"]) == false
+    all([true, true, false]) == false
 }
 
 test_all_array_empty {
@@ -42,7 +42,7 @@ test_all_set_true {
 }
 
 test_all_set_false {
-    all({false, true, "foo"}) == false
+    all({false}) == false
 }
 
 test_all_set_empty {
