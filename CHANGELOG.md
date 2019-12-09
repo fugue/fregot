@@ -1,5 +1,9 @@
 # CHANGELOG
 
+ -  0.5.0 (2019-12-19)
+     *  Add a type checking phase using flow analysis.
+     *  Add the `:type` command to the REPL.
+
  -  0.4.4 (2019-11-18)
      *  Minor README improvements.
      *  Allow importing `input.` paths.
