@@ -7,8 +7,8 @@
 {-# LANGUAGE TemplateHaskell            #-}
 module Fregot.Prepare.Ast
     ( RuleKind (..), _CompleteRule, _GenSetRule, _GenObjectRule, _FunctionRule
-    , Rule (..), rulePackage, ruleName, ruleAnn, ruleDefault, ruleKind, ruleInfo
-    , ruleDefs
+    , Rule (..), rulePackage, ruleName, ruleKey, ruleAnn, ruleDefault, ruleKind
+    , ruleInfo, ruleDefs
     , Rule'
     , RuleDefinition (..), ruleDefName, ruleDefImports, ruleDefAnn, ruleArgs
     , ruleIndex, ruleValue, ruleBodies, ruleElses
@@ -46,9 +46,9 @@ module Fregot.Prepare.Ast
 import           Control.Lens              ((^.))
 import           Control.Lens.TH           (makeLenses, makePrisms)
 import           Data.Hashable             (Hashable)
-import qualified Data.HashMap.Strict       as HMS
 import qualified Data.List                 as L
 import           Fregot.Names
+import           Fregot.Names.Imports      (Imports)
 import           Fregot.PrettyPrint        ((<+>), (<+>?), (?<+>))
 import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources.SourceSpan (SourceSpan)
@@ -65,6 +65,7 @@ data RuleKind
 data Rule i a = Rule
     { _rulePackage :: !PackageName
     , _ruleName    :: !Var
+    , _ruleKey     :: !Key
     , _ruleAnn     :: !SourceSpan
     , _ruleKind    :: !RuleKind
     , _ruleInfo    :: !i
@@ -73,8 +74,6 @@ data Rule i a = Rule
     } deriving (Show)
 
 type Rule' = Rule () SourceSpan
-
-type Imports a = HMS.HashMap Var (a, Sugar.ImportGut)
 
 data RuleDefinition a = RuleDefinition
     { _ruleDefName    :: !Var

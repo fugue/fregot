@@ -83,4 +83,5 @@ isStepOver (StackTrace newFrames) (StackTrace oldFrames) =
 
 -- | Determine what package we are in depending on the stack trace.
 package :: StackTrace -> Maybe PackageName
-package stack = peek stack >>= name >>= (^? _QualifiedName . _1)
+package stack = peek stack >>= name >>=
+    (^? _QualifiedName . qualifiedVarFromKey . _1)

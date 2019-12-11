@@ -54,14 +54,15 @@ parseImportGut = do
         ("data"  : vs) -> return $! ImportData  (mkPackageName vs)
         ("input" : vs) -> return $! ImportInput (mkPackageName vs)
         _             -> Parsec.unexpectedAt pos $
-            show (PP.pretty pkgname) ++
+            show (PP.pretty' pkgname) ++
             " (imports should start with `data.` or `input.`)"
 
 parseModule :: ParserOptions -> FregotParser (Module SourceSpan Var)
-parseModule po = Module
-    <$> parseModuleHead po
-    <*> Parsec.many parseModuleImport
-    <*> Parsec.many rule
+parseModule po = withSourceSpan $ do
+    _modulePackage <- parseModuleHead po
+    _moduleImports <- Parsec.many parseModuleImport
+    _modulePolicy  <- Parsec.many rule
+    pure $ \_moduleAnn -> Module {..}
 
 parseModuleHead :: ParserOptions -> FregotParser PackageName
 parseModuleHead po = case po ^. poDefaultPackageName of

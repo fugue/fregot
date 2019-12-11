@@ -12,14 +12,14 @@ import           Data.Binary               (Binary (..))
 import qualified Data.HashMap.Strict       as HMS
 import           Data.Version              (showVersion)
 import           Fregot.Names              (Var)
-import           Fregot.Sources            (SourcePointer, Sources)
+import           Fregot.Sources            (Sources)
 import           Fregot.Sources.SourceSpan (SourceSpan)
 import           Fregot.Sugar              (PackageName)
 import qualified Fregot.Sugar              as Sugar
 import qualified Fregot.Version            as Fregot
 
 -- | The modules that make up a package.
-type ModuleBatch = [(SourcePointer, Sugar.Module SourceSpan Var)]
+type ModuleBatch = Sugar.Modules SourceSpan Var
 
 data Bundle = Bundle
     { _bundleSources :: !Sources

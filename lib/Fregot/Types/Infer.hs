@@ -15,7 +15,7 @@ module Fregot.Types.Infer
     ( TypeError (..), _UnboundVars
     , SourceType
 
-    , InferEnv (..), ieBuiltins, ieDependencies, ieInferClosures
+    , InferEnv (..), ieBuiltins, ieTree, ieInferClosures
     , emptyInferEnv
     , InferM
     , runInfer
@@ -59,11 +59,10 @@ import           Fregot.Eval.Builtins        (Builtin, Builtins)
 import qualified Fregot.Eval.Builtins        as Builtin
 import           Fregot.Names
 import           Fregot.Prepare.Ast
-import           Fregot.Prepare.Package      (Package)
-import qualified Fregot.Prepare.Package      as Package
 import           Fregot.PrettyPrint          ((<+>), (<+>?))
 import qualified Fregot.PrettyPrint          as PP
 import           Fregot.Sources.SourceSpan   (SourceSpan)
+import qualified Fregot.Tree                 as Tree
 import qualified Fregot.Types.Builtins       as B
 import           Fregot.Types.Internal       (Type, (∩), (⊆))
 import qualified Fregot.Types.Internal       as Types
@@ -86,12 +85,12 @@ data TypeError
 
 data InferEnv = InferEnv
     { _ieBuiltins      :: Builtins Proxy
-    , _ieDependencies  :: HMS.HashMap PackageName (Package RuleType)
+    , _ieTree          :: Tree.Tree (Rule RuleType SourceSpan)
     , _ieInferClosures :: Bool
     }
 
 emptyInferEnv :: InferEnv
-emptyInferEnv = InferEnv HMS.empty HMS.empty True
+emptyInferEnv = InferEnv HMS.empty Tree.empty True
 
 type InferState = Unify.Unification UnqualifiedVar SourceType
 
@@ -166,15 +165,11 @@ blankUnification :: InferM a -> InferM a
 blankUnification mx = isolateUnification (put Unify.empty >> mx)
 
 getRule
-    :: SourceSpan -> PackageName -> Var
-    -> InferM (Rule Types.RuleType SourceSpan)
-getRule source pkg var = do
+    :: SourceSpan -> Key -> InferM (Rule Types.RuleType SourceSpan)
+getRule source key = do
     env <- ask
-    maybe
-        (fatal $ UnboundName (QualifiedName pkg var) source)
-        return $ do
-        package <- HMS.lookup pkg (env ^. ieDependencies)
-        Package.lookup var package
+    maybe (fatal $ UnboundName (QualifiedName key) source) return $
+        Tree.lookup key (env ^. ieTree)
 
 runInfer
     :: Monad m => InferEnv -> InferM a -> ParachuteT Error m (a, InferState)
@@ -340,8 +335,8 @@ inferTerm (CallT source fun args) = do
         Nothing -> case fun of
             OperatorFunction o -> fatal $ InternalError $
                 "builtin for operator" <+> PP.pretty o <+> "not found"
-            NamedFunction (QualifiedName pkg var) -> do
-                rule <- getRule source pkg var
+            NamedFunction (QualifiedName key) -> do
+                rule <- getRule source key
                 inferUserFunction source fun rule args
             NamedFunction WildcardName    -> cannotCall
             NamedFunction (LocalName _)   -> cannotCall
@@ -361,8 +356,8 @@ inferTerm (NameT source (LocalName var)) = do
         Nothing -> fatal $ UnboundVars (HMS.singleton var source)
         Just ty -> return ty
 
-inferTerm (NameT source (QualifiedName pkg var)) = do
-    rule <- getRule source pkg var
+inferTerm (NameT source (QualifiedName key)) = do
+    rule <- getRule source key
     pure (Types.ruleTypeToType (rule ^. ruleInfo), NonEmpty.singleton source)
 
 inferTerm (ArrayT source items) = do

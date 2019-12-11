@@ -53,7 +53,7 @@ main _ opts = do
             forM_ regoPaths $ \path -> do
                 liftIO $ FileWatch.watch fileWatch path
                 Interpreter.loadModuleOrBundle itpr defaultParserOptions path
-            Interpreter.compilePackages itpr
+            Interpreter.compileRules itpr
         sauce <- IORef.readIORef sources
         Error.hPutErrors IO.stderr sauce Error.Text lerrs
         case mbResult of

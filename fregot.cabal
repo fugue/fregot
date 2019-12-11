@@ -32,6 +32,7 @@ Library
     Fregot.Eval.Internal
     Fregot.Eval.Json
     Fregot.Eval.Monad
+    Fregot.Eval.Mu
     Fregot.Eval.Number
     Fregot.Eval.TempObject
     Fregot.Eval.Value
@@ -51,6 +52,7 @@ Library
     Fregot.Main.Repl
     Fregot.Main.Test
     Fregot.Names
+    Fregot.Names.Imports
     Fregot.Names.Renamer
     Fregot.Parser
     Fregot.Parser.Internal
@@ -72,6 +74,7 @@ Library
     Fregot.Sources.SourceSpan
     Fregot.Sugar
     Fregot.Test
+    Fregot.Tree
     Fregot.Types.Builtins
     Fregot.Types.Infer
     Fregot.Types.Internal
@@ -93,6 +96,7 @@ Library
     Control.Monad.Extended
     Data.Aeson.Extended
     Data.Aeson.TH.Extended
+    Data.Bifunctor.Extended
     Data.ByteString.Extended
     Data.HashMap.Strict.Extended
     Data.HashSet.Extended
@@ -192,6 +196,7 @@ Test-suite fregot-tests
     Fregot.Parser.Tests
     Fregot.Prepare.Dsl
     Fregot.Prepare.Lens.Tests
+    Fregot.Tree.Tests
     Fregot.Types.Internal.Tests
     System.Console.Haskeline.Tests
     Test.Tasty.Extended

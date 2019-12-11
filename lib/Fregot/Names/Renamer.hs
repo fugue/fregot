@@ -7,8 +7,12 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell   #-}
 module Fregot.Names.Renamer
-    ( RenamerEnv (..), reBuiltins, reImports, rePackage, rePackageRules
-    , reDependencies
+    ( -- * Rename a number of modules at once.
+      renameModules
+
+      -- * Lower-level functionality.
+    , RenamerEnv (..), reBuiltins, reImports, rePackage, rePackageRules
+    , reUniverse
     , RenamerM
     , renameModule
     , renameQuery
@@ -18,19 +22,20 @@ module Fregot.Names.Renamer
 import           Control.Lens              (locally, view, (^.), (^..), _2)
 import           Control.Lens.TH           (makeLenses)
 import           Control.Monad             (guard)
-import           Control.Monad.Parachute   (ParachuteT, fatal, tellError)
-import           Control.Monad.Reader      (Reader)
+import           Control.Monad.Parachute   (ParachuteT, fatal, mapParachuteT,
+                                            tellError)
+import           Control.Monad.Reader      (Reader, runReader)
 import           Data.Bifunctor            (first)
 import qualified Data.HashMap.Strict       as HMS
 import qualified Data.HashSet.Extended     as HS
 import           Data.List.Extended        (splits, unsnoc)
-import           Data.Maybe                (isNothing, listToMaybe, maybeToList)
-import           Fregot.Compile.Package    (CompiledPackage)
-import qualified Fregot.Compile.Package    as Package
+import           Data.Maybe                (listToMaybe, maybeToList)
+import           Data.Traversable          (for)
 import           Fregot.Error              (Error)
 import qualified Fregot.Error              as Error
 import           Fregot.Eval.Builtins      (ReadyBuiltin)
 import           Fregot.Names
+import           Fregot.Names.Imports
 import           Fregot.Prepare.Ast        (Function (..), Imports)
 import           Fregot.PrettyPrint        ((<+>))
 import qualified Fregot.PrettyPrint        as PP
@@ -42,11 +47,27 @@ data RenamerEnv = RenamerEnv
     , _reImports      :: !(Imports SourceSpan)
     , _rePackage      :: !PackageName
     , _rePackageRules :: !(HS.HashSet Var)
-    , _reDependencies :: !(HMS.HashMap PackageName CompiledPackage)
+    , _reUniverse     :: !(PackageName -> [UnqualifiedVar])
     , _reLocalVars    :: !(HS.HashSet UnqualifiedVar)
     }
 
 $(makeLenses ''RenamerEnv)
+
+-- | Rename a number modules located under the same package name.
+renameModules
+    :: Monad m
+    => HMS.HashMap Function ReadyBuiltin
+    -> PackageName
+    -> (PackageName -> [UnqualifiedVar])
+    -> Modules SourceSpan Var
+    -> ParachuteT Error m (Modules SourceSpan Name)
+renameModules builtin pkgname universe modules = for modules $ \modul -> do
+    let imports = gatherImports (modul ^. moduleImports)
+        env     = RenamerEnv builtin imports pkgname pkgrules universe HS.empty
+    mapParachuteT (\mx -> pure (runReader mx env)) (renameModule modul)
+  where
+    -- All rules in the package.
+    pkgrules = HS.toHashSetOf (traverse . moduleRuleNames) modules
 
 type RenamerM a = ParachuteT Error (Reader RenamerEnv) a
 
@@ -70,7 +91,8 @@ withLocalVarDecls bodies =
 
 renameModule :: Rename Module
 renameModule modul = Module
-    <$> pure (modul ^. modulePackage)
+    <$> pure (modul ^. moduleAnn)
+    <*> pure (modul ^. modulePackage)
     <*> pure (modul ^. moduleImports)
     <*> traverse renameRule (modul ^. modulePolicy)
 
@@ -144,17 +166,17 @@ resolveRef source var refArgs = do
     imports   <- view reImports
     rules     <- view rePackageRules
     thispkg   <- view rePackage
-    deps      <- view reDependencies
+    universe  <- view reUniverse
     locals    <- view reLocalVars
 
     -- Auxiliary to check if something actually exists in the deps.
     let checkExists pkg _ | pkg == thispkg = return ()
-        checkExists pkg name = case HMS.lookup pkg deps of
-            Nothing ->
+        checkExists pkg name = case universe pkg of
+            [] ->
                 tellRenameError source "unknown package" $
                 "Package" <+> PP.pretty pkg <+>
-                "is imported but not loaded."
-            Just dep | isNothing (Package.lookup name dep) ->
+                "is imported but not loaded (or empty)."
+            uni | not (name `elem` uni) ->
                 tellRenameError source "unknown function" $
                 "Rule" <+> PP.pretty name <+>
                 "is not defined in package" <+> PP.pretty pkg
@@ -163,10 +185,10 @@ resolveRef source var refArgs = do
     case var of
 
         "data"  | Just (pkg, rname, remainder) <-
-                    resolveData thispkg deps refArgs -> do
+                    resolveData thispkg universe refArgs -> do
             checkExists pkg rname
             remainder' <- traverse renameRefArg remainder
-            return (QualifiedName pkg rname, remainder')
+            return (mkQualifiedName pkg rname, remainder')
 
         _       | Just (_, ImportData pkg) <- HMS.lookup var imports
                 , (ra1 : ras)              <- refArgs
@@ -174,7 +196,7 @@ resolveRef source var refArgs = do
 
             checkExists pkg rname
             ras' <- traverse renameRefArg ras
-            return (QualifiedName pkg rname, ras')
+            return (mkQualifiedName pkg rname, ras')
 
         -- For input imports, it's relatively simple.  If we have something like
         --
@@ -193,7 +215,7 @@ resolveRef source var refArgs = do
             refArgs' <- traverse renameRefArg refArgs
             let name
                     | specialBuiltinVar var  = BuiltinName var
-                    | HS.member var rules    = QualifiedName thispkg var
+                    | HS.member var rules    = mkQualifiedName thispkg var
                     | var `HS.member` locals = LocalName var
                     | otherwise              = LocalName var
             return (name, refArgs')
@@ -209,13 +231,13 @@ resolveRef source var refArgs = do
         RefBrackArg e  -> RefBrackArg <$> renameExpr e
         RefDotArg s uv -> pure (RefDotArg s uv)
 
-    resolveData thispkg deps args = listToMaybe $ do
+    resolveData thispkg universe args = listToMaybe $ do
         -- The reverse here is used to try the longest path first.
         (pre, (name : remainder)) <- reverse $ splits args
         pkg <- fmap (mkPackageName . map unVar) $ maybeToList $
             mapM refArgToVar pre
         name' <- maybeToList $ refArgToVar name
-        guard $ pkg == thispkg || pkg `HMS.member` deps
+        guard $ pkg == thispkg || not (null (universe pkg))
         return (pkg, name', remainder)
 
 renameTerm :: Rename Term
@@ -240,31 +262,31 @@ renameTerm = \case
 
             -- Fully qualified call.
             Just (("data" : pkg), n) ->
-                pure $ CallT source [QualifiedName (mkPackageName pkg) n] args'
+                pure $ CallT source [mkQualifiedName (mkPackageName pkg) n] args'
 
             -- A plain builtin name, e.g. "all".
             Just ([], n) | Just _ <- HMS.lookup (NamedFunction (BuiltinName n)) builtins ->
                 pure $ CallT source [BuiltinName n] args'
 
             -- A qualified builtin name, e.g. "json.unmarshal".
-            Just (pkg, n) | Just _ <- HMS.lookup (NamedFunction (QualifiedName (mkPackageName pkg) n)) builtins ->
-                pure $ CallT source [QualifiedName (mkPackageName pkg) n] args'
+            Just (pkg, n) | Just _ <- HMS.lookup (NamedFunction (mkQualifiedName (mkPackageName pkg) n)) builtins ->
+                pure $ CallT source [mkQualifiedName (mkPackageName pkg) n] args'
 
             -- Calling a rule in the same package.  Functions cannot be local
             -- variables.
             Just ([], n)
                 | HS.member n rules ->
-                    pure $ CallT source [QualifiedName thispkg n] args'
+                    pure $ CallT source [mkQualifiedName thispkg n] args'
                 | otherwise -> do
                     tellRenameError source "unknown function" $
                         "Function" <+> PP.pretty n <+> "is not defined."
                     -- NOTE(jaspervdj): We can use ErrorT here.
-                    pure $ CallT source [QualifiedName thispkg n] args'
+                    pure $ CallT source [mkQualifiedName thispkg n] args'
 
             -- Calling a rule in another package.
             Just ([imp], n)
                 | Just (_, ImportData pkg) <- HMS.lookup (mkVar imp) imports ->
-                    pure $ CallT source [QualifiedName pkg n] args'
+                    pure $ CallT source [mkQualifiedName pkg n] args'
 
             _ -> fatal $ Error.mkError "renamer" source "unknown call" $
                 -- NOTE(jaspervdj): We can use ErrorT here.
@@ -282,7 +304,7 @@ renameTerm = \case
         rules  <- view rePackageRules
         case v `HS.member` rules of
             _ | v `HS.member` locals -> pure (VarT a (LocalName v))
-            True                     -> pure (VarT a (QualifiedName pkg v))
+            True                     -> pure (VarT a (mkQualifiedName pkg v))
             False                    -> pure (VarT a (LocalName v))
 
     ScalarT a s -> pure (ScalarT a s)

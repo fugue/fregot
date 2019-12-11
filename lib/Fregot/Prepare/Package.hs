@@ -2,60 +2,64 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell   #-}
 module Fregot.Prepare.Package
-    ( PreparedPackage
-    , Package (..), packageName, packageRules
-    , empty
-    , insert
-    , lookup
-    , rules
+    ( PreparedRule
+    , prepareModules
+    , prepareModule
+    , mergeTree
+    , mergeTrees
     ) where
 
-import           Control.Lens              (view, (%~), (&), (^.))
-import           Control.Lens.TH           (makeLenses)
+import           Control.Lens              (at, forOf, review, (^.))
+import           Control.Monad             (foldM, (>=>))
 import           Control.Monad.Parachute
-import qualified Data.HashMap.Strict       as HMS
 import           Fregot.Error              (Error)
 import           Fregot.Names
+import           Fregot.Names.Imports      (gatherImports)
 import           Fregot.Prepare
 import           Fregot.Prepare.Ast
 import           Fregot.Sources.SourceSpan (SourceSpan)
 import qualified Fregot.Sugar              as Sugar
+import qualified Fregot.Tree               as Tree
 import           Prelude                   hiding (head, lookup)
 
-type PreparedPackage = Package ()
+type PreparedRule = Rule () SourceSpan
 
-data Package ty = Package
-    { _packageName  :: !PackageName
-    , _packageRules :: !(HMS.HashMap Var (Rule ty SourceSpan))
-    } deriving (Show)
-
-$(makeLenses ''Package)
-
-empty :: PackageName -> Package ty
-empty name = Package
-    { _packageName  = name
-    , _packageRules = HMS.empty
-    }
-
--- | Add a new rule.
-insert
+prepareModules
     :: Monad m
-    => Imports SourceSpan
-    -> Sugar.Rule SourceSpan Name
-    -> PreparedPackage
-    -> ParachuteT Error m PreparedPackage
-insert imports rule package = do
-    new <- prepareRule (package ^. packageName) imports rule
-    merged <- case HMS.lookup rname (package ^. packageRules) of
-        Nothing  -> return new
-        Just old -> mergeRules old new
+    => Sugar.Modules SourceSpan Name
+    -> ParachuteT Error m (Tree.Tree PreparedRule)
+prepareModules = mapM prepareModule >=> mergeTrees
 
-    return $ package & packageRules %~ HMS.insert rname merged
+prepareModule
+    :: Monad m
+    => Sugar.Module SourceSpan Name
+    -> ParachuteT Error m (Tree.Tree PreparedRule)
+prepareModule modul = foldM
+    (\tree rule -> do
+        let key :: Tree.Key
+            key = review Tree.qualifiedVarFromKey
+                ( modul ^. Sugar.modulePackage
+                , rule ^. Sugar.ruleHead . Sugar.ruleName
+                )
+
+        prule <- prepareRule (modul ^. Sugar.modulePackage) imports rule
+        forOf (at key) tree $ \case
+            Nothing -> pure (Just prule)
+            Just prule' -> Just <$> mergeRules prule prule')
+    Tree.empty
+    (modul ^. Sugar.modulePolicy)
   where
-    rname = rule ^. Sugar.ruleHead . Sugar.ruleName
+    imports = gatherImports (modul ^. Sugar.moduleImports)
 
-lookup :: Var -> Package ty -> Maybe (Rule ty SourceSpan)
-lookup var pkg = HMS.lookup var (pkg ^. packageRules)
+mergeTree
+    :: Monad m
+    => Tree.Tree PreparedRule
+    -> Tree.Tree PreparedRule
+    -> ParachuteT Error m (Tree.Tree PreparedRule)
+mergeTree = Tree.unionWithA mergeRules
 
-rules :: Package ty -> [Var]
-rules = map fst . HMS.toList . view packageRules
+mergeTrees
+    :: Monad m
+    => [Tree.Tree PreparedRule]
+    -> ParachuteT Error m (Tree.Tree PreparedRule)
+mergeTrees = foldM mergeTree Tree.empty

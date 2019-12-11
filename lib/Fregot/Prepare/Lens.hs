@@ -30,6 +30,7 @@ ruleTerms :: Traversal' (Rule i a) (Term a)
 ruleTerms f rule = Rule
     <$> pure (rule ^. rulePackage)
     <*> pure (rule ^. ruleName)
+    <*> pure (rule ^. ruleKey)
     <*> pure (rule ^. ruleAnn)
     <*> pure (rule ^. ruleKind)
     <*> pure (rule ^. ruleInfo)

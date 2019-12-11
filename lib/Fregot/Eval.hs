@@ -8,7 +8,7 @@
 {-# LANGUAGE TemplateHaskell            #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}  -- for the MonadUnify instance...
 module Fregot.Eval
-    ( Environment (..), builtins, packages, inputDoc, stack, cache
+    ( Environment (..), builtins, rules, inputDoc, stack, cache
     , Context, locals
     , emptyContext
 
@@ -32,6 +32,7 @@ module Fregot.Eval
     , evalQuery
     ) where
 
+import           Control.Arrow             ((>>>))
 import           Control.Exception         (try)
 import           Control.Lens              (review, to, use, view, (%=), (.=),
                                             (.~), (^.), (^?))
@@ -47,10 +48,11 @@ import           Data.Int                  (Int64)
 import           Data.Maybe                (fromMaybe)
 import qualified Data.Unification          as Unification
 import qualified Data.Vector.Extended      as V
-import qualified Fregot.Compile.Package    as Package
+import           Fregot.Arity
 import           Fregot.Eval.Builtins
 import qualified Fregot.Eval.Cache         as Cache
 import           Fregot.Eval.Monad
+import           Fregot.Eval.Mu
 import qualified Fregot.Eval.Number        as Number
 import qualified Fregot.Eval.TempObject    as TempObject
 import           Fregot.Eval.Value
@@ -62,17 +64,21 @@ import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources.SourceSpan (SourceSpan)
 import           Fregot.Types.Rule         (RuleType (..))
 
-ground :: SourceSpan -> Value -> EvalM Value
-ground source val = case val of
-    FreeV v   -> do
-        mbVal <- Unification.lookup v
-        case mbVal of
+ground :: SourceSpan -> Mu -> EvalM Value
+ground source = unMu >>> \case
+    FreeM v -> do
+        mbMu <- Unification.lookup v
+        case mbMu of
             Nothing -> raise' source "unknown variable" $
                 "Unkown variable:" <+> PP.pretty v
-            Just b  -> return b
-    WildcardV -> raise' source "unknown variable" $
-                "Unkown variable:" <+> PP.pretty WildcardV
-    _         -> return val
+            Just mu -> ground source mu
+    WildcardM -> raise' source "unknown variable" $
+                "Unkown variable:" <+> PP.pretty (Mu WildcardM)
+    GroundedM v -> pure v
+    RecM v -> Value <$> traverse (ground source) v
+    PackageM p -> raise' source "cannot reify package" $
+        "We cannot reify the package:" <+> PP.pretty p <$$>
+        "Reifying packages is currently unsupported."
 
 mkObject :: SourceSpan -> [(Value, Value)] -> EvalM Value
 mkObject source assoc = do
@@ -81,7 +87,7 @@ mkObject source assoc = do
         TempObject.write tempObj k v >>= \case
         TempObject.Inconsistent v' -> raiseInconsistentObject source k v v'
         _                          -> pure ()
-    fmap ObjectV $ TempObject.read tempObj
+    fmap (Value . ObjectV) $ TempObject.read tempObj
 
 raiseInconsistentObject
     :: SourceSpan -> Value -> Value -> Value -> EvalM a
@@ -93,7 +99,10 @@ raiseInconsistentObject source k v v' = raise' source "inconsistent object" $
     "For key:" <$$>
     PP.ind (PP.pretty k)
 
-evalTerm :: Term SourceSpan -> EvalM Value
+evalGroundTerm :: Term SourceSpan -> EvalM Value
+evalGroundTerm term = evalTerm term >>= ground (term ^. termAnn)
+
+evalTerm :: Term SourceSpan -> EvalM Mu
 evalTerm (RefT source lhs arg) = do
     mbCompiledRule <- case lhs of
         NameT _ n -> lookupRule n
@@ -105,7 +114,7 @@ evalTerm (RefT source lhs arg) = do
                 | Nothing <- crule ^? ruleKind . _CompleteRule
                 , Nothing <- crule ^? ruleKind . _FunctionRule -> do
             arg' <- evalTerm arg
-            evalCompiledRule source crule (Just arg')
+            muValue <$> evalCompiledRule source crule (Just arg')
         _ -> do
             val <- evalTerm lhs
             evalRefArg source val arg
@@ -115,14 +124,14 @@ evalTerm (CallT source f args) = do
     case HMS.lookup f builtins' of
         Just builtin -> do
             vargs <- mapM evalTerm args
-            evalBuiltin source builtin vargs
+            muValue <$> evalBuiltin source builtin vargs
 
         _ | NamedFunction rn <- f -> do
             mbCompiledRule <- lookupRule rn
             case mbCompiledRule of
                 Just cr -> do
                     vargs <- mapM evalTerm args
-                    evalUserFunction source cr vargs
+                    muValue <$> evalUserFunction source cr vargs
                 Nothing -> raise' source "unknown function" $
                     "Unknown function call:" <+> PP.pretty f
 
@@ -130,42 +139,43 @@ evalTerm (CallT source f args) = do
             "Unknown function call:" <+> PP.pretty f
 
 evalTerm (NameT source v) = evalName source v
-evalTerm (ScalarT _ s) = evalScalar s
+evalTerm (ScalarT _ s) = muValue <$> evalScalar s
 evalTerm (ArrayT _ a) = do
     bs <- mapM evalTerm a
-    return $ ArrayV $ V.fromList bs
+    return $ Mu $ RecM $ ArrayV $ V.fromList bs
 evalTerm (SetT _ s) = do
-    bs <- mapM evalTerm s
-    return $ SetV $ HS.fromList bs
+    bs <- mapM evalGroundTerm s
+    return $ muValueF $ SetV $ HS.fromList bs
 evalTerm (ObjectT source o) = do
     obj <- forM o $ \(kt, vt) -> do
-        key <- evalTerm kt
-        val <- evalTerm vt
+        key <- evalGroundTerm kt
+        val <- evalGroundTerm vt
         return (key, val)
-    mkObject source obj
+    muValue <$> mkObject source obj
 
 evalTerm (ArrayCompT _ chead cbody) = do
     rows <- unbranch $ evalRuleBody cbody (evalTerm chead)
-    return $ ArrayV $ V.fromList rows
+    return $ Mu $ RecM $ ArrayV $ V.fromList rows
 
-evalTerm (SetCompT _ shead cbody) = do
-    rows <- unbranch $ evalRuleBody cbody (evalTerm shead)
-    return $ SetV $ HS.fromList rows
+evalTerm (SetCompT source shead cbody) = do
+    rows     <- unbranch $ evalRuleBody cbody (evalTerm shead)
+    grounded <- mapM (ground source) rows
+    return $ muValueF $ SetV $ HS.fromList grounded
 
 evalTerm (ObjectCompT source khead vhead cbody) = do
     rows <- unbranch $ evalRuleBody cbody $
-        (,) <$> evalTerm khead <*> evalTerm vhead
-    mkObject source rows
+        (,) <$> evalGroundTerm khead <*> evalGroundTerm vhead
+    muValue <$> mkObject source rows
 
-evalName :: SourceSpan -> Name -> EvalM Value
+evalName :: SourceSpan -> Name -> EvalM Mu
 evalName source (LocalName var) = evalVar source var
-evalName _source (BuiltinName "input") = view inputDoc
-evalName _source (BuiltinName "data") = return $! PackageV mempty
-evalName _source WildcardName = return WildcardV
+evalName _source (BuiltinName "input") = muValue <$> view inputDoc
+evalName _source (BuiltinName "data") = return $! Mu $ PackageM mempty
+evalName _source WildcardName = return (Mu WildcardM)
 evalName source name@(BuiltinName _) =
     raise' source "type error" $
     "Builtin" <+> PP.pretty name <+> "can only be used as function"
-evalName source name@(QualifiedName _pkgname _var) = do
+evalName source name@(QualifiedName _) = do
     mbCompiledRule <- lookupRule name
     case mbCompiledRule of
         Nothing -> raise' source "rule not found" $
@@ -173,20 +183,20 @@ evalName source name@(QualifiedName _pkgname _var) = do
         Just crule | FunctionRule _ <- crule ^. ruleKind ->
             -- We allow calling a null-ary function `report()` both
             -- as just `report` as well as `report()`
-            evalUserFunction source crule []
-        Just crule -> evalCompiledRule source crule Nothing
+            muValue <$> evalUserFunction source crule []
+        Just crule -> muValue <$> evalCompiledRule source crule Nothing
 
-evalVar :: SourceSpan -> Var -> EvalM Value
+evalVar :: SourceSpan -> Var -> EvalM Mu
 evalVar _source v = do
     lcls <- use locals
     case HMS.lookup v lcls of
         Just iv -> do
             mbVal <- Unification.lookup iv
-            return $ fromMaybe (FreeV iv) mbVal
-        Nothing -> FreeV <$> toInstVar v
+            return $ fromMaybe (Mu (FreeM iv)) mbVal
+        Nothing -> Mu . FreeM <$> toInstVar v
 
-evalBuiltin :: SourceSpan -> Builtin Identity -> [Value] -> EvalM Value
-evalBuiltin source (Builtin sig _ (Identity impl)) args0 = do
+evalBuiltin :: SourceSpan -> Builtin Identity -> [Mu] -> EvalM Value
+evalBuiltin source builtin@(Builtin sig _ (Identity impl)) args0 = do
     -- There are two possible scenarios if we have an N-ary function, e.g.:
     --
     --     add(x, y) = z {
@@ -196,14 +206,21 @@ evalBuiltin source (Builtin sig _ (Identity impl)) args0 = do
     -- Either the user supplies 2 arguments, and we return the return value
     -- (`z` in the example), or the user supplies 3 arguments, and we unify
     -- the return value with the last argument.
-    (args1, mbFinalArg) <- case toArgs sig args0 of
+    (args1, mbFinalArg) <- case checkArity (arity builtin) args0 of
+        ArityOk args1 mbFinalArg -> pure (args1, mbFinalArg)
+        ArityBad n               -> raise' source "builtin arity error" $
+            "Expected " <+> PP.pretty (arity builtin) <+>
+            "arguments but got" <+> PP.pretty n
+
+    args2 <- mapM (ground source) args1
+    args3 <- case toArgs sig args2 of
         Left err -> raise' source "builtin type error" $ PP.pretty err
         Right x  -> return x
 
     -- Call the function.  Note that we can probably make 'try' here at the
     -- builtin a bit faster by moving it to the top-level, but we'll get less
     -- nice error messages.
-    errOrResult <- liftIO $ try (impl args1)
+    errOrResult <- liftIO $ try (impl args3)
     result      <- case errOrResult of
         Right x                     -> return $ toVal x
         Left (BuiltinException err) ->
@@ -213,8 +230,8 @@ evalBuiltin source (Builtin sig _ (Identity impl)) args0 = do
     case mbFinalArg of
         Nothing -> return result
         Just fa -> do
-            unify result fa
-            return $ BoolV True
+            unify (Mu (GroundedM result)) fa
+            return true
 
 -- NOTE (jaspervdj): I suspect these are roughly the cases we want to care
 -- about:
@@ -222,75 +239,88 @@ evalBuiltin source (Builtin sig _ (Identity impl)) args0 = do
 -- * indexing rules
 -- * indexing "cached/precomputed" rules
 -- * indexing actual values, i.e. objects and arrays
-evalRefArg :: SourceSpan -> Value -> Term SourceSpan -> EvalM Value
+evalRefArg :: SourceSpan -> Mu -> Term SourceSpan -> EvalM Mu
 evalRefArg source indexee refArg = do
     idx <- evalTerm refArg
     case idx of
-        StringV k | PackageV pkgname <- indexee, v <- mkVar k -> do
-            mbPkg <- lookupPackage pkgname
-            case mbPkg of
+        _ | Just k <- muToString idx, PackageM pkgname <- unMu indexee, v <- mkVar k -> do
+            mbRule <- lookupRule (mkQualifiedName pkgname v)
+            case mbRule of
                 -- If the package exists *AND* actually has a rule with that
                 -- name, we'll evaluate that name.
-                Just pkg | Just _ <- Package.lookup v pkg ->
-                    evalName source (QualifiedName pkgname v)
+                Just _ ->
+                    evalName source (mkQualifiedName pkgname v)
                 -- Otherwise, we'll construct a further package name.  This
                 -- package name does not actually need to exist (yet), since we
                 -- might append more pieces to it.
-                _ -> return $! PackageV (pkgname <> mkPackageName [k])
+                _ -> return $! Mu $ PackageM (pkgname <> mkPackageName [k])
 
-        WildcardV -> case indexee of
-            ArrayV a  -> branch [return val | val <- V.toList a]
-            SetV s -> branch [return val | val <- HS.toList s]
-            ObjectV o -> branch [return val | (_, val) <- HMS.toList o]
-            _ -> raise' source "reference error" $
-                "Cannot index" <+> PP.pretty (describeValue indexee) <+>
-                " using a free variable"
+        Mu WildcardM -> do
+            gindexee <- ground source indexee
+            case unValue gindexee of
+                ArrayV a  -> branch [return (muValue val) | val <- V.toList a]
+                SetV s -> branch [return (muValue val) | val <- HS.toList s]
+                ObjectV o -> branch [return (muValue val) | (_, val) <- HMS.toList o]
+                _ -> raise' source "reference error" $
+                    "Cannot index" <+> PP.pretty (describeValue gindexee) <+>
+                    " using a free variable"
 
-        FreeV unbound -> case indexee of
-            ArrayV a -> branch
-                [ Unification.bindTerm unbound (NumberV $ review Number.int i) >> return val
-                | (i, val) <- zip [0 :: Int64 ..] (V.toList a)
-                ]
-            SetV s -> branch
-                [ Unification.bindTerm unbound val >> return val
-                | val <- HS.toList s
-                ]
-            ObjectV o -> branch
-                [ Unification.bindTerm unbound key >> return val
-                | (key, val) <- HMS.toList o
-                ]
-            _ -> raise' source "reference error" $
-                "Cannot index" <+> PP.pretty (describeValue indexee) <+>
-                " using a free variable"
+        Mu (FreeM unbound) -> do
+            gindexee <- ground source indexee
+            case unValue gindexee of
+                ArrayV a -> branch
+                    [ Unification.bindTerm unbound (muValueF $ NumberV $ review Number.int i) >> return (muValue val)
+                    | (i, val) <- zip [0 :: Int64 ..] (V.toList a)
+                    ]
+                SetV s -> branch
+                    [ Unification.bindTerm unbound (muValue val) >> return (muValue val)
+                    | val <- HS.toList s
+                    ]
+                ObjectV o -> branch
+                    [ Unification.bindTerm unbound (muValue key) >> return (muValue val)
+                    | (key, val) <- HMS.toList o
+                    ]
+                _ -> raise' source "reference error" $
+                    "Cannot index" <+> PP.pretty (describeValue gindexee) <+>
+                    " using a free variable"
 
-        k | ObjectV o <- indexee ->
-            -- NOTE(jaspervdj): We can omit some warning here.
-            maybe cut return $! HMS.lookup k o
+        _ -> do
+            gindexee <- ground source indexee
+            case unValue gindexee of
+                ObjectV o -> do
+                    gidx <- ground source idx
+                    -- NOTE(jaspervdj): We can omit some warning here.
+                    maybe cut (return . muValue) $! HMS.lookup gidx o
 
-        _   | Just i <- idx ^? _NumberV . Number.int . to fromIntegral
-            , ArrayV a <- indexee ->
-            if i >= 0 && i < V.length a then return (a V.! i) else cut
+                ArrayV a
+                        | Just n <- muToNumber idx
+                        , Just i <- n ^? Number.int . to fromIntegral ->
+                    if i >= 0 && i < V.length a
+                        then return (muValue $ a V.! i)
+                        else cut
 
-        _ | SetV set <- indexee ->
-            -- If the LHS is a set, we just test if the index is in there.
-            --
-            -- NOTE(jaspervdj): Another implementation would be to loop over
-            -- all elements in the set, and try to unify `idx` with those.
-            -- However, the opa interpreter doesn't seem to do this.
-            if idx `HS.member` set
-                then return idx
-                else cut
+                SetV set -> do
+                    -- If the LHS is a set, we just test if the index is in there.
+                    --
+                    -- NOTE(jaspervdj): Another implementation would be to loop over
+                    -- all elements in the set, and try to unify `idx` with those.
+                    -- However, the opa interpreter doesn't seem to do this.
+                    gidx <- ground source idx
+                    if gidx `HS.member` set
+                        then return (muValue gidx)
+                        else cut
 
-        _ -> raise' source "index type error" $
-            "evalRefArg: cannot index" <+> PP.pretty (describeValue indexee) <+>
-            "with a" <+> PP.pretty (describeValue idx)
+                _ -> raise' source "index type error" $
+                    "evalRefArg: cannot index" <+>
+                    PP.pretty (describeMu indexee) <+>
+                    "with a" <+> PP.pretty (describeMu idx)
 
 -- | Returns the value of the index value (if given) as well as the result of
 -- the rule.
 evalCompiledRule
     :: SourceSpan
     -> Rule RuleType SourceSpan
-    -> Maybe Value
+    -> Maybe Mu
     -> EvalM Value
 evalCompiledRule callerSource crule mbIndex
     -- Cached and uncached complete definitions
@@ -307,8 +337,9 @@ evalCompiledRule callerSource crule mbIndex
                         Nothing  -> snd <$> branch branches
                         Just def -> withDefault (evalTerm def) $
                                     snd <$> branch branches
-                Cache.writeSingleton c ckey val
-                pure val
+                gval <- ground callerSource val
+                Cache.writeSingleton c ckey gval
+                pure gval
 
     | otherwise = pushStack $ do
         -- Figure n the keys we already know about, and whether or not we
@@ -330,22 +361,24 @@ evalCompiledRule callerSource crule mbIndex
         -- the cached keys and values, and then a list of further branches.  The
         -- further branches will only yield keys/values that are not in the
         -- first element of the tuple.
-        let more
+        let more :: [EvalM (Maybe Value, Value)]
+            more
                 | not needCompute = []
                 | otherwise       = (do
                     compute <- branches
                     pure $ do
                         (idxVal, val) <- compute
+                        gval          <- ground callerSource val
                         let (k, v) = case crule ^. ruleKind of
-                                GenSetRule -> (fromMaybe val idxVal, BoolV True)
-                                _          -> (fromMaybe val idxVal, val)
+                                GenSetRule -> (fromMaybe gval idxVal, true)
+                                _          -> (fromMaybe gval idxVal, gval)
                         write <- TempObject.write tempObj k v
                         case write of
                             TempObject.Ok              -> pure ()
                             TempObject.Duplicate       -> cut
                             TempObject.Inconsistent v' ->
                                 raiseInconsistentObject callerSource k v v'
-                        return (idxVal, val)) ++ (pure $ do
+                        return (idxVal, gval)) ++ (pure $ do
                     -- After all branches have executed, indicate that the
                     -- collection is finished.
                     --
@@ -353,10 +386,10 @@ evalCompiledRule callerSource crule mbIndex
                     -- all keys/values, false negatives are possible here but
                     -- false positives are not.
                     let visitedAll = case mbIndex of
-                            Nothing        -> True
-                            Just (FreeV _) -> True
-                            Just WildcardV -> True
-                            _              -> False
+                            Nothing             -> True
+                            Just (Mu (FreeM _)) -> True
+                            Just (Mu WildcardM) -> True
+                            _                   -> False
                     when visitedAll $ Cache.flushCollection c ckey
                     cut)
 
@@ -368,20 +401,23 @@ evalCompiledRule callerSource crule mbIndex
                     (do
                         (k, v) <- HMS.toList partial
                         pure $ case rkind of
-                            GenSetRule -> unify idx k >> return k
-                            _          -> unify idx k >> return v) ++
+                            GenSetRule -> unify idx (muValue k) >> return k
+                            _          -> unify idx (muValue k) >> return v) ++
                     -- Then unknown ones.
                     map (fmap snd) more
 
             -- Sets without an index need to evaluate to a set value.
             GenSetRule -> do
                 moreElems <- unbranch $ branch $ map (fmap snd) more
-                return $ SetV $ HMS.keysSet partial <> HS.fromList moreElems
+                return $ Value $ SetV $
+                    HMS.keysSet partial <>
+                    HS.fromList moreElems
 
             -- Object without an index need evaluate to an object value.
             GenObjectRule -> do
                 moreElems <- unbranch $ branch more
-                return $ ObjectV $ partial <>
+                return $ Value $ ObjectV $
+                    partial <>
                     HMS.fromList [(k, v) | (Just k, v) <- moreElems]
 
             _ -> raise' callerSource "type error" $
@@ -391,21 +427,21 @@ evalCompiledRule callerSource crule mbIndex
   where
     -- Standard branching evaluation of rule definitions; used for all
     -- evaluations.
-    branches :: [EvalM (Maybe Value, Value)]
+    branches :: [EvalM (Maybe Value, Mu)]
     branches = do
         def <- crule ^. ruleDefs
         pure $ evalRuleDefinition callerSource def mbIndex
 
     pushStack = pushRuleStackFrame
         callerSource
-        (QualifiedName (crule ^. rulePackage) (crule ^. ruleName))
+        (QualifiedName (crule ^. ruleKey))
 
     -- Cache key.
     ckey = (crule ^. rulePackage, crule ^. ruleName)
 
 evalRuleDefinition
-    :: SourceSpan -> RuleDefinition SourceSpan -> Maybe Value
-    -> EvalM (Maybe Value, Value)
+    :: SourceSpan -> RuleDefinition SourceSpan -> Maybe Mu
+    -> EvalM (Maybe Value, Mu)
 evalRuleDefinition callerSource rule mbIndex =
     clearLocals $ do
 
@@ -426,7 +462,7 @@ evalRuleDefinition callerSource rule mbIndex =
     let ret mbRet = case mbRet of
             Nothing -> do
                 i <- traverse (ground (rule ^. ruleDefAnn)) mbIdxVal
-                return (Nothing, fromMaybe (BoolV True) i)
+                return (Nothing, Mu (GroundedM (fromMaybe true i)))
             Just term -> do
                 i <- traverse (ground (rule ^. ruleDefAnn)) mbIdxVal
                 v <- evalTerm term
@@ -449,11 +485,10 @@ evalRuleDefinition callerSource rule mbIndex =
             ]
 
 evalUserFunction
-    :: SourceSpan -> Rule RuleType SourceSpan -> [Value]
+    :: SourceSpan -> Rule RuleType SourceSpan -> [Mu]
     -> EvalM Value
 evalUserFunction callerSource crule callerArgs =
-    pushFunctionStackFrame callerSource
-        (QualifiedName (crule ^. rulePackage) (crule ^. ruleName)) $
+    pushFunctionStackFrame callerSource (QualifiedName (crule ^. ruleKey)) $
     case crule ^? ruleKind . _FunctionRule of
         Nothing -> raise' callerSource "type error" $
             PP.pretty (crule ^. ruleName) <+>
@@ -464,8 +499,8 @@ evalUserFunction callerSource crule callerArgs =
             ]
   where
     ret mbTerm = case mbTerm of
-        Nothing   -> return (BoolV True)
-        Just term -> ground (crule ^. ruleAnn) =<< evalTerm term
+        Nothing   -> return true
+        Just term -> evalGroundTerm term
 
     evalFunctionDefinition def =
         clearLocals $ do
@@ -501,7 +536,7 @@ evalQuery :: Query SourceSpan -> EvalM Value
 evalQuery lits0 = case reverse lits0 of
     -- Watch out for the double 'reverse'.
     (lit : lits) -> evalRuleBody (reverse lits) (evalLiteral lit return)
-    []           -> return (BoolV True)
+    []           -> return true
 
 -- | Evaluate a literal.  If the literal does not shortcut, evaluate the next
 -- evaluation using the value returned from the literal.  This will be True
@@ -512,7 +547,7 @@ evalLiteral lit next
         negation trueish $
             evalStatement (lit ^. literalStatement) >>=
             ground (lit ^. literalAnn)
-        next (BoolV True)
+        next true
     | otherwise = localWiths (lit ^. literalWith) $ do
         v <- evalStatement $ lit ^. literalStatement
         r <- ground (lit ^. literalAnn) v
@@ -526,7 +561,7 @@ evalLiteral lit next
                 c <- view cache >>= Cache.bump
                 local (cache .~ c) $ local (inputDoc .~ input0) $ mx
             updateInput input0 (w : ws) = do
-                val    <- evalTerm (w ^. withAs)
+                val    <- evalTerm (w ^. withAs) >>= ground (w ^. withAnn)
                 input1 <- case updateObject (w ^. withPath) val input0 of
                     Nothing -> raise' (w ^. withAnn) "with error" $
                         "Could not update input document." <$$>
@@ -539,39 +574,50 @@ evalLiteral lit next
         updateInput input withs
 {-# INLINE evalLiteral #-}
 
-evalStatement :: Statement SourceSpan -> EvalM Value
+evalStatement :: Statement SourceSpan -> EvalM Mu
 evalStatement (UnifyS source x y) = suspend source $ do
     xv <- evalTerm x
     yv <- evalTerm y
     _  <- unify xv yv
-    return $ BoolV True
+    return muTrue
 evalStatement (AssignS source v x) = suspend source $ do
     xv <- evalTerm x
     iv <- toInstVar v
-    unify (FreeV iv) xv
-    return $ BoolV True
+    unify (Mu (FreeM iv)) xv
+    return muTrue
 evalStatement (TermS e) = suspend (e ^. termAnn) (evalTerm e)
 
 evalScalar :: Scalar -> EvalM Value
-evalScalar (String t) = return $ StringV t
-evalScalar (Number n) = return $ NumberV $ Number.fromScientific n
-evalScalar (Bool   b) = return $ BoolV   b
-evalScalar Null       = return $ NullV
+evalScalar = return . Value . \case
+    String t -> StringV t
+    Number n -> NumberV $ Number.fromScientific n
+    Bool   b -> BoolV   b
+    Null     -> NullV
 
-unify :: Value -> Value -> EvalM ()
-unify WildcardV _     = return ()
-unify _ WildcardV     = return ()
-unify (FreeV alpha) (FreeV beta) = Unification.bindVar alpha beta
-unify (FreeV alpha) v = Unification.bindTerm alpha v
-unify v (FreeV alpha) = Unification.bindTerm alpha v
-unify (ArrayV larr) (ArrayV rarr)
-    | V.length larr /= V.length rarr = cut
-    | otherwise                      = V.zipWithM_ unify larr rarr
+unify :: Mu -> Mu -> EvalM ()
+unify (Mu WildcardM) _ = return ()
+unify _ (Mu WildcardM) = return ()
+unify (Mu (FreeM alpha)) (Mu (FreeM beta)) =
+    Unification.bindVar alpha beta
+unify (Mu (FreeM alpha)) v = Unification.bindTerm alpha v
+unify v (Mu (FreeM alpha)) = Unification.bindTerm alpha v
+unify (Mu (RecM (ArrayV larr))) (Mu (RecM (ArrayV rarr))) = do
+    unifyArrayLength larr rarr
+    V.zipWithM_ unify larr rarr
+unify (Mu (GroundedM (Value (ArrayV larr)))) (Mu (RecM (ArrayV rarr))) = do
+    unifyArrayLength larr rarr
+    V.zipWithM_ unify (fmap muValue larr) rarr
+unify (Mu (RecM (ArrayV larr))) (Mu (GroundedM (Value (ArrayV rarr)))) = do
+    unifyArrayLength larr rarr
+    V.zipWithM_ unify larr (fmap muValue rarr)
 unify lhs rhs
     | lhs == rhs      = return ()
 unify _ _             = cut
 
-instance Unification.MonadUnify InstVar Value EvalM where
+unifyArrayLength :: V.Vector a -> V.Vector b -> EvalM ()
+unifyArrayLength larr rarr = when (V.length larr /= V.length rarr) cut
+
+instance Unification.MonadUnify InstVar Mu EvalM where
     unify = unify
 
     getUnification      = use unification

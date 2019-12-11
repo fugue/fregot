@@ -202,8 +202,8 @@ processInput h input = do
     case mbRuleOrTerm of
         Just (Left rule) | RegularMode _ <- emode -> do
             mbResult <- runInterpreter h $ \i -> do
-                Interpreter.insertRule i pkgname sourcep rule
-                Interpreter.compilePackages i
+                Interpreter.insertRule i pkgname rule
+                Interpreter.compileRules i
             unless (isNothing mbResult) $ PP.hPutSemDoc IO.stderr $
                 "Rule" <+>
                 PP.code (PP.pretty (rule ^. ruleHead . ruleName)) <+>
@@ -454,7 +454,7 @@ metaCommands =
             FileWatch.watch (h ^. fileWatch) path
             void $ runInterpreter h $ \i -> do
                 pkg <- Interpreter.loadModule i Parser.defaultParserOptions path
-                Interpreter.compilePackages i
+                Interpreter.compileRules i
                 liftIO $ IO.hPutStrLn IO.stderr $
                     "Loaded package " ++ review packageNameFromString pkg
                 liftIO $ IORef.writeIORef (h ^. openPackage) pkg
@@ -583,7 +583,7 @@ reload h paths = fmap isJust $ runInterpreter h $ \i -> do
 
     forM_ regoPaths $ \path ->
         Interpreter.loadModule i Parser.defaultParserOptions path
-    Interpreter.compilePackages i
+    Interpreter.compileRules i
     liftIO $ case regoPaths of
         []     -> pure ()
         [path] -> IO.hPutStrLn IO.stderr $ "Reloaded " ++ path

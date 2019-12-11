@@ -60,7 +60,7 @@ main gopts opts = do
     (errors, mbResult) <- Parachute.runParachuteT $ do
         forM_ regoPaths $ Interpreter.loadModuleOrBundle
             interpreter Parser.defaultParserOptions
-        Interpreter.compilePackages interpreter
+        Interpreter.compileRules interpreter
 
         traverse_ (Interpreter.setInputFile interpreter) (opts ^. input)
 

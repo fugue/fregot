@@ -8,6 +8,7 @@ import qualified Fregot.Interpreter.Tests
 import qualified Fregot.Names.Tests
 import qualified Fregot.Parser.Tests
 import qualified Fregot.Prepare.Lens.Tests
+import qualified Fregot.Tree.Tests
 import qualified Fregot.Types.Internal.Tests
 import qualified System.Console.Haskeline.Tests
 import qualified Test.Tasty                            as Tasty
@@ -22,6 +23,7 @@ main = Tasty.defaultMain $ Tasty.testGroup "fregot"
     , Fregot.Names.Tests.tests
     , Fregot.Parser.Tests.tests
     , Fregot.Prepare.Lens.Tests.tests
+    , Fregot.Tree.Tests.tests
     , Fregot.Types.Internal.Tests.tests
     , System.Console.Haskeline.Tests.tests
     ]
