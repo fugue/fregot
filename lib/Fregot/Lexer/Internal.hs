@@ -139,6 +139,7 @@ data Token
     -- normal way when parsing, the user has to explicitly ask for them.
     | TCommentBlock     !Comment
     | TString           !T.Text
+    | TRawString        !T.Text
     | TInt              !Integer
     | TFloat            !Double
     | TVar              !T.Text
@@ -183,10 +184,17 @@ data Token
 parseToken :: TokenParser Token
 parseToken =
     (TString           <$> String.string)     <|>
+    (TRawString        <$> parseRawString)    <|>
     (TCommentBlock     <$> parseCommentBlock) <|>
     parseVar                                  <|>
     parseIntOrFloat                           <|>
     parseSomeOperator
+
+parseRawString :: TokenParser T.Text
+parseRawString = do
+    void (Parsec.char '`')
+    str <- Parsec.manyTill Parsec.anyChar (Parsec.char '`')
+    return $! T.pack str
 
 -- | A comment block
 parseCommentBlock
@@ -321,6 +329,7 @@ prettyToken token = case token of
     TStart                 -> "start of file"
     TCommentBlock        _ -> "comment block"
     TString              _ -> "String literal"
+    TRawString           _ -> "Raw string literal"
     TInt                 _ -> "Int literal"
     TFloat               _ -> "Float literal"
     TVar                 i -> T.unpack i
