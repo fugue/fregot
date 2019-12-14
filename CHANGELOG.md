@@ -1,6 +1,9 @@
 # CHANGELOG
 
- -  0.5.0 (2019-12-19)
+ -  0.6.0 (2019-12-14)
+     *  Add support for raw strings.
+
+ -  0.5.0 (2019-12-09)
      *  Add a type checking phase using flow analysis.
      *  Add the `:type` command to the REPL.
 
