@@ -53,8 +53,9 @@ boolean = (<?> "boolean") $ Lex.primToken $ \case
 -- | A string literal.
 string :: Monad m => ParsecT Lex.TokenStream u m Text
 string = (<?> "string literal") $ Lex.primToken $ \case
-    Lex.TString s -> Just s
-    _             -> Nothing
+    Lex.TRawString s -> Just s
+    Lex.TString    s -> Just s
+    _                -> Nothing
 
 -- | An identifier
 var :: Monad m => ParsecT Lex.TokenStream u m Text
