@@ -62,12 +62,9 @@ import qualified Control.Monad.Stream      as Stream
 import           Control.Monad.Trans       (MonadIO (..))
 import qualified Data.HashMap.Strict       as HMS
 import           Data.List                 (find)
-import           Fregot.Compile.Package    (CompiledRule)
 import           Fregot.Error              (Error)
 import qualified Fregot.Error              as Error
 import qualified Fregot.Error.Stack        as Stack
-import           Fregot.Eval.Builtins      (ReadyBuiltin)
-import           Fregot.Eval.Cache         (Cache)
 import           Fregot.Eval.Internal
 import           Fregot.Eval.Value
 import           Fregot.Names
@@ -77,32 +74,6 @@ import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources.SourceSpan (SourceSpan)
 import qualified Fregot.Tree               as Tree
 import           Fregot.Types.Rule         (RuleType)
-
-data Row a = Row
-    { _rowContext :: !Context
-    , _rowValue   :: !a
-    } deriving (Functor)
-
-$(makeLenses ''Row)
-
-instance PP.Pretty PP.Sem a => PP.Pretty PP.Sem (Row a) where
-    pretty (Row _ v) = PP.pretty v
-
-type Document a = [Row a]
-
-type EvalCache = Cache (PackageName, Var) Value
-
---------------------------------------------------------------------------------
-
-data Environment = Environment
-    { _builtins :: !(HMS.HashMap Function ReadyBuiltin)
-    , _rules    :: !(Tree.Tree CompiledRule)
-    , _inputDoc :: !Value
-    , _cache    :: !EvalCache
-    , _stack    :: !Stack.StackTrace
-    }
-
-$(makeLenses ''Environment)
 
 data EvalException = EvalException Environment Context Error
 

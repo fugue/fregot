@@ -30,16 +30,16 @@ inferContext ctx = HMS.mapMaybe
     (\v -> inferMu <$> Unification.lookupMaybe v (ctx ^. Eval.unification))
     (ctx ^. Eval.locals)
 
-inferMu :: Mu.Mu -> Type
+inferMu :: Mu.Mu e -> Type
 inferMu = inferMuF . fmap inferMu . Mu.unMu
 
-inferMuF :: Mu.MuF Type -> Type
+inferMuF :: Mu.MuF e Type -> Type
 inferMuF = \case
     Mu.RecM      v -> inferValueF v
     Mu.GroundedM v -> inferValue  v
     Mu.FreeM     _ -> unknown
     Mu.WildcardM   -> unknown
-    Mu.TreeM _ _   -> unknown
+    Mu.TreeM _ _ _ -> unknown
 
 inferValue :: V.Value -> Type
 inferValue = inferValueF . fmap inferValue . V.unValue

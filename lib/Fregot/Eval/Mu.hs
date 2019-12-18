@@ -35,51 +35,57 @@ import qualified Fregot.Tree               as Tree
 import           Fregot.Types.Rule         (RuleType)
 import           GHC.Generics              (Generic)
 
-data MuF a
+data MuF e a
     = RecM (ValueF a)
     | GroundedM Value
     | WildcardM
     | FreeM {-# UNPACK #-} !InstVar
-    | TreeM !Key !(Tree.Tree (Rule RuleType SourceSpan))
+    -- | It is appropriate to view 'TreeM' as a thunk/suspension; since it
+    -- contains rules that will be evaluated later.  As such, we need to make
+    -- sure they are evaluated in the original environment, passed in as 'e'.
+    --
+    -- Having a shallower embedding where we have a tree of lazily (in Haskell)
+    -- evaluated rules would prevent us from carrying 'e' here.
+    | TreeM !e !Key !(Tree.Tree (Rule RuleType SourceSpan))
     deriving (Foldable, Functor, Generic, Show, Traversable)
 
-instance PP.Pretty PP.Sem a => PP.Pretty PP.Sem (MuF a) where
+instance PP.Pretty PP.Sem a => PP.Pretty PP.Sem (MuF e a) where
     pretty (RecM      v) = PP.pretty v
     pretty (GroundedM v) = PP.pretty v
     pretty (FreeM     v) = PP.pretty v
     pretty WildcardM     = "_"
-    pretty (TreeM k _)   = PP.keyword "package" <+> PP.pretty k
+    pretty (TreeM _ k _) = PP.keyword "package" <+> PP.pretty k
 
-newtype Mu = Mu {unMu :: MuF Mu}
+newtype Mu e = Mu {unMu :: MuF e (Mu e)}
     deriving (Generic, PP.Pretty PP.Sem, Show)
 
-describeMu :: Mu -> String
+describeMu :: Mu e -> String
 describeMu = describeMuF . unMu
 
-describeMuF :: MuF a -> String
+describeMuF :: MuF e a -> String
 describeMuF = \case
     RecM      v -> describeValueF v
     GroundedM v -> describeValue v
     FreeM     v -> "free variable (" ++ show v ++ ")"
     WildcardM   -> "wildcard"
-    TreeM k _   -> "package " ++ fromMaybe "<root>"
+    TreeM _ k _ -> "package " ++ fromMaybe "<root>"
         (preview (packageNameFromKey . re packageNameFromString) k)
 
-muValue :: Value -> Mu
+muValue :: Value -> Mu e
 muValue = Mu . GroundedM
 
-muValueF :: ValueF Value -> Mu
+muValueF :: ValueF Value -> Mu e
 muValueF = muValue . Value
 
-muTrue :: Mu
+muTrue :: Mu e
 muTrue = muValue true
 
-muToString :: Mu -> Maybe T.Text
+muToString :: Mu e -> Maybe T.Text
 muToString (Mu (GroundedM (Value (StringV t)))) = Just t
 muToString (Mu (RecM (StringV t)))              = Just t
 muToString _                                    = Nothing
 
-muToNumber :: Mu -> Maybe Number
+muToNumber :: Mu e -> Maybe Number
 muToNumber (Mu (GroundedM (Value (NumberV n)))) = Just n
 muToNumber (Mu (RecM (NumberV n)))              = Just n
 muToNumber _                                    = Nothing

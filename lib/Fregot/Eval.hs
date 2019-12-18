@@ -39,7 +39,7 @@ import           Control.Lens              (review, to, use, view, (%=), (.=),
 import           Control.Monad             (unless, when)
 import           Control.Monad.Extended    (forM, zipWithM_)
 import           Control.Monad.Identity    (Identity (..))
-import           Control.Monad.Reader      (local)
+import           Control.Monad.Reader      (ask, local)
 import           Control.Monad.Trans       (liftIO)
 import           Data.Foldable             (for_)
 import qualified Data.HashMap.Strict       as HMS
@@ -49,8 +49,10 @@ import           Data.Maybe                (fromMaybe)
 import qualified Data.Unification          as Unification
 import qualified Data.Vector.Extended      as V
 import           Fregot.Arity
+import           Fregot.Compile.Package    (CompiledRule)
 import           Fregot.Eval.Builtins
 import qualified Fregot.Eval.Cache         as Cache
+import           Fregot.Eval.Internal
 import           Fregot.Eval.Monad
 import           Fregot.Eval.Mu
 import qualified Fregot.Eval.Number        as Number
@@ -65,7 +67,7 @@ import           Fregot.Sources.SourceSpan (SourceSpan)
 import qualified Fregot.Tree               as Tree
 import           Fregot.Types.Rule         (RuleType (..))
 
-ground :: SourceSpan -> Mu -> EvalM Value
+ground :: SourceSpan -> Mu' -> EvalM Value
 ground source = unMu >>> \case
     FreeM v -> do
         mbMu <- Unification.lookup v
@@ -77,11 +79,19 @@ ground source = unMu >>> \case
                 "Unkown variable:" <+> PP.pretty (Mu WildcardM)
     GroundedM v -> pure v
     RecM v -> Value <$> traverse (ground source) v
-    TreeM k tree -> case Tree.root tree of
-        Just crule -> evalCompiledRule source crule Nothing
-        Nothing    -> raise' source "cannot reify tree" $
-            "We cannot reify the tree:" <+> PP.pretty k <$$>
-            "Reifying trees is currently unsupported."
+    TreeM env _ tree -> local (const env) $ groundTree source tree
+
+groundTree :: SourceSpan -> Tree.Tree CompiledRule -> EvalM Value
+groundTree source tree = case Tree.root tree of
+    Just crule -> evalCompiledRule source crule Nothing
+    Nothing | null (Tree.children tree) -> cut
+    Nothing -> do
+        -- NOTE(jaspervdj): If there is both a rule as well as children,
+        -- we'll need to do some sort of merge here.
+        children <- forM (Tree.children tree) $ \(v, child) -> do
+            gtree <- groundTree source child
+            pure (Value (StringV (unVar v)), gtree)
+        mkObject source children
 
 mkObject :: SourceSpan -> [(Value, Value)] -> EvalM Value
 mkObject source assoc = do
@@ -105,7 +115,7 @@ raiseInconsistentObject source k v v' = raise' source "inconsistent object" $
 evalGroundTerm :: Term SourceSpan -> EvalM Value
 evalGroundTerm term = evalTerm term >>= ground (term ^. termAnn)
 
-evalTerm :: Term SourceSpan -> EvalM Mu
+evalTerm :: Term SourceSpan -> EvalM Mu'
 evalTerm (RefT source lhs arg) = do
     mbCompiledRule <- case lhs of
         NameT _ n -> lookupRule n
@@ -170,10 +180,12 @@ evalTerm (ObjectCompT source khead vhead cbody) = do
         (,) <$> evalGroundTerm khead <*> evalGroundTerm vhead
     muValue <$> mkObject source rows
 
-evalName :: SourceSpan -> Name -> EvalM Mu
+evalName :: SourceSpan -> Name -> EvalM Mu'
 evalName source (LocalName var) = evalVar source var
 evalName _source (BuiltinName "input") = muValue <$> view inputDoc
-evalName _source (BuiltinName "data") = Mu . TreeM mempty <$> view rules
+evalName _source (BuiltinName "data") = do
+    env <- ask
+    Mu . TreeM env mempty <$> view rules
 evalName _source WildcardName = return (Mu WildcardM)
 evalName source name@(BuiltinName _) =
     raise' source "type error" $
@@ -189,7 +201,7 @@ evalName source name@(QualifiedName _) = do
             muValue <$> evalUserFunction source crule []
         Just crule -> muValue <$> evalCompiledRule source crule Nothing
 
-evalVar :: SourceSpan -> Var -> EvalM Mu
+evalVar :: SourceSpan -> Var -> EvalM Mu'
 evalVar _source v = do
     lcls <- use locals
     case HMS.lookup v lcls of
@@ -198,7 +210,7 @@ evalVar _source v = do
             return $ fromMaybe (Mu (FreeM iv)) mbVal
         Nothing -> Mu . FreeM <$> toInstVar v
 
-evalBuiltin :: SourceSpan -> Builtin Identity -> [Mu] -> EvalM Value
+evalBuiltin :: SourceSpan -> Builtin Identity -> [Mu'] -> EvalM Value
 evalBuiltin source builtin@(Builtin sig _ (Identity impl)) args0 = do
     -- There are two possible scenarios if we have an N-ary function, e.g.:
     --
@@ -242,22 +254,22 @@ evalBuiltin source builtin@(Builtin sig _ (Identity impl)) args0 = do
 -- * indexing rules
 -- * indexing "cached/precomputed" rules
 -- * indexing actual values, i.e. objects and arrays
-evalRefArg :: SourceSpan -> Mu -> Term SourceSpan -> EvalM Mu
+evalRefArg :: SourceSpan -> Mu' -> Term SourceSpan -> EvalM Mu'
 evalRefArg source indexee refArg = do
     idx <- evalTerm refArg
     case idx of
         -- Indexing into the tree works slightly differently.
-        _ | TreeM p tree <- unMu indexee, Just s <- muToString idx ->
+        _ | TreeM e p tree <- unMu indexee, Just s <- muToString idx ->
             let k = review varFromKey (mkVar s) in
-            maybe cut (return . Mu . TreeM (p <> k)) (Tree.descendant k tree)
-        _ | TreeM p tree <- unMu indexee, Mu WildcardM <- idx -> branch
-            [ pure $! Mu $ TreeM (p <> review varFromKey v) t
+            maybe cut (return . Mu . TreeM e (p <> k)) (Tree.descendant k tree)
+        _ | TreeM e p tree <- unMu indexee, Mu WildcardM <- idx -> branch
+            [ pure $! Mu $ TreeM e (p <> review varFromKey v) t
             | (v, t) <- Tree.children tree
             ]
-        _ | TreeM p tree <- unMu indexee, Mu (FreeM unbound) <- idx -> branch
+        _ | TreeM e p tree <- unMu indexee, Mu (FreeM unbound) <- idx -> branch
             [ do
                 Unification.bindTerm unbound (muValueF $ StringV $ unVar v)
-                pure $! Mu $ TreeM (p <> review varFromKey v) t
+                pure $! Mu $ TreeM e (p <> review varFromKey v) t
             | (v, t) <- Tree.children tree
             ]
 
@@ -326,7 +338,7 @@ evalRefArg source indexee refArg = do
 evalCompiledRule
     :: SourceSpan
     -> Rule RuleType SourceSpan
-    -> Maybe Mu
+    -> Maybe Mu'
     -> EvalM Value
 evalCompiledRule callerSource crule mbIndex
     -- Cached and uncached complete definitions
@@ -433,7 +445,7 @@ evalCompiledRule callerSource crule mbIndex
   where
     -- Standard branching evaluation of rule definitions; used for all
     -- evaluations.
-    branches :: [EvalM (Maybe Value, Mu)]
+    branches :: [EvalM (Maybe Value, Mu')]
     branches = do
         def <- crule ^. ruleDefs
         pure $ evalRuleDefinition callerSource def mbIndex
@@ -446,8 +458,8 @@ evalCompiledRule callerSource crule mbIndex
     ckey = (crule ^. rulePackage, crule ^. ruleName)
 
 evalRuleDefinition
-    :: SourceSpan -> RuleDefinition SourceSpan -> Maybe Mu
-    -> EvalM (Maybe Value, Mu)
+    :: SourceSpan -> RuleDefinition SourceSpan -> Maybe Mu'
+    -> EvalM (Maybe Value, Mu')
 evalRuleDefinition callerSource rule mbIndex =
     clearLocals $ do
 
@@ -491,7 +503,7 @@ evalRuleDefinition callerSource rule mbIndex =
             ]
 
 evalUserFunction
-    :: SourceSpan -> Rule RuleType SourceSpan -> [Mu]
+    :: SourceSpan -> Rule RuleType SourceSpan -> [Mu']
     -> EvalM Value
 evalUserFunction callerSource crule callerArgs =
     pushFunctionStackFrame callerSource (QualifiedName (crule ^. ruleKey)) $
@@ -580,7 +592,7 @@ evalLiteral lit next
         updateInput input withs
 {-# INLINE evalLiteral #-}
 
-evalStatement :: Statement SourceSpan -> EvalM Mu
+evalStatement :: Statement SourceSpan -> EvalM Mu'
 evalStatement (UnifyS source x y) = suspend source $ do
     xv <- evalTerm x
     yv <- evalTerm y
@@ -600,7 +612,7 @@ evalScalar = return . Value . \case
     Bool   b -> BoolV   b
     Null     -> NullV
 
-unify :: Mu -> Mu -> EvalM ()
+unify :: Mu' -> Mu' -> EvalM ()
 unify (Mu WildcardM) _ = return ()
 unify _ (Mu WildcardM) = return ()
 unify (Mu (FreeM alpha)) (Mu (FreeM beta)) =
@@ -622,7 +634,7 @@ unify _ _ = cut  -- TODO(jaspervdj): Unify RecM/RecM through ground?
 unifyArrayLength :: V.Vector a -> V.Vector b -> EvalM ()
 unifyArrayLength larr rarr = when (V.length larr /= V.length rarr) cut
 
-instance Unification.MonadUnify InstVar Mu EvalM where
+instance Unification.MonadUnify InstVar (Mu Environment) EvalM where
     unify = unify
 
     getUnification      = use unification
