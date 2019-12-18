@@ -36,7 +36,7 @@ import           Control.Arrow             ((>>>))
 import           Control.Exception         (try)
 import           Control.Lens              (review, to, use, view, (%=), (.=),
                                             (.~), (^.), (^?))
-import           Control.Monad             (when)
+import           Control.Monad             (unless, when)
 import           Control.Monad.Extended    (forM, zipWithM_)
 import           Control.Monad.Identity    (Identity (..))
 import           Control.Monad.Reader      (local)
@@ -62,6 +62,7 @@ import           Fregot.Prepare.Lens
 import           Fregot.PrettyPrint        ((<$$>), (<+>))
 import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources.SourceSpan (SourceSpan)
+import qualified Fregot.Tree               as Tree
 import           Fregot.Types.Rule         (RuleType (..))
 
 ground :: SourceSpan -> Mu -> EvalM Value
@@ -76,9 +77,11 @@ ground source = unMu >>> \case
                 "Unkown variable:" <+> PP.pretty (Mu WildcardM)
     GroundedM v -> pure v
     RecM v -> Value <$> traverse (ground source) v
-    PackageM p -> raise' source "cannot reify package" $
-        "We cannot reify the package:" <+> PP.pretty p <$$>
-        "Reifying packages is currently unsupported."
+    TreeM k tree -> case Tree.root tree of
+        Just crule -> evalCompiledRule source crule Nothing
+        Nothing    -> raise' source "cannot reify tree" $
+            "We cannot reify the tree:" <+> PP.pretty k <$$>
+            "Reifying trees is currently unsupported."
 
 mkObject :: SourceSpan -> [(Value, Value)] -> EvalM Value
 mkObject source assoc = do
@@ -170,7 +173,7 @@ evalTerm (ObjectCompT source khead vhead cbody) = do
 evalName :: SourceSpan -> Name -> EvalM Mu
 evalName source (LocalName var) = evalVar source var
 evalName _source (BuiltinName "input") = muValue <$> view inputDoc
-evalName _source (BuiltinName "data") = return $! Mu $ PackageM mempty
+evalName _source (BuiltinName "data") = Mu . TreeM mempty <$> view rules
 evalName _source WildcardName = return (Mu WildcardM)
 evalName source name@(BuiltinName _) =
     raise' source "type error" $
@@ -243,17 +246,11 @@ evalRefArg :: SourceSpan -> Mu -> Term SourceSpan -> EvalM Mu
 evalRefArg source indexee refArg = do
     idx <- evalTerm refArg
     case idx of
-        _ | Just k <- muToString idx, PackageM pkgname <- unMu indexee, v <- mkVar k -> do
-            mbRule <- lookupRule (mkQualifiedName pkgname v)
-            case mbRule of
-                -- If the package exists *AND* actually has a rule with that
-                -- name, we'll evaluate that name.
-                Just _ ->
-                    evalName source (mkQualifiedName pkgname v)
-                -- Otherwise, we'll construct a further package name.  This
-                -- package name does not actually need to exist (yet), since we
-                -- might append more pieces to it.
-                _ -> return $! Mu $ PackageM (pkgname <> mkPackageName [k])
+        _ | Just s <- muToString idx, TreeM p tree <- unMu indexee ->
+            let key = review varFromKey (mkVar s) in
+            case Tree.descendant key tree of
+                Just child -> return $! Mu $ TreeM (p <> key) child
+                _          -> cut
 
         Mu WildcardM -> do
             gindexee <- ground source indexee
@@ -330,16 +327,16 @@ evalCompiledRule callerSource crule mbIndex
         case mbCacheResult of
             Just (Cache.Singleton val) -> pure val
             _                          -> do
-                val <- requireComplete (crule ^. ruleAnn) $
-                    case crule ^. ruleDefault of
+                val <- requireComplete (crule ^. ruleAnn) $ do
+                    val <- case crule ^. ruleDefault of
                         -- If there is a default, then we fill it in if the rule
                         -- yields no rows.
                         Nothing  -> snd <$> branch branches
                         Just def -> withDefault (evalTerm def) $
                                     snd <$> branch branches
-                gval <- ground callerSource val
-                Cache.writeSingleton c ckey gval
-                pure gval
+                    ground callerSource val
+                Cache.writeSingleton c ckey val
+                pure val
 
     | otherwise = pushStack $ do
         -- Figure n the keys we already know about, and whether or not we
@@ -610,9 +607,8 @@ unify (Mu (GroundedM (Value (ArrayV larr)))) (Mu (RecM (ArrayV rarr))) = do
 unify (Mu (RecM (ArrayV larr))) (Mu (GroundedM (Value (ArrayV rarr)))) = do
     unifyArrayLength larr rarr
     V.zipWithM_ unify larr (fmap muValue rarr)
-unify lhs rhs
-    | lhs == rhs      = return ()
-unify _ _             = cut
+unify (Mu (GroundedM x)) (Mu (GroundedM y)) = unless (x == y) cut
+unify _ _ = cut  -- TODO(jaspervdj): Unify RecM/RecM through ground?
 
 unifyArrayLength :: V.Vector a -> V.Vector b -> EvalM ()
 unifyArrayLength larr rarr = when (V.length larr /= V.length rarr) cut

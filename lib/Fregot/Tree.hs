@@ -42,7 +42,7 @@ import           Fregot.Names
 import           Prelude              hiding (lookup, null)
 
 data Tree a = Tree !(Maybe a) !(HMS.HashMap Var (Tree a))
-    deriving (Foldable, Functor, Traversable)
+    deriving (Foldable, Functor, Traversable, Show)
 
 empty :: Tree a
 empty = Tree Nothing HMS.empty

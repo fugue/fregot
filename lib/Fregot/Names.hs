@@ -22,6 +22,7 @@ module Fregot.Names
     , nestedToString
 
     , Key (..)
+    , varFromKey
     , qualifiedVarFromKey
     , packageNameFromKey
 
@@ -196,6 +197,11 @@ instance PP.Pretty PP.Sem Key where
 
 instance IsString Key where
     fromString = Key . V.fromList . map mkVar . T.split (== '.') . T.pack
+
+varFromKey :: Prism' Key UnqualifiedVar
+varFromKey = prism'
+    (\v -> Key (V.singleton v))
+    (\(Key k) -> guard (V.length k == 1) >> pure (V.head k))
 
 -- TODO(jaspervdj): This is quite inefficient and we're calling this a lot, so
 -- we should look into this.

@@ -39,7 +39,7 @@ inferMuF = \case
     Mu.GroundedM v -> inferValue  v
     Mu.FreeM     _ -> unknown
     Mu.WildcardM   -> unknown
-    Mu.PackageM  _ -> unknown
+    Mu.TreeM _ _   -> unknown
 
 inferValue :: V.Value -> Type
 inferValue = inferValueF . fmap inferValue . V.unValue
