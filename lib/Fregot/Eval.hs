@@ -246,11 +246,20 @@ evalRefArg :: SourceSpan -> Mu -> Term SourceSpan -> EvalM Mu
 evalRefArg source indexee refArg = do
     idx <- evalTerm refArg
     case idx of
-        _ | Just s <- muToString idx, TreeM p tree <- unMu indexee ->
-            let key = review varFromKey (mkVar s) in
-            case Tree.descendant key tree of
-                Just child -> return $! Mu $ TreeM (p <> key) child
-                _          -> cut
+        -- Indexing into the tree works slightly differently.
+        _ | TreeM p tree <- unMu indexee, Just s <- muToString idx ->
+            let k = review varFromKey (mkVar s) in
+            maybe cut (return . Mu . TreeM (p <> k)) (Tree.descendant k tree)
+        _ | TreeM p tree <- unMu indexee, Mu WildcardM <- idx -> branch
+            [ pure $! Mu $ TreeM (p <> review varFromKey v) t
+            | (v, t) <- Tree.children tree
+            ]
+        _ | TreeM p tree <- unMu indexee, Mu (FreeM unbound) <- idx -> branch
+            [ do
+                Unification.bindTerm unbound (muValueF $ StringV $ unVar v)
+                pure $! Mu $ TreeM (p <> review varFromKey v) t
+            | (v, t) <- Tree.children tree
+            ]
 
         Mu WildcardM -> do
             gindexee <- ground source indexee
