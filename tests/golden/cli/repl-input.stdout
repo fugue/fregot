@@ -1,0 +1,2 @@
+repl% = [31m"Hello, world!"[0m
+repl% 

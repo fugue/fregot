@@ -4,6 +4,8 @@ module Fregot.Main.GlobalOptions
 
     , GlobalOptions (..), verbosity, format
     , parseGlobalOptions
+
+    , inputPath
     ) where
 
 import           Control.Lens.TH              (makeLenses)
@@ -30,3 +32,10 @@ parseGlobalOptions = GlobalOptions
             OA.metavar "FORMAT" <>
             OA.help "Format for error messages and diagnostics" <>
             OA.hidden)
+
+inputPath :: OA.Parser (Maybe FilePath)
+inputPath = OA.optional $ OA.strOption $
+    OA.metavar "PATH" <>
+    OA.long    "input" <>
+    OA.short   'i' <>
+    OA.help    "Input filepath"

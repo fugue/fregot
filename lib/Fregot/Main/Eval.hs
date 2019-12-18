@@ -41,10 +41,7 @@ $(makeLenses ''Options)
 
 parseOptions :: OA.Parser Options
 parseOptions = Options
-    <$> (OA.optional $ OA.strOption $
-            OA.metavar "PATH" <>
-            OA.long    "input" <>
-            OA.help    "Input filepath")
+    <$> inputPath
     <*> (fmap T.pack $ OA.strArgument $
             OA.metavar "EXPRESSION" <>
             OA.help    "Rego expression to evaluate")
