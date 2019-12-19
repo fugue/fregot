@@ -190,16 +190,20 @@ evalName _source WildcardName = return (Mu WildcardM)
 evalName source name@(BuiltinName _) =
     raise' source "type error" $
     "Builtin" <+> PP.pretty name <+> "can only be used as function"
-evalName source name@(QualifiedName _) = do
-    mbCompiledRule <- lookupRule name
-    case mbCompiledRule of
+evalName source name@(QualifiedName key) = do
+    env <- ask
+    case Tree.descendant key (env ^. rules) of
         Nothing -> raise' source "rule not found" $
             "Rule not found:" <+> PP.pretty name
-        Just crule | FunctionRule _ <- crule ^. ruleKind ->
+        Just d | Just r <- Tree.root d, FunctionRule _ <- r ^. ruleKind ->
             -- We allow calling a null-ary function `report()` both
             -- as just `report` as well as `report()`
-            muValue <$> evalUserFunction source crule []
-        Just crule -> muValue <$> evalCompiledRule source crule Nothing
+            muValue <$> evalUserFunction source r []
+        Just d | Just r <- Tree.root d ->
+            muValue <$> evalCompiledRule source r Nothing
+        Just d ->
+            -- No rule found here; return the whole tree.
+            pure $! Mu $ TreeM env key d
 
 evalVar :: SourceSpan -> Var -> EvalM Mu'
 evalVar _source v = do

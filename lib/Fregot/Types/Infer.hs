@@ -357,8 +357,22 @@ inferTerm (NameT source (LocalName var)) = do
         Just ty -> return ty
 
 inferTerm (NameT source (QualifiedName key)) = do
-    rule <- getRule source key
-    pure (Types.ruleTypeToType (rule ^. ruleInfo), NonEmpty.singleton source)
+    tree <- view ieTree
+    case Tree.descendant key tree of
+        Nothing -> fatal $ UnboundName (QualifiedName key) source
+        Just d | Just rule <- Tree.root d ->
+            pure (Types.ruleTypeToType (rule ^. ruleInfo), NonEmpty.singleton source)
+        Just d ->
+            -- TODO(jaspervdj): We can implement much more granular type
+            -- inference here by reifying the subtree as an object type.
+            --
+            -- For now we just use an object type with the right keys but
+            -- unknown values.
+            let stat = HMS.fromList
+                    [ (String (unVar v), Types.unknown)
+                    | (v, _) <- Tree.children d
+                    ] in
+            pure (Types.object (Types.Obj stat Nothing), NonEmpty.singleton source)
 
 inferTerm (ArrayT source items) = do
     tys <- traverse inferTerm items
