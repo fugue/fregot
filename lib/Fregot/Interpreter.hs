@@ -145,6 +145,22 @@ readRuleDependencyGraph h = do
 runRenamerT :: Renamer.RenamerEnv -> Renamer.RenamerM a -> InterpreterM a
 runRenamerT renv = mapParachuteT (return . flip runReader renv)
 
+-- | This is a bit hacky and we should probably get rid of it.
+universeForRenamer
+    :: Handle -> InterpreterM (PackageName -> [UnqualifiedVar])
+universeForRenamer h = do
+    modmap <- liftIO $ IORef.readIORef (h ^. modules)
+    yamls0 <- liftIO $ IORef.readIORef (h ^. yamls)
+    pure $ \pkgname ->
+        -- Rule bits.
+        (modmap ^.. ix pkgname . traverse . Sugar.moduleRuleNames) ++
+        -- Yaml bits.
+        (do
+            let key = review packageNameFromKey pkgname
+            yaml <- map snd $ HMS.toList yamls0
+            pkg  <- maybeToList $ Tree.descendant key yaml
+            map fst $ Tree.children pkg)
+
 insertModule
     :: Handle -> Sugar.Module SourceSpan Var -> InterpreterM ()
 insertModule h modul = do
@@ -251,10 +267,11 @@ saveBundle h path = liftIO $ do
 compileRules
     :: Handle -> InterpreterM ()
 compileRules h = do
-    tree0   <- liftIO $ IORef.readIORef (h ^. ruleTree)
-    modmap  <- liftIO $ IORef.readIORef (h ^. modules)
-    yamls0  <- liftIO $ IORef.readIORef (h ^. yamls)
-    builtin <- liftIO $ IORef.readIORef (h ^. builtins)
+    tree0    <- liftIO $ IORef.readIORef (h ^. ruleTree)
+    modmap   <- liftIO $ IORef.readIORef (h ^. modules)
+    yamls0   <- liftIO $ IORef.readIORef (h ^. yamls)
+    builtin  <- liftIO $ IORef.readIORef (h ^. builtins)
+    universe <- universeForRenamer h
 
     -- Find missing rules.  This would probably be better expressed as a tree
     -- difference in a different module.
@@ -282,8 +299,7 @@ compileRules h = do
 
             -- Rename the found moduless.
             renamed <- Renamer.renameModules builtin pkgname
-                    (\pkgname' -> modmap ^.. ix pkgname' .
-                        traverse . Sugar.moduleRuleNames)
+                    universe
                     mods
 
             -- Prepare the renamed modules and then merge this in.
@@ -379,10 +395,10 @@ newResumeStep
     -> InterpreterM (Eval.ResumeStep Eval.Value)
 newResumeStep h pkgname query = do
     -- Disable the cache for evaluating queries in resume steps.
-    envctx <- over (Eval.ecEnvironment . Eval.cache) Cache.disable <$>
+    envctx   <- over (Eval.ecEnvironment . Eval.cache) Cache.disable <$>
                 newEvalContext h
-    modmap <- liftIO $ IORef.readIORef (h ^. modules)
-    ctree  <- liftIO $ IORef.readIORef (h ^. ruleTree)
+    ctree    <- liftIO $ IORef.readIORef (h ^. ruleTree)
+    universe <- universeForRenamer h
 
     -- Rename expression.
     let builtin    = envctx ^. Eval.ecEnvironment . Eval.builtins
@@ -390,13 +406,11 @@ newResumeStep h pkgname query = do
             builtin
             mempty  -- No imports?
             pkgname
-            (HS.toHashSetOf
-                (ix pkgname . traverse . Sugar.moduleRuleNames) modmap)
+            (HS.fromList (universe pkgname))
             -- TODO(jaspervdj): This is where we would want to grab the tree
             -- from within the environment?
             -- (envctx ^. Eval.ecEnvironment . Eval.packages)
-            (\pkgname' -> modmap ^.. ix pkgname'
-                . traverse . Sugar.moduleRuleNames)
+            universe
             HS.empty
     rquery <- runRenamerT renamerEnv $ Renamer.renameQuery query
 
@@ -435,19 +449,17 @@ compileQuery
     -> Sugar.Query SourceSpan Var
     -> InterpreterM (Query SourceSpan)
 compileQuery h mbEvalEnvCtx pkgname query = do
-    ctree   <- liftIO $ IORef.readIORef (h ^. ruleTree)
-    builtin <- liftIO $ IORef.readIORef (h ^. builtins)
-    modmap  <- liftIO $ IORef.readIORef (h ^. modules)
+    ctree    <- liftIO $ IORef.readIORef (h ^. ruleTree)
+    builtin  <- liftIO $ IORef.readIORef (h ^. builtins)
+    universe <- universeForRenamer h
 
     -- Rename expression.
     let renamerEnv = Renamer.RenamerEnv
             builtin
             mempty  -- No imports?
             pkgname
-            (HS.toHashSetOf
-                (ix pkgname . traverse . Sugar.moduleRuleNames) modmap)
-            (\pkgname' -> modmap ^.. ix pkgname'
-                . traverse . Sugar.moduleRuleNames)
+            (HS.fromList $ universe pkgname)
+            universe
             HS.empty
     rquery <- runRenamerT renamerEnv $ Renamer.renameQuery query
 
@@ -465,19 +477,17 @@ compileExpr
     -> Sugar.Expr SourceSpan Var
     -> InterpreterM (Term SourceSpan, Types.Type)
 compileExpr h mbEvalEnvCtx pkgname expr = do
-    ctree   <- liftIO $ IORef.readIORef (h ^. ruleTree)
-    builtin <- liftIO $ IORef.readIORef (h ^. builtins)
-    modmap  <- liftIO $ IORef.readIORef (h ^. modules)
+    ctree    <- liftIO $ IORef.readIORef (h ^. ruleTree)
+    builtin  <- liftIO $ IORef.readIORef (h ^. builtins)
+    universe <- universeForRenamer h
 
     -- Rename expression.
     let renamerEnv = Renamer.RenamerEnv
             builtin
             mempty  -- No imports?
             pkgname
-            (HS.toHashSetOf
-                (ix pkgname . traverse . Sugar.moduleRuleNames) modmap)
-            (\pkgname' -> modmap ^.. ix pkgname' .
-                traverse . Sugar.moduleRuleNames)
+            (HS.fromList $ universe pkgname)
+            universe
             HS.empty
     rterm <- runRenamerT renamerEnv $ Renamer.renameExpr expr
 
