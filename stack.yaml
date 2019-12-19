@@ -9,3 +9,4 @@ packages:
 
 extra-deps:
 - './packages/pcre-simple'
+- 'HsYAML-0.2.1.0'

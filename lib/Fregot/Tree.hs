@@ -12,6 +12,7 @@ module Fregot.Tree
 
     , empty
     , singleton
+    , parent
     , insert
     , fromList
 
@@ -51,6 +52,9 @@ singleton :: Key -> a -> Tree a
 singleton (Key key) x = case V.uncons key of
     Nothing      -> Tree (Just x) HMS.empty
     Just (k, ks) -> Tree Nothing (HMS.singleton k (singleton (Key ks) x))
+
+parent :: [(Var, Tree a)] -> Tree a
+parent = Tree Nothing . HMS.fromList
 
 insert :: Key -> a -> Tree a -> Tree a
 insert (Key key) x (Tree mbX cs) = case V.uncons key of
