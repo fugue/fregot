@@ -3,6 +3,7 @@
 {-# LANGUAGE TemplateHaskell   #-}
 module Fregot.Prepare.Package
     ( PreparedRule
+    , PreparedTree
     , prepareModules
     , prepareModule
     , mergeTree
@@ -23,17 +24,18 @@ import qualified Fregot.Tree               as Tree
 import           Prelude                   hiding (head, lookup)
 
 type PreparedRule = Rule () SourceSpan
+type PreparedTree = Tree.Tree PreparedRule
 
 prepareModules
     :: Monad m
     => Sugar.Modules SourceSpan Name
-    -> ParachuteT Error m (Tree.Tree PreparedRule)
+    -> ParachuteT Error m PreparedTree
 prepareModules = mapM prepareModule >=> mergeTrees
 
 prepareModule
     :: Monad m
     => Sugar.Module SourceSpan Name
-    -> ParachuteT Error m (Tree.Tree PreparedRule)
+    -> ParachuteT Error m PreparedTree
 prepareModule modul = foldM
     (\tree rule -> do
         let key :: Tree.Key
@@ -53,13 +55,13 @@ prepareModule modul = foldM
 
 mergeTree
     :: Monad m
-    => Tree.Tree PreparedRule
-    -> Tree.Tree PreparedRule
-    -> ParachuteT Error m (Tree.Tree PreparedRule)
+    => PreparedTree
+    -> PreparedTree
+    -> ParachuteT Error m PreparedTree
 mergeTree = Tree.unionWithA mergeRules
 
 mergeTrees
     :: Monad m
-    => [Tree.Tree PreparedRule]
-    -> ParachuteT Error m (Tree.Tree PreparedRule)
+    => [PreparedTree]
+    -> ParachuteT Error m PreparedTree
 mergeTrees = foldM mergeTree Tree.empty

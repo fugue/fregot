@@ -21,7 +21,7 @@ module Fregot.Interpreter
     , loadBundle
     , saveBundle
 
-    , loadModuleOrBundle
+    , loadFileByExtension
 
     , compileRules
 
@@ -44,8 +44,7 @@ import qualified Codec.Compression.GZip          as GZip
 import           Control.Lens                    (forOf_, ix, over, preview,
                                                   review, (^.), (^..))
 import           Control.Lens.TH                 (makeLenses)
-import           Control.Monad                   (foldM, unless)
-import           Control.Monad                   (guard)
+import           Control.Monad                   (foldM, guard, unless, void)
 import           Control.Monad.Identity          (Identity (..))
 import           Control.Monad.Parachute
 import           Control.Monad.Reader            (runReader)
@@ -59,8 +58,11 @@ import qualified Data.HashMap.Strict             as HMS
 import qualified Data.HashSet.Extended           as HS
 import           Data.IORef.Extended             (IORef)
 import qualified Data.IORef.Extended             as IORef
-import           Data.Maybe                      (fromMaybe, maybeToList)
+import           Data.Maybe                      (fromMaybe, mapMaybe,
+                                                  maybeToList)
 import qualified Data.Text.IO                    as T
+import qualified Data.Text.Lazy                  as TL
+import qualified Data.Text.Lazy.Encoding         as TL
 import           Data.Traversable.HigherOrder    (htraverse)
 import qualified Data.Yaml.Extended              as Yaml
 import qualified Fregot.Compile.Graph            as Compile
@@ -84,6 +86,7 @@ import qualified Fregot.Parser                   as Parser
 import qualified Fregot.Prepare                  as Prepare
 import           Fregot.Prepare.Ast              (Function (..), Query, Term)
 import qualified Fregot.Prepare.Package          as Prepare
+import qualified Fregot.Prepare.Yaml             as Prepare
 import           Fregot.PrettyPrint              ((<$$>), (<+>))
 import qualified Fregot.PrettyPrint              as PP
 import qualified Fregot.Sources                  as Sources
@@ -92,6 +95,7 @@ import qualified Fregot.Sugar                    as Sugar
 import qualified Fregot.Tree                     as Tree
 import qualified Fregot.Types.Internal           as Types
 import qualified Fregot.Types.Value              as Types
+import           System.Directory                (canonicalizePath)
 import           System.FilePath.Extended        (listExtensions)
 
 type InterpreterM a = ParachuteT Error IO a
@@ -102,6 +106,7 @@ data Handle = Handle
     -- | List of modules, and files we loaded them from.  Grouped by package
     -- name.
     , _modules  :: !(IORef (HMS.HashMap PackageName ModuleBatch))
+    , _yamls    :: !(IORef (HMS.HashMap FilePath Prepare.PreparedTree))
     -- | Tree of compiled rules.  Replaces the above.
     , _ruleTree :: !(IORef (Tree.Tree CompiledRule))
     , _cache    :: !(IORef EvalCache)
@@ -118,6 +123,7 @@ newHandle _sources = do
 
     _builtins     <- IORef.newIORef initializedBuiltins
     _modules      <- IORef.newIORef HMS.empty
+    _yamls        <- IORef.newIORef HMS.empty
     _compiled     <- IORef.newIORef HMS.empty
     _ruleTree     <- IORef.newIORef Tree.empty
     _cache        <- Cache.new >>= IORef.newIORef
@@ -155,21 +161,23 @@ insertModule h modul = do
                 Just pkg -> pkg ^.. moduleBatchRules in
         (HMS.insert pkgname m2 mods, old)
 
-    -- Compute all rules that depended on rules in the module, so we can evict
-    -- all of them.
-    ruleDepGraph <- liftIO (readRuleDependencyGraph h)
-    let evictRules = Deps.evict ruleDepGraph $ HS.fromList $
-            map (review Tree.qualifiedVarFromKey) oldRules
-    unless (HS.null evictRules) $ bumpCache h
-
-    -- Remove everything that's in the evict set.
-    liftIO $ IORef.atomicModifyIORef_ (h ^. ruleTree) $
-        Tree.filterWithKey (\k _ -> not (k `HS.member` evictRules))
-
+    evictRules h oldRules
     dieIfErrors
   where
     -- All rules defined in a 'ModuleBatch'.
     moduleBatchRules = traverse . Sugar.moduleRuleNames
+
+evictRules :: Handle -> [QualifiedVar] -> InterpreterM ()
+evictRules h victims = do
+    -- Compute all rules that depended on rules in the module, so we can evict
+    -- all of them.
+    ruleDepGraph <- liftIO (readRuleDependencyGraph h)
+    let transitive = Deps.evict ruleDepGraph $ HS.fromList $
+            map (review Tree.qualifiedVarFromKey) victims
+    unless (HS.null transitive) $ bumpCache h
+    -- Remove everything that's in the evict set.
+    liftIO $ IORef.atomicModifyIORef_ (h ^. ruleTree) $
+        Tree.filterWithKey (\k _ -> not (k `HS.member` transitive))
 
 loadModule
     :: Handle -> Parser.ParserOptions -> FilePath -> InterpreterM PackageName
@@ -183,6 +191,28 @@ loadModule h popts path = do
     -- Insert or replace the module.
     insertModule h modul
     return $ modul ^. Sugar.modulePackage
+  where
+    sourcep = Sources.FileInput path
+
+loadYaml
+    :: Handle -> FilePath -> InterpreterM ()
+loadYaml h path = do
+    canonical <- catchIO $ liftIO $ canonicalizePath path
+    input     <- catchIO $ T.readFile path
+    liftIO $ IORef.atomicModifyIORef_ (h ^. sources) $
+        Sources.insert sourcep input
+
+    let inputBytes = TL.encodeUtf8 $ TL.fromStrict input
+    tree <- case Prepare.loadYaml sourcep inputBytes of
+        Right tree -> pure tree
+        Left (loc, err) -> fatal $ Error.mkError "parse" loc "parse failed" $
+            PP.pretty err
+
+    oldRules <- liftIO $ IORef.atomicModifyIORef' (h ^. yamls) $ \ys ->
+        case HMS.lookup canonical ys of
+            Nothing -> (HMS.insert canonical tree ys, mempty)
+            Just t  -> (HMS.insert canonical tree ys, Tree.keys t)
+    evictRules h $ mapMaybe (preview qualifiedVarFromKey) oldRules
   where
     sourcep = Sources.FileInput path
 
@@ -201,11 +231,12 @@ loadBundle h path = do
                 \modul -> insertModule h modul
             return $ HMS.keys $ bundle ^. bundleModules
 
-loadModuleOrBundle
-    :: Handle -> Parser.ParserOptions -> FilePath -> InterpreterM [PackageName]
-loadModuleOrBundle h popts path = case listExtensions path of
-    "rego" : _            -> pure <$> loadModule h popts path
-    "bundle" : "rego" : _ -> loadBundle h path
+loadFileByExtension
+    :: Handle -> Parser.ParserOptions -> FilePath -> InterpreterM ()
+loadFileByExtension h popts path = case listExtensions path of
+    "rego" : _            -> void $ loadModule h popts path
+    "bundle" : "rego" : _ -> void $ loadBundle h path
+    "yaml" : _            -> loadYaml h path
     _                     -> fatal $ Error.mkErrorNoMeta "interpreter" $
         "Unknown rego file extension:" <+> PP.pretty path <+>
         ", expected .rego or .bundle.rego"
@@ -222,6 +253,7 @@ compileRules
 compileRules h = do
     tree0   <- liftIO $ IORef.readIORef (h ^. ruleTree)
     modmap  <- liftIO $ IORef.readIORef (h ^. modules)
+    yamls0  <- liftIO $ IORef.readIORef (h ^. yamls)
     builtin <- liftIO $ IORef.readIORef (h ^. builtins)
 
     -- Find missing rules.  This would probably be better expressed as a tree
@@ -234,6 +266,10 @@ compileRules h = do
                         (modul ^. Sugar.modulePackage, name)
             guard $ not $ key `Tree.member` tree0
             pure (modul ^. Sugar.modulePackage, key)
+
+    -- Get a tree from the YAML files.
+    yamlTree <- Prepare.mergeTrees
+        [t `Tree.difference` tree0 | (_, t) <- HMS.toList yamls0]
 
     -- Start by preparing the necessary packages a a big tree.  Note that we are
     -- currently compiling more rules than we strictly need to!  We should
@@ -254,7 +290,7 @@ compileRules h = do
             t' <- Prepare.prepareModules renamed
             Prepare.mergeTree t t')
 
-        Tree.empty wantedPkgs
+        yamlTree wantedPkgs
 
     -- Compile the tree and save it.
     tree1 <- Compile.compileTree builtin tree0 preparedTree

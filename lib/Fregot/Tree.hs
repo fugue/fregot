@@ -28,6 +28,7 @@ module Fregot.Tree
 
     , union
     , unionWithA
+    , difference
     , filterWithKey
     , alterF
     ) where
@@ -130,6 +131,18 @@ unionWithA f (Tree mbX csl) (Tree mbY csr) =
     -- Add keys that appear only in the right children.
     unionLeft = HMS.foldlWithKey'
         (\acc k x -> if k `HMS.member` acc then acc else HMS.insert k x acc)
+
+difference :: Tree a -> Tree b -> Tree a
+difference (Tree mbX csl) (Tree mbY csr) =
+    Tree
+        (if isJust mbY then Nothing else mbX)
+        (HMS.mapMaybeWithKey (\k cl ->
+            case HMS.lookup k csr of
+                Nothing -> Just cl
+                Just cr ->
+                    let t' = difference cl cr in
+                    if null t' then Nothing else Just t')
+            csl)
 
 filterWithKey :: (Key -> a -> Bool) -> Tree a -> Tree a
 filterWithKey p = go mempty

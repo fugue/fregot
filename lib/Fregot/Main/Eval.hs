@@ -55,7 +55,7 @@ main gopts opts = do
     interpreter <- Interpreter.newHandle sources
     regoPaths <- Find.findRegoFiles (opts ^. paths)
     (errors, mbResult) <- Parachute.runParachuteT $ do
-        forM_ regoPaths $ Interpreter.loadModuleOrBundle
+        forM_ regoPaths $ Interpreter.loadFileByExtension
             interpreter Parser.defaultParserOptions
         Interpreter.compileRules interpreter
 
