@@ -1,31 +1,35 @@
 --------------------------------------------------------------------------------
 -- | Convert a YAML document to a prepared rule.
+{-# LANGUAGE FlexibleContexts  #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Fregot.Prepare.Yaml
     ( loadYaml
     ) where
 
-import           Control.Lens              (review, (^.))
+import           Control.Lens              ((^.))
 import           Control.Monad             (forM)
 import           Data.Bifunctor            (first)
 import qualified Data.ByteString.Lazy      as BL
-import qualified Data.List                 as L
 import qualified Data.Map                  as Map
 import           Data.Maybe                (fromMaybe)
 import qualified Data.Scientific           as Scientific
 import qualified Data.YAML                 as Yaml
+import qualified Fregot.Error              as Error
 import           Fregot.Lexer.Position     (Position (..))
 import           Fregot.Names
 import           Fregot.Prepare.Ast
+import           Fregot.Prepare.BuildTree
 import           Fregot.Prepare.Lens
 import           Fregot.Prepare.Package    (PreparedRule)
+import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources.SourceSpan (SourcePointer, SourceSpan (..))
 import qualified Fregot.Tree               as Tree
 
 loadYaml
     :: SourcePointer
     -> BL.ByteString
-    -> Either (SourceSpan, String) (Tree.Tree PreparedRule)
-loadYaml sourcePointer bytestring = do
+    -> Either Error.Error (Tree.Tree PreparedRule)
+loadYaml sourcePointer bytestring = first toError $ do
     node <- first (first mkSourceSpan) $ Yaml.decode1 bytestring
     case buildTree (fmap mkSourceSpan node) of
         BuildTree _ btree -> Right $ toTree mempty btree
@@ -37,45 +41,7 @@ loadYaml sourcePointer bytestring = do
         let pos = Position (Yaml.posLine ypos) (Yaml.posColumn ypos + 1) in
         SourceSpan sourcePointer pos pos
 
-data BuildTree
-    = BuildSingleton (Term SourceSpan)
-    | BuildTree      SourceSpan [(SourceSpan, Var, BuildTree)]
-
-toTree
-    :: PackageName -> [(SourceSpan, Var, BuildTree)] -> Tree.Tree PreparedRule
-toTree pkgname = L.foldl' Tree.union Tree.empty . map toRuleOrTree
-  where
-    toRuleOrTree (loc, var, BuildSingleton t) = Tree.singleton
-        (review varFromKey var)
-        Rule
-            { _rulePackage = pkgname
-            , _ruleName    = var
-            , _ruleKey     = review qualifiedVarFromKey (pkgname, var)
-            , _ruleAnn     = loc
-            , _ruleKind    = CompleteRule
-            , _ruleInfo    = ()
-            , _ruleDefault = Nothing
-            , _ruleDefs    = pure RuleDefinition
-                { _ruleDefName    = var
-                , _ruleDefImports = mempty
-                , _ruleDefAnn     = loc
-                , _ruleArgs       = Nothing
-                , _ruleIndex      = Nothing
-                , _ruleValue      = Just t
-                , _ruleBodies     = []
-                , _ruleElses      = []
-                }
-            }
-
-    toRuleOrTree (_, var, BuildTree _ t) =
-        Tree.parent [(var, toTree (pkgname <> mkPackageName [unVar var]) t)]
-
-toTerm :: BuildTree -> Term SourceSpan
-toTerm (BuildSingleton t) = t
-toTerm (BuildTree loc children) = ObjectT loc $
-    [ (ScalarT l (String $ unVar v), toTerm child)
-    | (l, v, child) <- children
-    ]
+    toError (loc, e) = Error.mkError "parse" loc "parse failed" $ PP.pretty e
 
 buildTree
     :: Yaml.Node SourceSpan

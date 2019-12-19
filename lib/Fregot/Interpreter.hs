@@ -228,11 +228,7 @@ loadYaml h path = do
         Sources.insert sourcep input
 
     let inputBytes = TL.encodeUtf8 $ TL.fromStrict input
-    tree <- case Prepare.loadYaml sourcep inputBytes of
-        Right tree -> pure tree
-        Left (loc, err) -> fatal $ Error.mkError "parse" loc "parse failed" $
-            PP.pretty err
-
+    tree <- either fatal pure $ Prepare.loadYaml sourcep inputBytes
     oldRules <- liftIO $ IORef.atomicModifyIORef' (h ^. yamls) $ \ys ->
         case HMS.lookup canonical ys of
             Nothing -> (HMS.insert canonical tree ys, mempty)

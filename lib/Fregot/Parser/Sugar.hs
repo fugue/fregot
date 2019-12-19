@@ -9,6 +9,11 @@ module Fregot.Parser.Sugar
     , rule
     , query
     , expr
+
+    , Tok.string
+    , scalar
+    , array
+    , objectOrSet
     ) where
 
 import           Control.Applicative         ((<|>))
@@ -236,7 +241,7 @@ term = withSourceSpan $
         (x, body) <- comprehension Tok.TLBracket Tok.TRBracket term
         return $ \ss -> ArrayCompT ss x body) <|>
     (do
-        a <- array
+        a <- array expr
         return $ \ss -> ArrayT ss a) <|>
     (do
         (x, body) <- comprehension Tok.TLBrace Tok.TRBrace term
@@ -249,7 +254,7 @@ term = withSourceSpan $
             return (k0, x0)
         return $ \ss -> ObjectCompT ss k x body) <|>
     (do
-        os <- objectOrSet
+        os <- objectOrSet objectKey expr
         return $ \ss -> case os of
             Left  o -> ObjectT ss o
             Right s -> SetT ss s)
@@ -280,12 +285,13 @@ scalar =
     (pure (Bool False) <* Tok.symbol Tok.TFalse) <|>
     (pure Null <* Tok.symbol Tok.TNull)
 
-array :: FregotParser [Expr SourceSpan Var]
-array = sepTrailing Tok.TLBracket Tok.TRBracket Tok.TComma expr
+array :: FregotParser expr -> FregotParser [expr]
+array = sepTrailing Tok.TLBracket Tok.TRBracket Tok.TComma
 
 objectOrSet
-    :: FregotParser (Either (Object SourceSpan Var) [Expr SourceSpan Var])
-objectOrSet = do
+    :: FregotParser key -> FregotParser value
+    -> FregotParser (Either [(key, value)] [value])
+objectOrSet key value = do
     items <- sepTrailing Tok.TLBrace Tok.TRBrace Tok.TComma item
     case partitionEithers items of
         ([], setitems) -> return $ Right setitems
@@ -294,11 +300,11 @@ objectOrSet = do
   where
     item =
         (do
-            k <- Parsec.try $ objectKey <* Tok.symbol Tok.TColon
-            e <- expr
+            k <- Parsec.try $ key <* Tok.symbol Tok.TColon
+            e <- value
             return $ Left (k, e)) <|>
         (do
-            fmap Right expr)
+            fmap Right value)
 
 objectKey :: FregotParser (ObjectKey SourceSpan Var)
 objectKey = withSourceSpan $

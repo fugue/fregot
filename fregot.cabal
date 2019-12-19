@@ -60,6 +60,8 @@ Library
     Fregot.Parser.Token
     Fregot.Prepare
     Fregot.Prepare.Ast
+    Fregot.Prepare.BuildTree
+    Fregot.Prepare.Json
     Fregot.Prepare.Lens
     Fregot.Prepare.Package
     Fregot.Prepare.Yaml
