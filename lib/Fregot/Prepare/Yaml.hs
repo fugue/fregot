@@ -4,7 +4,7 @@ module Fregot.Prepare.Yaml
     ( loadYaml
     ) where
 
-import           Control.Lens              (review, (^.), (^?))
+import           Control.Lens              (review, (^.))
 import           Control.Monad             (forM)
 import           Data.Bifunctor            (first)
 import qualified Data.ByteString.Lazy      as BL
@@ -89,8 +89,7 @@ buildTree (Yaml.Mapping loc _ nodes) = fromMaybe
         (kloc, text) <- case key of
             Yaml.Scalar sl (Yaml.SStr t) -> pure (sl, t)
             _                            -> Nothing
-        var <- text ^? varFromText
-        pure (kloc, var, buildTree node))
+        pure (kloc, mkVar text, buildTree node))
 buildTree (Yaml.Anchor _ _ node) = buildTree node
 buildTree (Yaml.Sequence loc _ nodes) = BuildSingleton . ArrayT loc $
     map (toTerm . buildTree) nodes
