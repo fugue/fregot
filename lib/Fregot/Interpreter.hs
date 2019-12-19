@@ -42,7 +42,7 @@ module Fregot.Interpreter
 
 import qualified Codec.Compression.GZip          as GZip
 import           Control.Lens                    (forOf_, ix, over, preview,
-                                                  review, (^.), (^..))
+                                                  review, to, (^.), (^..), _1)
 import           Control.Lens.TH                 (makeLenses)
 import           Control.Monad                   (foldM, guard, unless, void)
 import           Control.Monad.Identity          (Identity (..))
@@ -151,9 +151,18 @@ universeForRenamer
 universeForRenamer h = do
     modmap <- liftIO $ IORef.readIORef (h ^. modules)
     yamls0 <- liftIO $ IORef.readIORef (h ^. yamls)
+    let packageTree = Tree.fromList
+            [ (review packageNameFromKey key, ())
+            | key <- modmap ^.. to HMS.toList . traverse . _1
+            ]
     pure $ \pkgname ->
         -- Rule bits.
         (modmap ^.. ix pkgname . traverse . Sugar.moduleRuleNames) ++
+        -- Dynamic references to packages.
+        (do
+            let key = review packageNameFromKey pkgname
+            pkg <- maybeToList $ Tree.descendant key packageTree
+            map fst $ Tree.children pkg) ++
         -- Yaml bits.
         (do
             let key = review packageNameFromKey pkgname
