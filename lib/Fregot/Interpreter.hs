@@ -61,6 +61,7 @@ import           Data.IORef.Extended             (IORef)
 import qualified Data.IORef.Extended             as IORef
 import           Data.Maybe                      (fromMaybe, mapMaybe,
                                                   maybeToList)
+import           Data.Memoize                    (memoize)
 import qualified Data.Text                       as T
 import qualified Data.Text.IO                    as T
 import qualified Data.Text.Lazy                  as TL
@@ -138,12 +139,12 @@ readRuleDependencyGraph
     :: Handle -> IO (Deps.Graph Tree.Key)
 readRuleDependencyGraph h = do
     tree <- IORef.readIORef (h ^. ruleTree)
+    let dependencies = memoize $ \k -> maybe
+            [] (HS.toList . Compile.ruleDependencies tree) (Tree.lookup k tree)
     return $ Deps.Graph
         { Deps.graphDone         = Tree.keys tree
         , Deps.graphIsDone       = \k -> Tree.member k tree
-        , Deps.graphDependencies = \k -> maybe
-            -- TODO(jaspervdj): This needs caching!!
-            [] (HS.toList . Compile.ruleDependencies tree) (Tree.lookup k tree)
+        , Deps.graphDependencies = dependencies
         }
 
 -- | Auxiliary function for hooking into the renamer.

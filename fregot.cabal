@@ -88,6 +88,7 @@ Library
     Control.Monad.Parachute
     Control.Monad.Stream
     Data.Cache
+    Data.Memoize
     Data.Kleene
     Data.SafeVar
     Data.Traversable.HigherOrder
