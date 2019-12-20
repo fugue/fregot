@@ -5,17 +5,14 @@ module Fregot.Prepare
     , mergeRules
 
     , Imports
-    , prepareImports
     , prepareQuery
     , prepareExpr
     ) where
 
-
 import           Control.Applicative       ((<|>))
-import           Control.Lens              (view, (%~), (&), (^.))
+import           Control.Lens              (review, view, (%~), (&), (^.))
 import           Control.Monad.Extended    (foldM, unless, when)
 import           Control.Monad.Parachute   (ParachuteT, fatal, tellError)
-import qualified Data.HashMap.Strict       as HMS
 import qualified Data.List.Extended        as L
 import           Data.Maybe                (catMaybes, isJust, isNothing,
                                             mapMaybe)
@@ -59,6 +56,7 @@ prepareRule pkgname imports rule
         pure Rule
             { _rulePackage = pkgname
             , _ruleName    = head ^. Sugar.ruleName
+            , _ruleKey     = review qualifiedVarFromKey (pkgname, head ^. Sugar.ruleName)
             , _ruleAnn     = head ^. Sugar.ruleAnn
             , _ruleDefault = def
             , _ruleKind    = CompleteRule
@@ -83,6 +81,7 @@ prepareRule pkgname imports rule
         pure Rule
             { _rulePackage = pkgname
             , _ruleName    = head ^. Sugar.ruleName
+            , _ruleKey     = review qualifiedVarFromKey (pkgname, head ^. Sugar.ruleName)
             , _ruleAnn     = head ^. Sugar.ruleAnn
             , _ruleDefault = Nothing
             , _ruleKind    = FunctionRule (maybe 0 length args)
@@ -116,6 +115,7 @@ prepareRule pkgname imports rule
         pure Rule
             { _rulePackage = pkgname
             , _ruleName    = head ^. Sugar.ruleName
+            , _ruleKey     = review qualifiedVarFromKey (pkgname, head ^. Sugar.ruleName)
             , _ruleAnn     = head ^. Sugar.ruleAnn
             , _ruleDefault = Nothing
             , _ruleKind    = kind
@@ -167,24 +167,6 @@ mergeRules x y = do
         FunctionRule a -> "is a function of arity" <+> PP.pretty a
 
 --------------------------------------------------------------------------------
-
-prepareImports
-    :: Monad m
-    => [Sugar.Import SourceSpan]
-    -> ParachuteT Error m (Imports SourceSpan)
-prepareImports =
-    fmap (HMS.fromList . catMaybes) . traverse prepareImport
-  where
-    prepareImport imp = do
-        let mbAlias =
-                (imp ^. Sugar.importAs) <|>
-                (case imp ^. Sugar.importGut of
-                    ImportData  p -> mkVar <$> L.maybeLast (unPackageName p)
-                    ImportInput p -> mkVar <$> L.maybeLast (unPackageName p))
-
-        return $ do
-            alias <- mbAlias
-            return $ (alias, (imp ^. Sugar.importAnn, imp ^. Sugar.importGut))
 
 prepareRuleBody
     :: Monad m

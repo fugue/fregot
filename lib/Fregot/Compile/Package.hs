@@ -7,20 +7,18 @@
 {-# LANGUAGE TemplateHaskell     #-}
 module Fregot.Compile.Package
     ( Safe (..)
-    , CompiledPackage, packageName, packageRules
-    , lookup
-    , rules
-    , compilePackage
+    , CompiledRule
+    , compileTree
     , compileQuery
     , compileTerm
     ) where
 
-import           Control.Lens                 (at, iforM_, ix, traverseOf, view,
-                                               (&), (.~), (^.), (^?))
+import           Control.Lens                 (at, iforM_, review, traverseOf,
+                                               view, (&), (.~), (^.))
 import           Control.Monad                (foldM, forM)
 import           Control.Monad.Identity       (runIdentity)
-import           Control.Monad.Parachute      (ParachuteT, catching, fatal,
-                                               tellError, tellErrors)
+import           Control.Monad.Parachute      (ParachuteT, catching, tellError,
+                                               tellErrors)
 import qualified Data.Graph                   as Graph
 import qualified Data.HashMap.Strict.Extended as HMS
 import qualified Data.HashSet.Extended        as HS
@@ -39,27 +37,26 @@ import           Fregot.Prepare.Package
 import           Fregot.PrettyPrint           ((<$$>), (<+>))
 import qualified Fregot.PrettyPrint           as PP
 import           Fregot.Sources.SourceSpan    (SourceSpan)
+import qualified Fregot.Tree                  as Tree
 import qualified Fregot.Types.Infer           as Infer
 import           Fregot.Types.Rule            (RuleType)
 import           Fregot.Types.Value           (TypeContext)
 import           Prelude                      hiding (head, lookup)
 
-type CompiledPackage = Package RuleType
+type CompiledRule = Rule RuleType SourceSpan
 
-type Dependencies = HMS.HashMap PackageName CompiledPackage
-
-compilePackage
+-- | Compiles and merges the prepared tree into the compiled tree.
+compileTree
     :: Monad m
     => Builtins (f :: * -> *)
-    -> Dependencies
-    -> PreparedPackage
-    -> ParachuteT Error m CompiledPackage
-compilePackage builtins dependencies prep = do
+    -> Tree.Tree CompiledRule
+    -> Tree.Tree PreparedRule
+    -> ParachuteT Error m (Tree.Tree CompiledRule)
+compileTree builtins ctree0 prep = do
     -- Build dependency graph.
     let graph = do
-            rule <- fmap snd $ HMS.toList $ prep ^. packageRules
-            let key = (rule ^. rulePackage, rule ^. ruleName)
-            return (rule, key, HS.toList $ ruleDependencies rule)
+            (key, rule) <- Tree.toList prep
+            return (rule, key, HS.toList $ ruleDependencies prep rule)
 
     -- Order rules according to dependency graph.
     ordering <- fmap concat $ forM (Graph.stronglyConnComp graph) $ \case
@@ -70,28 +67,23 @@ compilePackage builtins dependencies prep = do
             -- TODO(jaspervdj): We'll want to replace them with error nodes.
             tellError (recursionError cycl) >> return []
 
-    -- This is a version of dependencies with a placeholder for the current
-    -- package, so we can access info about the current package the same as we
-    -- could other package.
-    let vdependencies = HMS.insert pkgname
-            (prep & packageRules .~ HMS.empty) dependencies
-
     let inferEnv0 = Infer.emptyInferEnv
             -- TODO(jaspervdj): Builtins Proxy works quite well, we should move
             -- it up in the call stack.
             { Infer._ieBuiltins = runIdentity $
                 traverse (htraverse $ \_ -> pure Proxy) builtins
-            , Infer._ieDependencies = vdependencies
+            , Infer._ieTree = ctree0
             }
 
     inferEnv1 <- foldM (\inferEnv rule -> catching
         (\errs -> if null errs then Nothing else Just errs)
         (do
             -- Simple compilation and checks.
+            let key = review Tree.qualifiedVarFromKey
+                        (rule ^. rulePackage, rule ^. ruleName)
             cRule  <- compileRule inferEnv rule
             tyRule <- Infer.evalInfer inferEnv $ Infer.inferRule cRule
-            return $ inferEnv & Infer.ieDependencies . ix pkgname .
-                packageRules .  at (rule ^. ruleName) .~ Just tyRule)
+            return $ inferEnv & Infer.ieTree . at key .~ Just tyRule)
         -- TODO(jaspervdj): We'll want to replace them with error nodes and an
         -- 'unknown' type.
         (\errs -> do
@@ -100,55 +92,50 @@ compilePackage builtins dependencies prep = do
         inferEnv0
         ordering
 
-    case inferEnv1 ^? Infer.ieDependencies . ix pkgname of
-        Just p  -> return p
-        Nothing -> fatal $ Error.mkErrorNoMeta
-            "compile" "Package that we are compiling went missing"
+    pure $ inferEnv1 ^. Infer.ieTree
+
+compileRule
+    :: Monad m => Infer.InferEnv -> Rule' -> ParachuteT Error m Rule'
+compileRule ie = traverseOf (ruleDefs . traverse) (compileRuleDefinition ie)
+
+compileRuleDefinition
+    :: forall m. Monad m
+    => Infer.InferEnv
+    -> RuleDefinition SourceSpan
+    -> ParachuteT Error m (RuleDefinition SourceSpan)
+compileRuleDefinition ie def = do
+    -- Order the bodies and terms.
+    ordered <-
+        traverseOf (ruleBodies . traverse) orderRuleBody def >>=
+        traverseOf (ruleValue . traverse) orderTerm >>=
+        traverseOf (ruleElses . traverse . ruleElseBody) orderRuleBody >>=
+        traverseOf (ruleElses . traverse . ruleElseValue . traverse) orderTerm
+
+    return ordered
   where
-    pkgname = prep ^. packageName
+    -- Safe set before ordering.
+    safe = Safe $ HS.toHashSetOf
+        (ruleArgs . traverse . traverse .
+            termCosmosNoClosures . termNames . traverse . _LocalName)
+        def
 
-    compileRule
-        :: Monad m => Infer.InferEnv -> Rule' -> ParachuteT Error m Rule'
-    compileRule ie = traverseOf (ruleDefs . traverse) (compileRuleDefinition ie)
-
-    compileRuleDefinition
-        :: forall m. Monad m
-        => Infer.InferEnv
-        -> RuleDefinition SourceSpan
-        -> ParachuteT Error m (RuleDefinition SourceSpan)
-    compileRuleDefinition ie def = do
-        -- Order the bodies and terms.
-        ordered <-
-            traverseOf (ruleBodies . traverse) orderRuleBody def >>=
-            traverseOf (ruleValue . traverse) orderTerm >>=
-            traverseOf (ruleElses . traverse . ruleElseBody) orderRuleBody >>=
-            traverseOf (ruleElses . traverse . ruleElseValue . traverse) orderTerm
-
-        return ordered
-      where
-        -- Safe set before ordering.
-        safe = Safe $ HS.toHashSetOf
-            (ruleArgs . traverse . traverse .
-                termCosmosNoClosures . termNames . traverse . _LocalName)
-            def
-
-        orderRuleBody = runOrder . orderForSafety ie safe
-        orderTerm = runOrder . orderTermForSafety ie safe
+    orderRuleBody = runOrder . orderForSafety ie safe
+    orderTerm = runOrder . orderTermForSafety ie safe
 
 compileQuery
     :: Monad m
     => Builtins f
-    -> Dependencies
+    -> Tree.Tree CompiledRule
     -> TypeContext
     -> Query SourceSpan
     -> ParachuteT Error m (Query SourceSpan)
-compileQuery builtins dependencies typeContext query0 = do
+compileQuery builtins ctree typeContext query0 = do
     let inferEnv = Infer.emptyInferEnv
             -- TODO(jaspervdj): Builtins Proxy works quite well, we should move
             -- it up in the call stack.
             { Infer._ieBuiltins = runIdentity $
                 traverse (htraverse $ \_ -> pure Proxy) builtins
-            , Infer._ieDependencies = dependencies
+            , Infer._ieTree = ctree
             }
 
     query1 <- runOrder $ orderForSafety inferEnv safe0 query0
@@ -164,17 +151,17 @@ compileQuery builtins dependencies typeContext query0 = do
 compileTerm
     :: Monad m
     => Builtins f
-    -> Dependencies
+    -> Tree.Tree CompiledRule
     -> TypeContext
     -> Term SourceSpan
     -> ParachuteT Error m (Term SourceSpan, Infer.SourceType)
-compileTerm builtins dependencies typeContext term0 = do
+compileTerm builtins ctree typeContext term0 = do
     let inferEnv = Infer.emptyInferEnv
             -- TODO(jaspervdj): Builtins Proxy works quite well, we should move
             -- it up in the call stack.
             { Infer._ieBuiltins = runIdentity $
                 traverse (htraverse $ \_ -> pure Proxy) builtins
-            , Infer._ieDependencies = dependencies
+            , Infer._ieTree = ctree
             }
 
     ordered <- runOrder $ orderTermForSafety inferEnv safe0 term0

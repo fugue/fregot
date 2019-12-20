@@ -10,4 +10,4 @@ fregot ([34meval error[0m):
   Expected number but got string
 
   Stack trace:
-    rule [33mrewind[33m.[0mcrashing_rule[0m at data.rewind.crashing_rule:1:1
+    rule [33m[35mrewind[0m[36m.[0mcrashing_rule[0m at data.rewind.crashing_rule:1:1

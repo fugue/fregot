@@ -1,4 +1,4 @@
-repl% rules% some_number [33m:[0m [34mnumber[0m
-rules% some_set [33m:[0m [34mset[0m[33m{[0m[34mstring[0m[33m|[0m[34mnumber[0m[33m}[0m
-rules% some_object [33m:[0m [34mobject[0m[33m{[0m[34mstring[0m[33m:[0m [34mnumber[0m[33m}[0m
+repl% rules% some_number [36m:[0m [34mnumber[0m
+rules% some_set [36m:[0m [34mset[0m[36m{[0m[34mstring[0m[36m|[0m[34mnumber[0m[36m}[0m
+rules% some_object [36m:[0m [34mobject[0m[36m{[0m[34mstring[0m[36m:[0m [34mnumber[0m[36m}[0m
 rules% 

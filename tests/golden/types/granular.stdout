@@ -1,13 +1,13 @@
-repl% granular% people [33m:[0m [34marray[0m[33m{[0m[34mobject[0m[33m{[0m
-  [31m"name"[0m[33m:[0m [34mstring[0m[33m,[0m
-  [31m"age"[0m[33m:[0m [34mnumber[0m[33m,[0m
-  [31m"address"[0m[33m:[0m [34mobject[0m[33m{[0m
-    [31m"number"[0m[33m:[0m [34mnumber[0m[33m,[0m
-    [31m"street"[0m[33m:[0m [34mstring[0m
-  [33m}[0m
-[33m}[0m[33m}[0m
-granular% people[33m[[0m[31m99[0m[33m][0m[33m.[0maddress [33m:[0m [34mobject[0m[33m{[0m
-  [31m"number"[0m[33m:[0m [34mnumber[0m[33m,[0m
-  [31m"street"[0m[33m:[0m [34mstring[0m
-[33m}[0m
+repl% granular% people [36m:[0m [34marray[0m[36m{[0m[34mobject[0m[36m{[0m
+  [31m"name"[0m[36m:[0m [34mstring[0m[36m,[0m
+  [31m"age"[0m[36m:[0m [34mnumber[0m[36m,[0m
+  [31m"address"[0m[36m:[0m [34mobject[0m[36m{[0m
+    [31m"number"[0m[36m:[0m [34mnumber[0m[36m,[0m
+    [31m"street"[0m[36m:[0m [34mstring[0m
+  [36m}[0m
+[36m}[0m[36m}[0m
+granular% people[36m[[0m[31m99[0m[36m][0m[36m.[0maddress [36m:[0m [34mobject[0m[36m{[0m
+  [31m"number"[0m[36m:[0m [34mnumber[0m[36m,[0m
+  [31m"street"[0m[36m:[0m [34mstring[0m
+[36m}[0m
 granular% 

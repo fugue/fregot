@@ -10,7 +10,7 @@ fregot ([34meval error[0m):
   Expected number but got string
 
   Stack trace:
-    rule [33mdebug_error[33m.[0mtest_crash[0m at data.debug_error.test_crash:1:1
+    rule [33m[35mdebug_error[0m[36m.[0mtest_crash[0m at data.debug_error.test_crash:1:1
 fregot ([34meval error[0m):
   "debug-error.rego" (line 5, column 3):
   builtin type error:
@@ -21,4 +21,4 @@ fregot ([34meval error[0m):
   Expected number but got string
 
   Stack trace:
-    rule [33mdebug_error[33m.[0mtest_crash[0m at data.debug_error.test_crash:1:1
+    rule [33m[35mdebug_error[0m[36m.[0mtest_crash[0m at data.debug_error.test_crash:1:1

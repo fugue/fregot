@@ -15,7 +15,7 @@ module Fregot.Eval.Monad
 
     , EvalCache
 
-    , Environment (..), builtins, packages, inputDoc
+    , Environment (..), builtins, rules, inputDoc
     , cache, stack
 
     , EvalException (..)
@@ -44,8 +44,6 @@ module Fregot.Eval.Monad
     , lookupRule
     , clearLocals
 
-    , lookupPackage
-
     , pushStackFrame
     , pushRuleStackFrame
     , pushFunctionStackFrame
@@ -64,13 +62,9 @@ import qualified Control.Monad.Stream      as Stream
 import           Control.Monad.Trans       (MonadIO (..))
 import qualified Data.HashMap.Strict       as HMS
 import           Data.List                 (find)
-import           Fregot.Compile.Package    (CompiledPackage)
-import qualified Fregot.Compile.Package    as Package
 import           Fregot.Error              (Error)
 import qualified Fregot.Error              as Error
 import qualified Fregot.Error.Stack        as Stack
-import           Fregot.Eval.Builtins      (ReadyBuiltin)
-import           Fregot.Eval.Cache         (Cache)
 import           Fregot.Eval.Internal
 import           Fregot.Eval.Value
 import           Fregot.Names
@@ -78,33 +72,8 @@ import           Fregot.Prepare.Ast
 import           Fregot.PrettyPrint        ((<$$>))
 import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources.SourceSpan (SourceSpan)
+import qualified Fregot.Tree               as Tree
 import           Fregot.Types.Rule         (RuleType)
-
-data Row a = Row
-    { _rowContext :: !Context
-    , _rowValue   :: !a
-    } deriving (Functor)
-
-$(makeLenses ''Row)
-
-instance PP.Pretty PP.Sem a => PP.Pretty PP.Sem (Row a) where
-    pretty (Row _ v) = PP.pretty v
-
-type Document a = [Row a]
-
-type EvalCache = Cache (PackageName, Var) Value
-
---------------------------------------------------------------------------------
-
-data Environment = Environment
-    { _builtins :: !(HMS.HashMap Function ReadyBuiltin)
-    , _packages :: !(HMS.HashMap PackageName CompiledPackage)
-    , _inputDoc :: !Value
-    , _cache    :: !EvalCache
-    , _stack    :: !Stack.StackTrace
-    }
-
-$(makeLenses ''Environment)
 
 data EvalException = EvalException Environment Context Error
 
@@ -224,8 +193,8 @@ cut = EvalM $ \_ _ -> mempty
 {-# INLINE cut #-}
 
 negation :: (a -> Bool) -> EvalM a -> EvalM ()
-negation true (EvalM f) = EvalM $ \rs ctx -> do
-    peek <- Stream.peek $ Stream.filter (true . view rowValue) (f rs ctx)
+negation isTrue (EvalM f) = EvalM $ \rs ctx -> do
+    peek <- Stream.peek $ Stream.filter (isTrue . view rowValue) (f rs ctx)
     case peek of
         Nothing -> pure (Row ctx ())
         Just _  -> mempty
@@ -274,11 +243,9 @@ toInstVar v = state $ \ctx -> case HMS.lookup v (ctx ^. locals) of
 
 lookupRule :: Name -> EvalM (Maybe (Rule RuleType SourceSpan))
 lookupRule (LocalName _) = pure Nothing
-lookupRule (QualifiedName pkgname name) = do
+lookupRule (QualifiedName key) = do
     env0 <- ask
-    pure $ do
-        pkg <- HMS.lookup pkgname (env0 ^. packages)
-        Package.lookup name pkg
+    pure $ Tree.lookup key (env0 ^. rules)
 lookupRule _ = pure Nothing
 
 clearLocals :: EvalM a -> EvalM a
@@ -287,11 +254,6 @@ clearLocals mx = do
     x         <- mx
     modify $ \ctx -> ctx {_locals = oldLocals}
     return x
-
-lookupPackage :: PackageName -> EvalM (Maybe CompiledPackage)
-lookupPackage pkgname = do
-    pkgs <- view packages
-    return $! HMS.lookup pkgname pkgs
 
 pushStackFrame :: Stack.StackFrame -> EvalM a -> EvalM a
 pushStackFrame frame = local (stack %~ Stack.push frame)

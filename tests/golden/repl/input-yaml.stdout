@@ -1,5 +1,5 @@
-repl% repl% = [33m{[0m[31m"request"[0m[33m:[0m [33m{[0m
-  [31m"path"[0m[33m:[0m [31m"/api/v1/users"[0m[33m,[0m
-  [31m"method"[0m[33m:[0m [31m"GET"[0m
-[33m}[0m[33m}[0m
+repl% repl% = [36m{[0m[31m"request"[0m[36m:[0m [36m{[0m
+  [31m"path"[0m[36m:[0m [31m"/api/v1/users"[0m[36m,[0m
+  [31m"method"[0m[36m:[0m [31m"GET"[0m
+[36m}[0m[36m}[0m
 repl% 

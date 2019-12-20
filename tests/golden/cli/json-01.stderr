@@ -1,25 +1,10 @@
 [
   {
-    "_text": "fregot (compile error):\n  \"invalid.rego\" (line 3, column 1):\n  complete definition mismatch:\n\n    3| default rule = 1\n       ^^^^^^^^^^^^^^^^\n\n  is a complete rule\n\n  \"invalid.rego\" (line 5, column 1):\n  complete definition mismatch:\n\n    5| rule[idx] = 2 {\n       ^^^^^^^^^^^^^\n\n  generates an object",
+    "_text": "fregot (compile error):\n  \"invalid.rego\" (line 5, column 1):\n  complete definition mismatch:\n\n    5| rule[idx] = 2 {\n       ^^^^^^^^^^^^^\n\n  generates an object\n\n  \"invalid.rego\" (line 3, column 1):\n  complete definition mismatch:\n\n    3| default rule = 1\n       ^^^^^^^^^^^^^^^^\n\n  is a complete rule",
     "details": [],
     "hints": [],
     "severity": "error",
     "sourceSpans": [
-      {
-        "body": "is a complete rule",
-        "sourceSpan": {
-          "end": {
-            "column": 16,
-            "line": 3
-          },
-          "sourcePointer": "invalid.rego",
-          "start": {
-            "column": 1,
-            "line": 3
-          }
-        },
-        "title": "complete definition mismatch"
-      },
       {
         "body": "generates an object",
         "sourceSpan": {
@@ -31,6 +16,21 @@
           "start": {
             "column": 1,
             "line": 5
+          }
+        },
+        "title": "complete definition mismatch"
+      },
+      {
+        "body": "is a complete rule",
+        "sourceSpan": {
+          "end": {
+            "column": 16,
+            "line": 3
+          },
+          "sourcePointer": "invalid.rego",
+          "start": {
+            "column": 1,
+            "line": 3
           }
         },
         "title": "complete definition mismatch"

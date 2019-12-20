@@ -2,6 +2,7 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 module Data.Vector.Extended
     ( module Data.Vector
+    , uncons
     , catMaybes
     , lookup
     ) where
@@ -9,7 +10,10 @@ module Data.Vector.Extended
 import           Data.Vector
 import           Data.Vector.Instances ()
 import qualified Data.Vector.Mutable   as VM
-import           Prelude               hiding (length, lookup)
+import           Prelude               hiding (head, length, lookup, null, tail)
+
+uncons :: Vector a -> Maybe (a, Vector a)
+uncons vec = if null vec then Nothing else Just (head vec, tail vec)
 
 catMaybes :: Vector (Maybe a) -> Vector a
 catMaybes vec0 = create $ do
