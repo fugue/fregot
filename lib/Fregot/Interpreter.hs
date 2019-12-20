@@ -1,6 +1,9 @@
+{-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE Rank2Types        #-}
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE TemplateHaskell   #-}
+{-# LANGUAGE TypeFamilies      #-}
 module Fregot.Interpreter
     ( InterpreterM
     , Handle
@@ -10,7 +13,6 @@ module Fregot.Interpreter
     , insertBuiltin
 
     , readPackages
-    , readPackage
     , readPackageRules
 
     , readAllRules
@@ -20,9 +22,9 @@ module Fregot.Interpreter
     , loadBundle
     , saveBundle
 
-    , loadModuleOrBundle
+    , loadFileByExtension
 
-    , compilePackages
+    , compileRules
 
     , Eval.EnvContext (..), Eval.ecEnvironment, Eval.ecContext
     , evalQuery
@@ -40,26 +42,30 @@ module Fregot.Interpreter
     ) where
 
 import qualified Codec.Compression.GZip          as GZip
-import           Control.Lens                    (forOf_, ifor_, over, review,
-                                                  (^.), (^..), _2)
+import           Control.Lens                    (forOf_, ix, over, preview,
+                                                  review, to, (^.), (^..), _1)
 import           Control.Lens.TH                 (makeLenses)
-import           Control.Monad                   (foldM, unless)
+import           Control.Monad                   (foldM, guard, unless, void)
 import           Control.Monad.Identity          (Identity (..))
 import           Control.Monad.Parachute
 import           Control.Monad.Reader            (runReader)
 import           Control.Monad.Trans             (liftIO)
 import qualified Data.Aeson                      as Aeson
+import           Data.Bifunctor.Extended         (first)
 import qualified Data.Binary                     as Binary
 import qualified Data.ByteString.Lazy            as BL
+import           Data.Function                   (on)
 import qualified Data.HashMap.Strict             as HMS
 import qualified Data.HashSet.Extended           as HS
 import           Data.IORef.Extended             (IORef)
 import qualified Data.IORef.Extended             as IORef
-import           Data.Maybe                      (fromMaybe)
+import           Data.Maybe                      (fromMaybe, maybeToList)
+import           Data.Memoize                    (memoize)
 import qualified Data.Text.IO                    as T
 import           Data.Traversable.HigherOrder    (htraverse)
 import qualified Data.Yaml.Extended              as Yaml
-import           Fregot.Compile.Package          (CompiledPackage)
+import qualified Fregot.Compile.Graph            as Compile
+import           Fregot.Compile.Package          (CompiledRule)
 import qualified Fregot.Compile.Package          as Compile
 import           Fregot.Error                    (Error, catchIO)
 import qualified Fregot.Error                    as Error
@@ -78,14 +84,13 @@ import qualified Fregot.Names.Renamer            as Renamer
 import qualified Fregot.Parser                   as Parser
 import qualified Fregot.Prepare                  as Prepare
 import           Fregot.Prepare.Ast              (Function (..), Query, Term)
-import           Fregot.Prepare.Package          (PreparedPackage)
 import qualified Fregot.Prepare.Package          as Prepare
 import           Fregot.PrettyPrint              ((<$$>), (<+>))
 import qualified Fregot.PrettyPrint              as PP
-import           Fregot.Sources                  (SourcePointer)
 import qualified Fregot.Sources                  as Sources
-import           Fregot.Sources.SourceSpan       (SourceSpan)
+import           Fregot.Sources.SourceSpan       (SourceSpan, sourcePointer)
 import qualified Fregot.Sugar                    as Sugar
+import qualified Fregot.Tree                     as Tree
 import qualified Fregot.Types.Internal           as Types
 import qualified Fregot.Types.Value              as Types
 import           System.FilePath.Extended        (listExtensions)
@@ -98,8 +103,9 @@ data Handle = Handle
     -- | List of modules, and files we loaded them from.  Grouped by package
     -- name.
     , _modules  :: !(IORef (HMS.HashMap PackageName ModuleBatch))
-    -- | Map of compiled packages.  Dynamically generated from the modules.
-    , _compiled :: !(IORef (HMS.HashMap PackageName CompiledPackage))
+    , _yamls    :: !(IORef (HMS.HashMap FilePath Prepare.PreparedTree))
+    -- | Tree of compiled rules.  Replaces the above.
+    , _ruleTree :: !(IORef (Tree.Tree CompiledRule))
     , _cache    :: !(IORef EvalCache)
     , _inputDoc :: !(IORef Eval.Value)
     }
@@ -114,47 +120,87 @@ newHandle _sources = do
 
     _builtins     <- IORef.newIORef initializedBuiltins
     _modules      <- IORef.newIORef HMS.empty
+    _yamls        <- IORef.newIORef HMS.empty
     _compiled     <- IORef.newIORef HMS.empty
+    _ruleTree     <- IORef.newIORef Tree.empty
     _cache        <- Cache.new >>= IORef.newIORef
     _inputDoc     <- IORef.newIORef emptyObject
     return Handle {..}
 
-readDependencyGraph
-    :: Handle -> IO (Deps.Graph PackageName)
-readDependencyGraph h = do
-    done <- IORef.readIORef (h ^. compiled)
-    mods <- IORef.readIORef (h ^. modules)
-    let dependencies k = maybe [] (^.. deps) (HMS.lookup k mods)
-    return $ Deps.Graph done dependencies
-  where
-    deps = traverse . _2 . Sugar.moduleImports . traverse .
-        Sugar.importGut . Sugar._ImportData
+readRuleDependencyGraph
+    :: Handle -> IO (Deps.Graph Tree.Key)
+readRuleDependencyGraph h = do
+    tree <- IORef.readIORef (h ^. ruleTree)
+    let dependencies = memoize $ \k -> maybe
+            [] (HS.toList . Compile.ruleDependencies tree) (Tree.lookup k tree)
+    return $ Deps.Graph
+        { Deps.graphDone         = Tree.keys tree
+        , Deps.graphIsDone       = \k -> Tree.member k tree
+        , Deps.graphDependencies = dependencies
+        }
 
 -- | Auxiliary function for hooking into the renamer.
 runRenamerT :: Renamer.RenamerEnv -> Renamer.RenamerM a -> InterpreterM a
 runRenamerT renv = mapParachuteT (return . flip runReader renv)
 
+-- | This is a bit hacky and we should probably get rid of it.
+universeForRenamer
+    :: Handle -> InterpreterM (PackageName -> [UnqualifiedVar])
+universeForRenamer h = do
+    modmap <- liftIO $ IORef.readIORef (h ^. modules)
+    yamls0 <- liftIO $ IORef.readIORef (h ^. yamls)
+    let packageTree = Tree.fromList
+            [ (review packageNameFromKey key, ())
+            | key <- modmap ^.. to HMS.toList . traverse . _1
+            ]
+    pure $ \pkgname ->
+        -- Rule bits.
+        (modmap ^.. ix pkgname . traverse . Sugar.moduleRuleNames) ++
+        -- Dynamic references to packages.
+        (do
+            let key = review packageNameFromKey pkgname
+            pkg <- maybeToList $ Tree.descendant key packageTree
+            map fst $ Tree.children pkg) ++
+        -- Yaml bits.
+        (do
+            let key = review packageNameFromKey pkgname
+            yaml <- map snd $ HMS.toList yamls0
+            pkg  <- maybeToList $ Tree.descendant key yaml
+            map fst $ Tree.children pkg)
+
 insertModule
-    :: Handle -> SourcePointer -> Sugar.Module SourceSpan Var -> InterpreterM ()
-insertModule h sourcep modul = do
-    -- Insert or replace the module.
+    :: Handle -> Sugar.Module SourceSpan Var -> InterpreterM ()
+insertModule h modul = do
+    -- We replace the module that has the same source pointer.
+    let replaced = on (==) (^. Sugar.moduleAnn . sourcePointer) modul
+
+    -- Insert or replace the module.  Return the rules that were removed.
     let pkgname = modul ^. Sugar.modulePackage
-    liftIO $ IORef.atomicModifyIORef_ (h ^. modules) $ \mods ->
-        let m1 = fromMaybe [] (HMS.lookup pkgname mods)
-            m2 = (sourcep, modul) : filter ((/= sourcep) . fst) m1 in
-        HMS.insert pkgname m2 mods
+    oldRules <- liftIO $ IORef.atomicModifyIORef' (h ^. modules) $ \mods ->
+        let m1  = fromMaybe [] (HMS.lookup pkgname mods)
+            m2  = modul : filter (not . replaced) m1
+            old = map ((,) pkgname) $ case HMS.lookup pkgname mods of
+                Nothing  -> []
+                Just pkg -> pkg ^.. moduleBatchRules in
+        (HMS.insert pkgname m2 mods, old)
 
-    -- Compute all modules that depend on the module, so we can evict all of
-    -- them.
-    depGraph <- liftIO (readDependencyGraph h)
-    let evict = Deps.evict depGraph (HS.singleton pkgname)
-    unless (HS.null evict) $ bumpCache h
-
-    -- Remove everything that's in the evict set.
-    liftIO $ IORef.atomicModifyIORef_ (h ^. compiled) $
-        HMS.filterWithKey (\k _ -> not (k `HS.member` evict))
-
+    evictRules h oldRules
     dieIfErrors
+  where
+    -- All rules defined in a 'ModuleBatch'.
+    moduleBatchRules = traverse . Sugar.moduleRuleNames
+
+evictRules :: Handle -> [QualifiedVar] -> InterpreterM ()
+evictRules h victims = do
+    -- Compute all rules that depended on rules in the module, so we can evict
+    -- all of them.
+    ruleDepGraph <- liftIO (readRuleDependencyGraph h)
+    let transitive = Deps.evict ruleDepGraph $ HS.fromList $
+            map (review Tree.qualifiedVarFromKey) victims
+    unless (HS.null transitive) $ bumpCache h
+    -- Remove everything that's in the evict set.
+    liftIO $ IORef.atomicModifyIORef_ (h ^. ruleTree) $
+        Tree.filterWithKey (\k _ -> not (k `HS.member` transitive))
 
 loadModule
     :: Handle -> Parser.ParserOptions -> FilePath -> InterpreterM PackageName
@@ -166,7 +212,7 @@ loadModule h popts path = do
     modul <- Parser.lexAndParse (Parser.parseModule popts) sourcep input
 
     -- Insert or replace the module.
-    insertModule h sourcep modul
+    insertModule h modul
     return $ modul ^. Sugar.modulePackage
   where
     sourcep = Sources.FileInput path
@@ -183,14 +229,14 @@ loadBundle h path = do
             liftIO $ IORef.atomicModifyIORef_ (h ^. sources)
                 (mappend (bundle ^. bundleSources))
             forOf_ (bundleModules . traverse . traverse) bundle $
-                \(sourcep, modul) -> insertModule h sourcep modul
+                \modul -> insertModule h modul
             return $ HMS.keys $ bundle ^. bundleModules
 
-loadModuleOrBundle
-    :: Handle -> Parser.ParserOptions -> FilePath -> InterpreterM [PackageName]
-loadModuleOrBundle h popts path = case listExtensions path of
-    "rego" : _            -> pure <$> loadModule h popts path
-    "bundle" : "rego" : _ -> loadBundle h path
+loadFileByExtension
+    :: Handle -> Parser.ParserOptions -> FilePath -> InterpreterM ()
+loadFileByExtension h popts path = case listExtensions path of
+    "rego" : _            -> void $ loadModule h popts path
+    "bundle" : "rego" : _ -> void $ loadBundle h path
     _                     -> fatal $ Error.mkErrorNoMeta "interpreter" $
         "Unknown rego file extension:" <+> PP.pretty path <+>
         ", expected .rego or .bundle.rego"
@@ -201,73 +247,55 @@ saveBundle h path = liftIO $ do
     _bundleModules <- IORef.readIORef (h ^. modules)
     BL.writeFile path $ GZip.compress $ Binary.encode $ Bundle {..}
 
--- TODO(jaspervdj): We should probably crash rather than creating an empty
--- package.
-preparePackage
-    :: Builtins Identity
-    -> HMS.HashMap PackageName ModuleBatch
-    -> HMS.HashMap PackageName CompiledPackage
-    -> PackageName
-    -> InterpreterM PreparedPackage
-preparePackage builtin modmap dependencies pkgname = do
-    let mods = maybe [] (map snd) (HMS.lookup pkgname modmap)
-        pkg0 = Prepare.empty pkgname
-        pkgRules = HS.toHashSetOf
-            (traverse . Sugar.modulePolicy . traverse . Sugar.ruleHead . Sugar.ruleName)
-            mods
-    foldM (addMod pkgRules) pkg0 mods
-  where
-    addMod pkgRules pkg0 modul0 = do
-        -- Rename module.
-        imports <- Prepare.prepareImports (modul0 ^. Sugar.moduleImports)
-        let renamerEnv = Renamer.RenamerEnv
-                builtin imports pkgname pkgRules dependencies HS.empty
-        modul1 <- runRenamerT renamerEnv $ Renamer.renameModule modul0
-
-        foldM
-            (\pkg rule -> Prepare.insert imports rule pkg)
-            pkg0
-            (modul1 ^. Sugar.modulePolicy)
-
 -- | Compile a specific package.  This will compile its dependencies first.
-readCompiledPackage
-    :: Handle -> PackageName -> InterpreterM CompiledPackage
-readCompiledPackage h want = do
-    graph   <- liftIO (readDependencyGraph h)
-    modmap  <- liftIO $ IORef.readIORef (h ^. modules)
-    comp0   <- liftIO $ IORef.readIORef (h ^. compiled)
-    builtin <- liftIO $ IORef.readIORef (h ^. builtins)
-    plan    <- case Deps.plan graph (HS.singleton want) of
-        Right x -> return x
-        Left depError -> fatal $
-            Error.mkErrorNoMeta "interpreter" (PP.pretty depError)
+compileRules
+    :: Handle -> InterpreterM ()
+compileRules h = do
+    tree0    <- liftIO $ IORef.readIORef (h ^. ruleTree)
+    modmap   <- liftIO $ IORef.readIORef (h ^. modules)
+    yamls0   <- liftIO $ IORef.readIORef (h ^. yamls)
+    builtin  <- liftIO $ IORef.readIORef (h ^. builtins)
+    universe <- universeForRenamer h
 
-    -- Execute plan.
-    comp1 <- case plan of
-        []    -> return comp0
-        _ : _ -> do
-            comp1 <- foldM
-                (\uni pkgname -> do
-                    prep <- preparePackage builtin modmap uni pkgname
-                    cp   <- Compile.compilePackage builtin uni prep
-                    dieIfErrors
-                    return $ HMS.insert pkgname cp uni)
-                comp0
-                plan
-            liftIO $ IORef.writeIORef (h ^. compiled) comp1
-            return comp1
+    -- Find missing rules.  This would probably be better expressed as a tree
+    -- difference in a different module.
+    let (wantedPkgs, _wantedKeys) = first HS.fromList $ unzip $ do
+            (_, mods) <- HMS.toList modmap
+            modul     <- mods
+            name      <- modul ^.. Sugar.moduleRuleNames
+            let key = review Tree.qualifiedVarFromKey
+                        (modul ^. Sugar.modulePackage, name)
+            guard $ not $ key `Tree.member` tree0
+            pure (modul ^. Sugar.modulePackage, key)
 
-    case HMS.lookup want comp1 of
-        Just cp -> return cp
-        Nothing -> fatal $ Error.mkErrorNoMeta "interpreter"
-            "Internal error: package not found after compilation"
+    -- Get a tree from the YAML files.
+    yamlTree <- Prepare.mergeTrees
+        [t `Tree.difference` tree0 | (_, t) <- HMS.toList yamls0]
 
-compilePackages :: Handle -> InterpreterM ()
-compilePackages h = do
-    mods  <- liftIO $ IORef.readIORef (h ^. modules)
-    comps <- liftIO $ IORef.readIORef (h ^. compiled)
-    let needComp = mods `HMS.difference` comps
-    ifor_ needComp $ \pkgname _ -> readCompiledPackage h pkgname
+    -- Start by preparing the necessary packages a a big tree.  Note that we are
+    -- currently compiling more rules than we strictly need to!  We should
+    -- figure out a way to only compile `wantedKeys`.
+    preparedTree <- foldM
+        (\t pkgname -> do
+            let -- Find the modules the prepare; more than one module may be
+                -- listed under the given package name.
+                mods = fromMaybe [] (HMS.lookup pkgname modmap)
+
+            -- Rename the found moduless.
+            renamed <- Renamer.renameModules builtin pkgname
+                    universe
+                    mods
+
+            -- Prepare the renamed modules and then merge this in.
+            t' <- Prepare.prepareModules renamed
+            Prepare.mergeTree t t')
+
+        yamlTree wantedPkgs
+
+    -- Compile the tree and save it.
+    tree1 <- Compile.compileTree builtin tree0 preparedTree
+    dieIfErrors
+    liftIO $ IORef.writeIORef (h ^. ruleTree) tree1
 
 -- | Get a list of all builtins.
 readBuiltins :: Handle -> InterpreterM [Function]
@@ -279,49 +307,47 @@ insertBuiltin h k b =
     liftIO $ IORef.atomicModifyIORef_ (h ^. builtins) $ HMS.insert k b
 
 -- | Get a list of loaded packages.
+--
+-- TODO(jaspervdj): This interface is wrong; we should be browsing the tree
+-- instead.
 readPackages :: Handle -> InterpreterM [PackageName]
-readPackages h = liftIO $ HMS.keys <$> IORef.readIORef (h ^. compiled)
-
--- | Obtain a compiled package.
-readPackage :: Handle -> PackageName -> InterpreterM CompiledPackage
-readPackage = readCompiledPackage
+readPackages h =
+    liftIO $ HMS.keys <$> IORef.readIORef (h ^. modules)
 
 -- | Read all rules in a specific package.
 readPackageRules :: Handle -> PackageName -> InterpreterM [Var]
 readPackageRules h pkgname = do
-    pkgs <- liftIO $ IORef.readIORef (h ^. compiled)
-    return $ case HMS.lookup pkgname pkgs of
+    tree <- liftIO $ IORef.readIORef (h ^. ruleTree)
+    let key = review Tree.packageNameFromKey pkgname
+    return $ case Tree.descendant key tree of
         Nothing  -> []
-        Just pkg -> Prepare.rules pkg
+        Just pkg -> map fst (Tree.children pkg)
 
 -- | Read all available rules.  This is used to enumerate all rules starting
 -- with `test_` by the tester.
 readAllRules :: Handle -> InterpreterM [(PackageName, Var)]
 readAllRules h = do
-    pkgs <- liftIO $ IORef.readIORef (h ^. compiled)
+    tree <- liftIO $ IORef.readIORef (h ^. ruleTree)
     return $ do
-        (pkgname, pkg) <- HMS.toList pkgs
-        rule           <- Prepare.rules pkg
+        (key, _)        <- Tree.toList tree
+        (pkgname, rule) <- maybeToList $ preview Tree.qualifiedVarFromKey key
         return (pkgname, rule)
 
 insertRule
-    :: Handle -> PackageName -> SourcePointer -> Sugar.Rule SourceSpan Var
-    -> InterpreterM ()
-insertRule h pkgname sourcep rule =
-    insertModule h sourcep modul
-  where
-    modul = Sugar.Module
-        { _modulePackage = pkgname
-        , _moduleImports = []  -- TODO(jaspervdj): REPL imports here?
-        , _modulePolicy  = [rule]
-        }
+    :: Handle -> PackageName -> Sugar.Rule SourceSpan Var -> InterpreterM ()
+insertRule h pkgname rule = insertModule h Sugar.Module
+    { _moduleAnn     = rule ^. Sugar.ruleHead . Sugar.ruleAnn
+    , _modulePackage = pkgname
+    , _moduleImports = []  -- TODO(jaspervdj): REPL imports here?
+    , _modulePolicy  = [rule]
+    }
 
 newEvalContext :: Handle -> InterpreterM Eval.EnvContext
 newEvalContext h = Eval.EnvContext
     <$> pure Eval.emptyContext
     <*> (Eval.Environment
         <$> liftIO (IORef.readIORef (h ^. builtins))
-        <*> liftIO (IORef.readIORef (h ^. compiled))
+        <*> liftIO (IORef.readIORef (h ^. ruleTree))
         <*> liftIO (IORef.readIORef (h ^. inputDoc))
         <*> liftIO (IORef.readIORef (h ^. cache))
         <*> pure Stack.empty)
@@ -353,10 +379,10 @@ newResumeStep
     -> InterpreterM (Eval.ResumeStep Eval.Value)
 newResumeStep h pkgname query = do
     -- Disable the cache for evaluating queries in resume steps.
-    envctx <- over (Eval.ecEnvironment . Eval.cache) Cache.disable <$>
+    envctx   <- over (Eval.ecEnvironment . Eval.cache) Cache.disable <$>
                 newEvalContext h
-    pkg    <- readCompiledPackage h pkgname
-    comp   <- liftIO $ IORef.readIORef (h ^. compiled)
+    ctree    <- liftIO $ IORef.readIORef (h ^. ruleTree)
+    universe <- universeForRenamer h
 
     -- Rename expression.
     let builtin    = envctx ^. Eval.ecEnvironment . Eval.builtins
@@ -364,13 +390,16 @@ newResumeStep h pkgname query = do
             builtin
             mempty  -- No imports?
             pkgname
-            (HS.fromList $ Compile.rules pkg)
-            (envctx ^. Eval.ecEnvironment . Eval.packages)
+            (HS.fromList (universe pkgname))
+            -- TODO(jaspervdj): This is where we would want to grab the tree
+            -- from within the environment?
+            -- (envctx ^. Eval.ecEnvironment . Eval.packages)
+            universe
             HS.empty
     rquery <- runRenamerT renamerEnv $ Renamer.renameQuery query
 
     pquery <- Prepare.prepareQuery rquery
-    cquery <- Compile.compileQuery builtin comp mempty pquery
+    cquery <- Compile.compileQuery builtin ctree mempty pquery
 
     dieIfErrors
     return $ Eval.newResumeStep envctx (Eval.evalQuery cquery)
@@ -404,22 +433,22 @@ compileQuery
     -> Sugar.Query SourceSpan Var
     -> InterpreterM (Query SourceSpan)
 compileQuery h mbEvalEnvCtx pkgname query = do
-    comp    <- liftIO $ IORef.readIORef (h ^. compiled)
-    pkg     <- readCompiledPackage h pkgname
-    builtin <- liftIO $ IORef.readIORef (h ^. builtins)
+    ctree    <- liftIO $ IORef.readIORef (h ^. ruleTree)
+    builtin  <- liftIO $ IORef.readIORef (h ^. builtins)
+    universe <- universeForRenamer h
 
     -- Rename expression.
     let renamerEnv = Renamer.RenamerEnv
             builtin
             mempty  -- No imports?
             pkgname
-            (HS.fromList $ Compile.rules pkg)
-            comp
+            (HS.fromList $ universe pkgname)
+            universe
             HS.empty
     rquery <- runRenamerT renamerEnv $ Renamer.renameQuery query
 
     pquery <- Prepare.prepareQuery rquery
-    cquery <- Compile.compileQuery builtin comp typeContext pquery
+    cquery <- Compile.compileQuery builtin ctree typeContext pquery
     dieIfErrors
     return cquery
   where
@@ -432,22 +461,22 @@ compileExpr
     -> Sugar.Expr SourceSpan Var
     -> InterpreterM (Term SourceSpan, Types.Type)
 compileExpr h mbEvalEnvCtx pkgname expr = do
-    comp    <- liftIO $ IORef.readIORef (h ^. compiled)
-    pkg     <- readCompiledPackage h pkgname
-    builtin <- liftIO $ IORef.readIORef (h ^. builtins)
+    ctree    <- liftIO $ IORef.readIORef (h ^. ruleTree)
+    builtin  <- liftIO $ IORef.readIORef (h ^. builtins)
+    universe <- universeForRenamer h
 
     -- Rename expression.
     let renamerEnv = Renamer.RenamerEnv
             builtin
             mempty  -- No imports?
             pkgname
-            (HS.fromList $ Compile.rules pkg)
-            comp
+            (HS.fromList $ universe pkgname)
+            universe
             HS.empty
     rterm <- runRenamerT renamerEnv $ Renamer.renameExpr expr
 
     pterm       <- Prepare.prepareExpr rterm
-    (cterm, ty) <- Compile.compileTerm builtin comp typeContext pterm
+    (cterm, ty) <- Compile.compileTerm builtin ctree typeContext pterm
     dieIfErrors
     return (cterm, fst ty)
   where

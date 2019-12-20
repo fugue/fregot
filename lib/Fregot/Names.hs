@@ -21,9 +21,16 @@ module Fregot.Names
     , Nested (..)
     , nestedToString
 
+    , Key (..)
+    , varFromKey
+    , qualifiedVarFromKey
+    , packageNameFromKey
+
     , UnqualifiedVar
+    , QualifiedVar
 
     , Name (..), _LocalName, _QualifiedName
+    , mkQualifiedName
     , nameToText
     , nameFromText
 
@@ -32,7 +39,8 @@ module Fregot.Names
     , packageNameFromFilePath
     ) where
 
-import           Control.Lens          (iso, preview, review, (^?))
+import           Control.Lens          (preview, review, (^.), (^?))
+import           Control.Lens.Iso      (Iso', iso)
 import           Control.Lens.Prism    (Prism', prism')
 import           Control.Lens.TH       (makePrisms)
 import           Control.Monad         (guard)
@@ -45,6 +53,7 @@ import           Data.String           (IsString (..))
 import qualified Data.Text.Extended    as T
 import           Data.Unique           (HasUnique (..), Unique, Uniquely (..))
 import qualified Data.Unique           as Unique
+import qualified Data.Vector           as V
 import qualified Fregot.Lexer.Internal as Lexer
 import qualified Fregot.PrettyPrint    as PP
 import           GHC.Generics          (Generic)
@@ -68,8 +77,10 @@ instance IsString PackageName where
 instance Show PackageName where
     show = review packageNameFromString
 
-instance PP.Pretty a PackageName where
-    pretty = PP.pretty . review packageNameFromString
+instance PP.Pretty PP.Sem PackageName where
+    pretty =
+        mconcat .  L.intersperse (PP.punctuation ".") .
+        map (PP.namespace . PP.pretty) . unPackageName
 
 instance Binary PackageName where
     get = mkPackageName <$> Binary.get
@@ -176,15 +187,47 @@ instance PP.Pretty PP.Sem a => PP.Pretty PP.Sem (Nested a) where
     pretty = mconcat .
         L.intersperse (PP.punctuation ".") . map PP.pretty . unNested
 
+newtype Key = Key {unKey :: V.Vector Var}
+    deriving (Eq, Hashable, Monoid, Ord, Semigroup, Show)
+
+instance PP.Pretty PP.Sem Key where
+    pretty key = case key ^? qualifiedVarFromKey of
+        Nothing         -> PP.pretty (key ^. packageNameFromKey)
+        Just (pkg, var) -> PP.pretty pkg <> PP.punctuation "." <> PP.pretty var
+
+instance IsString Key where
+    fromString = Key . V.fromList . map mkVar . T.split (== '.') . T.pack
+
+varFromKey :: Prism' Key UnqualifiedVar
+varFromKey = prism'
+    (\v -> Key (V.singleton v))
+    (\(Key k) -> guard (V.length k == 1) >> pure (V.head k))
+
+-- TODO(jaspervdj): This is quite inefficient and we're calling this a lot, so
+-- we should look into this.
+qualifiedVarFromKey :: Prism' Key QualifiedVar
+qualifiedVarFromKey = prism'
+    (\(pkg, v) -> Key . V.fromList $ map mkVar (unPackageName pkg) ++ [v])
+    (\(Key k) -> if V.null k
+        then Nothing
+        else Just (mkPackageName . map unVar . V.toList $ V.init k, V.last k))
+
+packageNameFromKey :: Iso' Key PackageName
+packageNameFromKey = iso
+    (\(Key vs) -> mkPackageName . map unVar $ V.toList vs)
+    (\pkg      -> Key . V.fromList . map mkVar $ unPackageName pkg)
+
 -- | Sometimes we want to be really clear in the source code that a variable
 -- cannot be qualified in a specific position.
 type UnqualifiedVar = Var
+
+type QualifiedVar = (PackageName, Var)
 
 data Name
     -- Variables inside rules
     = LocalName !Var
     -- Rules, functions
-    | QualifiedName !PackageName !Var
+    | QualifiedName !Key
     -- Global names, used `data`, `input`, and for builtin functions such as
     -- `all`, `concat`...
     | BuiltinName !Var
@@ -196,21 +239,24 @@ instance Hashable Name
 
 instance PP.Pretty PP.Sem Name where
     pretty = \case
-        LocalName       v -> PP.pretty v
-        QualifiedName p v -> PP.pretty p <> PP.punctuation "." <> PP.pretty v
-        BuiltinName     v -> PP.keyword (PP.pretty v)
-        WildcardName      -> PP.punctuation "_"
+        LocalName     v -> PP.pretty v
+        QualifiedName k -> PP.pretty k
+        BuiltinName   v -> PP.keyword (PP.pretty v)
+        WildcardName    -> PP.punctuation "_"
 
 $(makePrisms ''Name)
 
 instance Aeson.ToJSON Name where
     toJSON = Aeson.toJSON . nameToText
 
+mkQualifiedName :: PackageName -> Var -> Name
+mkQualifiedName pkg var = QualifiedName $ review qualifiedVarFromKey (pkg, var)
+
 nameToText :: Name -> T.Text
 nameToText = \case
     LocalName v -> review varFromText v
-    QualifiedName p v ->
-        review packageNameFromText p <> "." <> review varFromText v
+    QualifiedName (Key k) ->
+        T.intercalate "." . map (review varFromText) $ V.toList k
     BuiltinName v -> review varFromText v
     WildcardName -> "_"
 
@@ -219,9 +265,10 @@ nameFromText :: T.Text -> Maybe Name
 nameFromText txt = case T.breakOnEnd "." txt of
     ("", "_") -> pure WildcardName
     ("", var) -> LocalName <$> var ^? varFromText
-    (pkgName, var) -> QualifiedName
-        <$> T.init pkgName ^? packageNameFromText
-        <*> var ^? varFromText
+    (pkgt, vart) -> do
+        pkg <- T.init pkgt ^? packageNameFromText
+        var <- vart ^? varFromText
+        pure $ QualifiedName $ review qualifiedVarFromKey (pkg, var)
 
 -- | An instantiated variable.  These have a unique (within the evaluation
 -- context) number identifying them.  The var is just there for debugging

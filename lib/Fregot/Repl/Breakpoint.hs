@@ -11,7 +11,7 @@ module Fregot.Repl.Breakpoint
     , isBreakpoint
     ) where
 
-import           Control.Lens              ((^.), (^?))
+import           Control.Lens              (review, (^.), (^?))
 import           Control.Lens.Prism        (Prism', prism')
 import           Data.Hashable             (Hashable)
 import qualified Data.HashSet              as HS
@@ -52,7 +52,8 @@ breakpointFromText = prism'
 -- variable, we want to qualify it using the currently open package.
 qualifyBreakpoint :: PackageName -> Breakpoint -> Breakpoint
 qualifyBreakpoint pkg = \case
-    NameBreak _ (LocalName v) -> NameBreak False (QualifiedName pkg v)
+    NameBreak _ (LocalName v) -> NameBreak False $ QualifiedName $
+                                    review qualifiedVarFromKey (pkg, v)
     NameBreak _ name          -> NameBreak False name
     bpt                       -> bpt
 

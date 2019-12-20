@@ -10,6 +10,7 @@ module Fregot.PrettyPrint.Sem
     , code
     , keyword
     , literal
+    , namespace
     , punctuation
 
     , hPutSemDoc
@@ -32,13 +33,14 @@ data Sem
 
     | Keyword
     | Literal
+    | Namespace
     | Punctuation
     deriving (Generic, Show)
 
 type SemDoc = Doc Sem
 
 semToHtmlClass :: Sem -> T.Text
-semToHtmlClass sem = T.pack $ "lwc-" ++ map toLower (show sem)
+semToHtmlClass sem = T.pack $ "fregot-" ++ map toLower (show sem)
 
 error :: SemDoc -> SemDoc
 error = annotate Error
@@ -52,9 +54,10 @@ hint = annotate Hint
 code :: SemDoc -> SemDoc
 code = annotate Code
 
-keyword, literal, punctuation :: SemDoc -> SemDoc
+keyword, literal, namespace, punctuation :: SemDoc -> SemDoc
 keyword     = annotate Keyword
 literal     = annotate Literal
+namespace   = annotate Namespace
 punctuation = annotate Punctuation
 
 semToColor :: Sem -> Ansi.Color
@@ -65,7 +68,8 @@ semToColor Code        = Ansi.Yellow
 
 semToColor Keyword     = Ansi.Blue
 semToColor Literal     = Ansi.Red
-semToColor Punctuation = Ansi.Yellow
+semToColor Namespace   = Ansi.Magenta
+semToColor Punctuation = Ansi.Cyan
 
 hPutSemDoc :: IO.Handle -> Doc Sem -> IO ()
 hPutSemDoc h = hPutColDoc h . fmap semToColor

@@ -12,9 +12,11 @@ module Fregot.Sugar
     , packageNameFromString, packageNameFromText
     , dataPackageNameFromString
 
+    , Modules
+    , Module (..), moduleAnn, modulePackage, moduleImports, modulePolicy
+
     , ImportGut (..), _ImportInput, _ImportData
     , Import (..), importAnn, importGut, importAs
-    , Module (..), modulePackage, moduleImports, modulePolicy
 
     , Var, unVar, mkVar
     , varToString, varToText
@@ -40,12 +42,14 @@ module Fregot.Sugar
     , Nested (..)
     , nestedToString
 
+    , moduleRuleNames
+    , moduleDependencies
     , termFromExpr
     , exprFromLiteral
     , literalFromQuery
     ) where
 
-import           Control.Lens       (Lens', lens, preview, (^.), _2)
+import           Control.Lens       (Fold, Lens', lens, preview, (^.), _2)
 import           Control.Lens.Prism (Prism', prism')
 import           Control.Lens.TH    (makeLenses, makePrisms)
 import           Control.Monad      (guard)
@@ -58,6 +62,18 @@ import           Fregot.Names
 import           Fregot.PrettyPrint ((<$$>), (<+>), (<+>?), (?<+>))
 import qualified Fregot.PrettyPrint as PP
 import           GHC.Generics       (Generic)
+
+-- | Once can load multiple modules under the same package name.
+type Modules a n = [Module a n]
+
+data Module a n = Module
+    { _moduleAnn     :: !a
+    , _modulePackage :: !PackageName
+    , _moduleImports :: ![Import a]
+    , _modulePolicy  :: ![Rule a n]
+    } deriving (Generic, Show)
+
+instance (Binary a, Binary n) => Binary (Module a n)
 
 data ImportGut
     = ImportInput !PackageName
@@ -73,14 +89,6 @@ data Import a = Import
     } deriving (Generic, Show)
 
 instance Binary a => Binary (Import a)
-
-data Module a n = Module
-    { _modulePackage :: !PackageName
-    , _moduleImports :: ![Import a]
-    , _modulePolicy  :: ![Rule a n]
-    } deriving (Generic, Show)
-
-instance (Binary a, Binary n) => Binary (Module a n)
 
 data Rule a n = Rule
     { _ruleHead   :: !(RuleHead a n)
@@ -419,6 +427,12 @@ termAnn = lens getAnn setAnn
         ArrayCompT  _ x b   -> ArrayCompT  a x b
         SetCompT    _ x b   -> SetCompT    a x b
         ObjectCompT _ k x b -> ObjectCompT a k x b
+
+moduleRuleNames :: Fold (Module a n) Var
+moduleRuleNames = modulePolicy . traverse . ruleHead . ruleName
+
+moduleDependencies :: Fold (Module a n) PackageName
+moduleDependencies = moduleImports . traverse . importGut . _ImportData
 
 termFromExpr :: Prism' (Expr a n) (Term a n)
 termFromExpr = prism' (\t -> TermE (t ^. termAnn) t) (preview (_TermE . _2))

@@ -32,6 +32,7 @@ module Fregot.Eval.Builtins
     ) where
 
 import           Control.Applicative          ((<|>))
+import           Control.Arrow                ((>>>))
 import           Control.Exception            (Exception, throwIO)
 import           Control.Lens                 (preview, review)
 import           Control.Monad.Identity       (Identity)
@@ -73,10 +74,10 @@ instance ToVal Value where
     toVal = id
 
 instance ToVal T.Text where
-    toVal = StringV
+    toVal = Value . StringV
 
 instance ToVal Number where
-    toVal = NumberV
+    toVal = Value . NumberV
 
 instance ToVal Int where
     toVal = toVal . (fromIntegral :: Int -> Int64)
@@ -88,16 +89,16 @@ instance ToVal Double where
     toVal = toVal . review Number.double
 
 instance ToVal Bool where
-    toVal = BoolV
+    toVal = Value . BoolV
 
 instance ToVal a => ToVal (V.Vector a) where
-    toVal = ArrayV . fmap toVal
+    toVal = Value . ArrayV . fmap toVal
 
 instance ToVal a => ToVal [a] where
     toVal = toVal . V.fromList
 
 instance ToVal a => ToVal (HS.HashSet a) where
-    toVal = SetV . HS.map toVal
+    toVal = Value . SetV . HS.map toVal
 
 class FromVal a where
     fromVal :: Value -> Either String a
@@ -106,49 +107,56 @@ instance FromVal Value where
     fromVal = Right
 
 instance FromVal T.Text where
-    fromVal (StringV t) = Right t
-    fromVal v           = Left $ "Expected string but got " ++ describeValue v
+    fromVal (Value (StringV t)) = Right t
+    fromVal v                   = Left $
+        "Expected string but got " ++ describeValue v
 
 instance FromVal Number where
-    fromVal (NumberV n) = Right n
-    fromVal v           = Left $ "Expected number but got " ++ describeValue v
+    fromVal (Value (NumberV n)) = Right n
+    fromVal v                   = Left $
+        "Expected number but got " ++ describeValue v
 
 instance FromVal Int where
     fromVal = fmap (fromIntegral :: Int64 -> Int) . fromVal
 
 instance FromVal Int64 where
-    fromVal (NumberV n) | Just i <- preview Number.int n = Right i
-    fromVal v           = Left $ "Expected int but got " ++ describeValue v
+    fromVal (Value (NumberV n)) | Just i <- preview Number.int n = Right i
+    fromVal v                                                    = Left $
+        "Expected int but got " ++ describeValue v
 
 instance FromVal Double where
-    fromVal (NumberV n) | Just d <- preview Number.double n = Right d
-    fromVal v           = Left $ "Expected double but got " ++ describeValue v
+    fromVal (Value (NumberV n)) | Just d <- preview Number.double n = Right d
+    fromVal v                                                       =
+        Left $ "Expected double but got " ++ describeValue v
 
 instance FromVal Bool where
-    fromVal (BoolV b) = Right b
-    fromVal v         = Left $ "Expected bool but got " ++ describeValue v
+    fromVal (Value (BoolV b)) = Right b
+    fromVal v                 = Left $
+        "Expected bool but got " ++ describeValue v
 
 instance FromVal a => FromVal (V.Vector a) where
-    fromVal (ArrayV v) = traverse fromVal v
-    fromVal v          = Left $ "Expected array but got " ++ describeValue v
+    fromVal (Value (ArrayV v)) = traverse fromVal v
+    fromVal v                  = Left $
+        "Expected array but got " ++ describeValue v
 
 instance FromVal a => FromVal [a] where
     fromVal = fmap V.toList . fromVal
 
 instance (Eq a, FromVal a, Hashable a) => FromVal (HS.HashSet a)  where
-    fromVal (SetV s) = fmap HS.fromList $ traverse fromVal (HS.toList s)
-    fromVal v        = Left $ "Expected set but got " ++ describeValue v
+    fromVal (Value (SetV s)) = fmap HS.fromList $ traverse fromVal (HS.toList s)
+    fromVal v                = Left $ "Expected set but got " ++ describeValue v
 
 -- | Sometimes builtins (e.g. `count`) do not take a specific type, but any
 -- sort of collection.
 newtype Collection a = Collection [a]
 
 instance FromVal a => FromVal (Collection a) where
-    fromVal (ArrayV  c) = Collection <$> traverse fromVal (V.toList c)
-    fromVal (SetV    c) = Collection <$> traverse fromVal (HS.toList c)
-    fromVal (ObjectV c) = Collection <$> traverse (fromVal . snd) (HMS.toList c)
-    fromVal v           = Left $
-        "Expected collection but got " ++ describeValue v
+    fromVal = unValue >>> \case
+        ArrayV  c -> Collection <$> traverse fromVal (V.toList c)
+        SetV    c -> Collection <$> traverse fromVal (HS.toList c)
+        ObjectV c -> Collection <$> traverse (fromVal . snd) (HMS.toList c)
+        v         -> Left $
+            "Expected collection but got " ++ describeValue (Value v)
 
 -- | Either-like type for when we have weird ad-hoc polymorphism.
 data a :|: b = InL a | InR b
@@ -171,15 +179,11 @@ data Args (a :: [t]) where
     Cons :: a -> Args as -> Args (a ': as)
 
 -- | TODO (jaspervdj): Use arity check instead?
-toArgs :: Sig t o -> [Value] -> Either String (Args t, Maybe Value)
-toArgs Out      []       = return (Nil, Nothing)
-toArgs Out      [final]  = return (Nil, Just final)
+toArgs :: Sig t o -> [Value] -> Either String (Args t)
+toArgs Out      []       = return Nil
 toArgs Out      _        = Left "too many arguments supplied"
 toArgs (In _)   []       = Left "not enough arguments supplied"
-toArgs (In sig) (x : xs) = do
-    arg           <- fromVal x
-    (args, final) <- toArgs sig xs
-    return (Cons arg args, final)
+toArgs (In sig) (x : xs) = Cons <$> fromVal x <*> toArgs sig xs
 
 data BuiltinException = BuiltinException String deriving (Show)
 
@@ -218,7 +222,7 @@ defaultBuiltins :: Builtins IO
 defaultBuiltins = HMS.fromList
     [ (NamedFunction (BuiltinName "all"),                       builtin_all)
     , (NamedFunction (BuiltinName "any"),                       builtin_any)
-    , (NamedFunction (QualifiedName "array" "concat"),          builtin_array_concat)
+    , (NamedFunction (QualifiedName "array.concat"),            builtin_array_concat)
     , (NamedFunction (BuiltinName "and"),                       builtin_bin_and)
     , (NamedFunction (BuiltinName "concat"),                    builtin_concat)
     , (NamedFunction (BuiltinName "contains"),                  builtin_contains)
@@ -232,7 +236,7 @@ defaultBuiltins = HMS.fromList
     , (NamedFunction (BuiltinName "is_object"),                 builtin_is_object)
     , (NamedFunction (BuiltinName "is_set"),                    builtin_is_set)
     , (NamedFunction (BuiltinName "is_string"),                 builtin_is_string)
-    , (NamedFunction (QualifiedName "json" "unmarshal"),        builtin_json_unmarshal)
+    , (NamedFunction (QualifiedName "json.unmarshal"),          builtin_json_unmarshal)
     , (NamedFunction (BuiltinName "lower"),                     builtin_lower)
     , (NamedFunction (BuiltinName "max"),                       builtin_max)
     , (NamedFunction (BuiltinName "min"),                       builtin_min)
@@ -248,9 +252,9 @@ defaultBuiltins = HMS.fromList
     , (NamedFunction (BuiltinName "sum"),                       builtin_sum)
     , (NamedFunction (BuiltinName "startswith"),                builtin_startswith)
     , (NamedFunction (BuiltinName "to_number"),                 builtin_to_number)
-    , (NamedFunction (QualifiedName "time" "now_ns"),           builtin_time_now_ns)
-    , (NamedFunction (QualifiedName "time" "date"),             builtin_time_date)
-    , (NamedFunction (QualifiedName "time" "parse_rfc3339_ns"), builtin_time_parse_rfc3339_ns)
+    , (NamedFunction (QualifiedName "time.now_ns"),             builtin_time_now_ns)
+    , (NamedFunction (QualifiedName "time.date"),               builtin_time_date)
+    , (NamedFunction (QualifiedName "time.parse_rfc3339_ns"),   builtin_time_parse_rfc3339_ns)
     , (NamedFunction (BuiltinName "trim"),                      builtin_trim)
     , (NamedFunction (BuiltinName "upper"),                     builtin_upper)
     , (NamedFunction (BuiltinName "union"),                     builtin_union)
@@ -274,16 +278,16 @@ builtin_all = Builtin
     (In Out)
     (Ty.collectionOf Ty.boolean 🡒 Ty.out Ty.boolean) $ pure $
     \(Cons arg Nil) -> case arg of
-        InL arr -> return $! all (== BoolV True) (arr :: V.Vector Value)
-        InR set -> return $! all (== BoolV True) $ HS.toList set
+        InL arr -> return $! all (== Value (BoolV True)) (arr :: V.Vector Value)
+        InR set -> return $! all (== Value (BoolV True)) $ HS.toList set
 
 builtin_any :: Monad m => Builtin m
 builtin_any = Builtin
     (In Out)
     (Ty.collectionOf Ty.boolean 🡒 Ty.out Ty.boolean) $ pure $
     \(Cons arg Nil) -> case arg of
-        InL arr -> return $! any (== BoolV True) (arr :: V.Vector Value)
-        InR set -> return $! HS.member (BoolV True) set
+        InL arr -> return $! any (== Value (BoolV True)) (arr :: V.Vector Value)
+        InR set -> return $! HS.member (Value (BoolV True)) set
 
 builtin_array_concat :: Monad m => Builtin m
 builtin_array_concat = Builtin
@@ -350,7 +354,7 @@ builtin_is_array :: Monad m => Builtin m
 builtin_is_array = Builtin
     (In Out)
     (Ty.any 🡒 Ty.out Ty.boolean) $ pure $
-    \(Cons val Nil) -> case val of
+    \(Cons val Nil) -> case unValue val of
         ArrayV _ -> return True
         _        -> return False
 
@@ -358,7 +362,7 @@ builtin_is_boolean :: Monad m => Builtin m
 builtin_is_boolean = Builtin
     (In Out)
     (Ty.any 🡒 Ty.out Ty.boolean) $ pure $
-    \(Cons val Nil) -> case val of
+    \(Cons val Nil) -> case unValue val of
         BoolV _ -> return True
         _       -> return False
 
@@ -366,7 +370,7 @@ builtin_is_object :: Monad m => Builtin m
 builtin_is_object = Builtin
     (In Out)
     (Ty.any 🡒 Ty.out Ty.boolean) $ pure $
-    \(Cons val Nil) -> case val of
+    \(Cons val Nil) -> case unValue val of
         ObjectV _ -> return True
         _         -> return False
 
@@ -374,7 +378,7 @@ builtin_is_set :: Monad m => Builtin m
 builtin_is_set = Builtin
     (In Out)
     (Ty.any 🡒 Ty.out Ty.boolean) $ pure $
-    \(Cons val Nil) -> case val of
+    \(Cons val Nil) -> case unValue val of
         SetV _ -> return True
         _      -> return False
 
@@ -382,7 +386,7 @@ builtin_is_string :: Monad m => Builtin m
 builtin_is_string = Builtin
     (In Out)
     (Ty.any 🡒 Ty.out Ty.boolean) $ pure $
-    \(Cons val Nil) -> case val of
+    \(Cons val Nil) -> case unValue val of
         StringV _ -> return True
         _         -> return False
 
@@ -406,7 +410,7 @@ builtin_max = Builtin
     -- TODO(jaspervdj): More like `∀a. collection<a> -> a`.
     (Ty.collectionOf Ty.any 🡒 Ty.out Ty.unknown) $ pure $
     \(Cons (Collection vals) Nil) -> return $! case vals of
-        [] -> NullV  -- TODO(jaspervdj): Should be undefined.
+        [] -> Value NullV  -- TODO(jaspervdj): Should be undefined.
         _  -> maximum (vals :: [Value])
 
 builtin_min :: Monad m => Builtin m
@@ -415,7 +419,7 @@ builtin_min = Builtin
     -- TODO(jaspervdj): More like `∀a. collection<a> -> a`.
     (Ty.collectionOf Ty.any 🡒 Ty.out Ty.unknown) $ pure $
     \(Cons (Collection vals) Nil) -> return $! case vals of
-        [] -> NullV  -- TODO(jaspervdj): Should be undefined.
+        [] -> Value NullV  -- TODO(jaspervdj): Should be undefined.
         _  -> minimum (vals :: [Value])
 
 builtin_product :: Monad m => Builtin m
@@ -504,7 +508,7 @@ builtin_set :: Monad m => Builtin m
 builtin_set = Builtin
     Out
     (Ty.out (Ty.setOf Ty.empty)) $ pure $
-    \Nil -> return $! SetV HS.empty
+    \Nil -> return $! Value $ SetV HS.empty
 
 builtin_sort :: Monad m => Builtin m
 builtin_sort = Builtin
@@ -572,13 +576,13 @@ builtin_equal = Builtin
   --
   -- Because we'll end up comparing an IntV on the left with a DoubleV on the
   -- right.
-  \(Cons x (Cons y Nil)) -> return $! BoolV $! x == (y :: Value)
+  \(Cons x (Cons y Nil)) -> return $! Value $ BoolV $! x == (y :: Value)
 
 builtin_not_equal :: Monad m => Builtin m
 builtin_not_equal = Builtin
   (In (In Out))
   (Ty.any 🡒 Ty.any 🡒 Ty.out Ty.boolean) $ pure $
-  \(Cons x (Cons y Nil)) -> return $! BoolV $! x /= (y :: Value)
+  \(Cons x (Cons y Nil)) -> return $! Value $ BoolV $! x /= (y :: Value)
 
 builtin_less_than :: Monad m => Builtin m
 builtin_less_than = Builtin
@@ -625,8 +629,8 @@ builtin_minus = Builtin
             Ty.bcSubsetOf c y $ Ty.setOf Ty.any
             return $ Ty.setOf Ty.unknown)) $ pure $
   \(Cons x (Cons y Nil)) -> case (x, y) of
-      (InL x', InL y') -> return $! NumberV $ num $ x' - y'
-      (InR x', InR y') -> return $! SetV $ HS.difference (x' :: HS.HashSet Value) y'
+      (InL x', InL y') -> return $! Value $ NumberV $ num $ x' - y'
+      (InR x', InR y') -> return $! Value $ SetV $ HS.difference (x' :: HS.HashSet Value) y'
       (InL _, InR _) -> throwBuiltinException $ "Expected number but got set"
       (InR _, InL _) -> throwBuiltinException $ "Expected set but got number"
 
@@ -653,14 +657,14 @@ builtin_bin_and = Builtin
   (In (In Out))
   -- TODO(jaspervdj): Maybe this should be `∀a. set<a> -> set<a> -> set<a>`.
   (Ty.setOf Ty.any 🡒 Ty.setOf Ty.any 🡒 Ty.out (Ty.setOf Ty.unknown)) $ pure $
-  \(Cons x (Cons y Nil)) -> return $! SetV $ HS.intersection x y
+  \(Cons x (Cons y Nil)) -> return $! Value $ SetV $ HS.intersection x y
 
 builtin_bin_or :: Monad m => Builtin m
 builtin_bin_or = Builtin
   (In (In Out))
   -- TODO(jaspervdj): Maybe this should be `∀a. set<a> -> set<a> -> set<a>`.
   (Ty.setOf Ty.any 🡒 Ty.setOf Ty.any 🡒 Ty.out (Ty.setOf Ty.unknown)) $ pure $
-  \(Cons x (Cons y Nil)) -> return $! SetV $ HS.union x y
+  \(Cons x (Cons y Nil)) -> return $! Value $ SetV $ HS.union x y
 
 -- | Auxiliary function to fix types.
 num :: Number -> Number

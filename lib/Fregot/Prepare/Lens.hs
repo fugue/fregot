@@ -2,7 +2,10 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 module Fregot.Prepare.Lens
-    ( ruleTerms
+    ( _RefT, _CallT, _NameT, _ScalarT, _ArrayT, _SetT, _ObjectT, _ArrayCompT
+    , _SetCompT, _ObjectCompT
+
+    , ruleTerms
     , ruleDefinitionTerms
 
     , ruleBodyTerms
@@ -30,6 +33,7 @@ ruleTerms :: Traversal' (Rule i a) (Term a)
 ruleTerms f rule = Rule
     <$> pure (rule ^. rulePackage)
     <*> pure (rule ^. ruleName)
+    <*> pure (rule ^. ruleKey)
     <*> pure (rule ^. ruleAnn)
     <*> pure (rule ^. ruleKind)
     <*> pure (rule ^. ruleInfo)

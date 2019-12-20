@@ -2,6 +2,7 @@ module System.Directory.Find
     ( recursivelyFindPaths
     , recursivelyFindFiles
     , recursivelyFindFilesWithExtension
+    , recursivelyFindFilesWithExtensions
     , glob
     ) where
 
@@ -19,8 +20,17 @@ recursivelyFindFilesWithExtension
     :: String                 -- ^ Extension (including the '.').
     -> FilePath               -- ^ Initial search directory.
     -> IO [FilePath]          -- ^ Found files.
-recursivelyFindFilesWithExtension ext =
-    recursivelyFindFiles (return . (== ext) . takeExtension)
+recursivelyFindFilesWithExtension =
+    recursivelyFindFilesWithExtensions . pure
+
+-- | Recursively find files in a directory using an extension.  The returned
+-- file paths /DO NOT/ include the directory prefix.
+recursivelyFindFilesWithExtensions
+    :: [String]               -- ^ Extensions (including the '.').
+    -> FilePath               -- ^ Initial search directory.
+    -> IO [FilePath]          -- ^ Found files.
+recursivelyFindFilesWithExtensions exts =
+    recursivelyFindFiles (return . (`elem` exts) . takeExtension)
 
 -- | Recursively find files in a directory using a predicate.  The returned file
 -- paths /DO NOT/ include the initial directory prefix.

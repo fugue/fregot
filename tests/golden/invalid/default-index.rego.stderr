@@ -1,12 +1,4 @@
 fregot ([34mcompile error[0m):
-  "default-index.rego" (line 3, column 1):
-  complete definition mismatch:
-
-    3| default power_level = 9001
-       [31m^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
-
-  is a complete rule
-
   "default-index.rego" (line 5, column 1):
   complete definition mismatch:
 
@@ -14,6 +6,14 @@ fregot ([34mcompile error[0m):
        [31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
 
   generates an object
+
+  "default-index.rego" (line 3, column 1):
+  complete definition mismatch:
+
+    3| default power_level = 9001
+       [31m^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+
+  is a complete rule
 
 fregot ([34mtypecheck error[0m):
   "default-index.rego" (line 5, column 26):

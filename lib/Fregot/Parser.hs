@@ -1,5 +1,6 @@
 module Fregot.Parser
-    ( lexAndParse
+    ( FregotParser
+    , lexAndParse
 
     , module Fregot.Parser.Sugar
     ) where

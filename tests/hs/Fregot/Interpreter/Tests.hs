@@ -35,11 +35,11 @@ tests = Tasty.testGroup "Fregot.Interpreter.Tests"
 
         Tasty.assertBool "No errors" $ null errs
         map (view Eval.rowValue) <$> mbResult @?=
-            Just [Eval.NumberV $ review Number.int 101]
+            Just [Eval.Value $ Eval.NumberV $ review Number.int 101]
     ]
   where
     magicName :: B.Function
-    magicName = B.NamedFunction (QualifiedName "test" "magic")
+    magicName = B.NamedFunction (QualifiedName "test.magic")
 
     magicImpl :: B.Builtin Identity
     magicImpl = B.Builtin

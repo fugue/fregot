@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -7,8 +8,8 @@
 {-# LANGUAGE TemplateHaskell            #-}
 module Fregot.Prepare.Ast
     ( RuleKind (..), _CompleteRule, _GenSetRule, _GenObjectRule, _FunctionRule
-    , Rule (..), rulePackage, ruleName, ruleAnn, ruleDefault, ruleKind, ruleInfo
-    , ruleDefs
+    , Rule (..), rulePackage, ruleName, ruleKey, ruleAnn, ruleDefault, ruleKind
+    , ruleInfo, ruleDefs
     , Rule'
     , RuleDefinition (..), ruleDefName, ruleDefImports, ruleDefAnn, ruleArgs
     , ruleIndex, ruleValue, ruleBodies, ruleElses
@@ -36,9 +37,9 @@ module Fregot.Prepare.Ast
 
     , Sugar.Scalar (..)
 
-      -- * Constructors
+      -- * Constructors and destructors
     , literal
-
+    , unRefT
 
     , prettyComprehensionBody
     ) where
@@ -46,9 +47,9 @@ module Fregot.Prepare.Ast
 import           Control.Lens              ((^.))
 import           Control.Lens.TH           (makeLenses, makePrisms)
 import           Data.Hashable             (Hashable)
-import qualified Data.HashMap.Strict       as HMS
 import qualified Data.List                 as L
 import           Fregot.Names
+import           Fregot.Names.Imports      (Imports)
 import           Fregot.PrettyPrint        ((<+>), (<+>?), (?<+>))
 import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources.SourceSpan (SourceSpan)
@@ -65,16 +66,15 @@ data RuleKind
 data Rule i a = Rule
     { _rulePackage :: !PackageName
     , _ruleName    :: !Var
+    , _ruleKey     :: !Key
     , _ruleAnn     :: !SourceSpan
     , _ruleKind    :: !RuleKind
     , _ruleInfo    :: !i
     , _ruleDefault :: !(Maybe (Term a))
     , _ruleDefs    :: [RuleDefinition a]
-    } deriving (Show)
+    } deriving (Functor, Show)
 
 type Rule' = Rule () SourceSpan
-
-type Imports a = HMS.HashMap Var (a, Sugar.ImportGut)
 
 data RuleDefinition a = RuleDefinition
     { _ruleDefName    :: !Var
@@ -85,7 +85,7 @@ data RuleDefinition a = RuleDefinition
     , _ruleValue      :: !(Maybe (Term a))
     , _ruleBodies     :: ![RuleBody a]
     , _ruleElses      :: ![RuleElse a]
-    } deriving (Show)
+    } deriving (Functor, Show)
 
 type RuleBody a = [Literal a]
 
@@ -95,20 +95,20 @@ data RuleElse a = RuleElse
     { _ruleElseAnn   :: !a
     , _ruleElseValue :: !(Maybe (Term a))
     , _ruleElseBody  :: !(RuleBody a)
-    } deriving (Eq, Show)
+    } deriving (Eq, Functor, Show)
 
 data Literal a = Literal
     { _literalAnn       :: !a
     , _literalNegation  :: !Bool
     , _literalStatement :: !(Statement a)
     , _literalWith      :: ![With a]
-    } deriving (Eq, Show)
+    } deriving (Eq, Functor, Show)
 
 data Statement a
     = UnifyS  a (Term a) (Term a)
     | AssignS a UnqualifiedVar (Term a)
     | TermS     (Term a)
-    deriving (Eq, Show)
+    deriving (Eq, Functor, Show)
 
 data Term a
     = RefT        a (Term a) (Term a)
@@ -121,7 +121,7 @@ data Term a
     | ArrayCompT  a (Term a) (RuleBody a)
     | SetCompT    a (Term a) (RuleBody a)
     | ObjectCompT a (Term a) (Term a) (RuleBody a)
-    deriving (Eq, Show)
+    deriving (Eq, Functor, Show)
 
 data Function
     = NamedFunction Name
@@ -154,7 +154,7 @@ data With a = With
     { _withAnn  :: !a
     , _withPath :: [UnqualifiedVar]
     , _withAs   :: !(Term a)
-    } deriving (Eq, Show)
+    } deriving (Eq, Functor, Show)
 
 $(makePrisms ''RuleKind)
 $(makePrisms ''Function)
@@ -249,3 +249,9 @@ instance PP.Pretty PP.Sem (With a) where
 
 literal :: a -> Statement a -> Literal a
 literal a s = Literal a False s []
+
+unRefT :: Term a -> Maybe (Term a, [Term a])
+unRefT (RefT _ l k) = case unRefT l of
+    Nothing       -> Just (l, [k])
+    Just (l', ks) -> Just (l', ks ++ [k])
+unRefT _ = Nothing

@@ -16,6 +16,7 @@ data RuleType
     | GenSetRuleType Type
     | GenObjectRuleType (Object Ast.Scalar Type)
     | FunctionType  Int  -- TODO(jaspervdj)
+    deriving (Show)
 
 instance PP.Pretty PP.Sem RuleType where
     pretty = PP.pretty . ruleTypeToType

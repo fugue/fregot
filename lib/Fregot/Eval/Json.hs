@@ -6,6 +6,7 @@ module Fregot.Eval.Json
     , fromValue
     ) where
 
+import           Control.Arrow       ((>>>))
 import qualified Data.Aeson          as A
 import qualified Data.HashMap.Strict as HMS
 import qualified Data.HashSet        as HS
@@ -16,17 +17,17 @@ import           Fregot.PrettyPrint  ((<+>))
 import qualified Fregot.PrettyPrint  as PP
 
 toValue :: A.Value -> Value
-toValue = \case
+toValue = Value . \case
     A.Null     -> NullV
     A.String t -> StringV t
     A.Bool b   -> BoolV b
     A.Number s -> NumberV $! Number.fromScientific s
     A.Array a  -> ArrayV (fmap toValue a)
     A.Object o -> ObjectV $!
-        HMS.fromList [(StringV k, toValue v) | (k, v) <- HMS.toList o]
+        HMS.fromList [(Value (StringV k), toValue v) | (k, v) <- HMS.toList o]
 
 fromValue :: Value -> Either PP.SemDoc A.Value
-fromValue = \case
+fromValue = unValue >>> \case
     NullV     -> return A.Null
     StringV s -> return $! A.String s
     BoolV b   -> return $! A.Bool b
@@ -35,10 +36,6 @@ fromValue = \case
     SetV  xs  -> A.Array <$> traverse fromValue (V.fromList $ HS.toList xs)
     ObjectV o ->
         A.Object . HMS.fromList <$> traverse fromKeyValue (HMS.toList o)
-
-    v@(FreeV _)    -> unsupported v
-    v@WildcardV    -> unsupported v
-    v@(PackageV _) -> unsupported v
   where
     fromKeyValue (k, v) = do
         kv <- fromValue k
@@ -48,10 +45,6 @@ fromValue = \case
             _          -> Left $
                 "Could not use" <+> PP.pretty (describeJsonValue kv) <+>
                 "as object key in JSON, only strings are supported."
-
-    unsupported v = Left $
-        "Could not convert" <+> PP.pretty (describeValue v) <+>
-        PP.pretty' v <+> "to JSON."
 
 describeJsonValue :: A.Value -> String
 describeJsonValue = \case

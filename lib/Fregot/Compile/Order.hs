@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE MultiWayIf                 #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 module Fregot.Compile.Order
@@ -30,6 +31,7 @@ import qualified Data.Unification            as Unification
 import           Fregot.Names
 import           Fregot.Prepare.Ast
 import           Fregot.Prepare.Lens
+import qualified Fregot.PrettyPrint          as PP
 import           Fregot.Sources.SourceSpan   (SourceSpan)
 import qualified Fregot.Types.Infer          as Types
 import qualified Fregot.Types.Internal       as Types
@@ -77,6 +79,9 @@ reorder orderPredicate = \userAcc items ->
 
 newtype Safe v = Safe {unSafe :: HS.HashSet v}
     deriving (Eq, Monoid, Semigroup, Show)
+
+instance PP.Pretty PP.Sem v => PP.Pretty PP.Sem (Safe v) where
+    pretty = PP.set . HS.toList . unSafe
 
 newtype Unsafe v a = Unsafe {unUnsafe :: HMS.HashMap v (NonEmpty a)}
     deriving (Eq, Monoid, Semigroup, Show)
