@@ -15,9 +15,6 @@ import           Fregot.Prepare.Ast
 import           Fregot.Prepare.Lens
 import qualified Fregot.Tree         as Tree
 
--- | TODO(jaspervdj): We compute this a bunch of times and this innocent-looking
--- fold traverses the whole syntax tree.  It's probably better to just store
--- this in 'Rule'.
 ruleDependencies :: Tree.Tree e -> Rule ty a -> HS.HashSet Key
 ruleDependencies tree0 =
     foldMap termDependencies . toListOf ruleTerms
