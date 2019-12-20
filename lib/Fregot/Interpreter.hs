@@ -1,5 +1,6 @@
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE Rank2Types        #-}
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE TemplateHaskell   #-}
 {-# LANGUAGE TypeFamilies      #-}
@@ -60,6 +61,7 @@ import           Data.IORef.Extended             (IORef)
 import qualified Data.IORef.Extended             as IORef
 import           Data.Maybe                      (fromMaybe, mapMaybe,
                                                   maybeToList)
+import qualified Data.Text                       as T
 import qualified Data.Text.IO                    as T
 import qualified Data.Text.Lazy                  as TL
 import qualified Data.Text.Lazy.Encoding         as TL
@@ -85,12 +87,14 @@ import qualified Fregot.Names.Renamer            as Renamer
 import qualified Fregot.Parser                   as Parser
 import qualified Fregot.Prepare                  as Prepare
 import           Fregot.Prepare.Ast              (Function (..), Query, Term)
+import qualified Fregot.Prepare.Json             as Prepare
 import qualified Fregot.Prepare.Package          as Prepare
 import qualified Fregot.Prepare.Yaml             as Prepare
 import           Fregot.PrettyPrint              ((<$$>), (<+>))
 import qualified Fregot.PrettyPrint              as PP
 import qualified Fregot.Sources                  as Sources
-import           Fregot.Sources.SourceSpan       (SourceSpan, sourcePointer)
+import           Fregot.Sources.SourceSpan       (SourcePointer, SourceSpan,
+                                                  sourcePointer)
 import qualified Fregot.Sugar                    as Sugar
 import qualified Fregot.Tree                     as Tree
 import qualified Fregot.Types.Internal           as Types
@@ -219,16 +223,17 @@ loadModule h popts path = do
   where
     sourcep = Sources.FileInput path
 
-loadYaml
-    :: Handle -> FilePath -> InterpreterM ()
-loadYaml h path = do
+loadData
+    :: Handle -> FilePath
+    -> (forall m. Monad m => SourcePointer -> T.Text -> ParachuteT Error m Prepare.PreparedTree)
+    -> InterpreterM ()
+loadData h path mkTree = do
     canonical <- catchIO $ liftIO $ canonicalizePath path
     input     <- catchIO $ T.readFile path
     liftIO $ IORef.atomicModifyIORef_ (h ^. sources) $
         Sources.insert sourcep input
 
-    let inputBytes = TL.encodeUtf8 $ TL.fromStrict input
-    tree <- either fatal pure $ Prepare.loadYaml sourcep inputBytes
+    tree <- mkTree sourcep input
     oldRules <- liftIO $ IORef.atomicModifyIORef' (h ^. yamls) $ \ys ->
         case HMS.lookup canonical ys of
             Nothing -> (HMS.insert canonical tree ys, mempty)
@@ -236,6 +241,16 @@ loadYaml h path = do
     evictRules h $ mapMaybe (preview qualifiedVarFromKey) oldRules
   where
     sourcep = Sources.FileInput path
+
+loadYaml
+    :: Handle -> FilePath -> InterpreterM ()
+loadYaml h path = loadData h path $ \sourcep ->
+    either fatal pure . Prepare.loadYaml sourcep .
+    TL.encodeUtf8 .  TL.fromStrict
+
+loadJson
+    :: Handle -> FilePath -> InterpreterM ()
+loadJson h path = loadData h path Prepare.loadJson
 
 loadBundle :: Handle -> FilePath -> InterpreterM [PackageName]
 loadBundle h path = do
@@ -258,6 +273,7 @@ loadFileByExtension h popts path = case listExtensions path of
     "rego" : _            -> void $ loadModule h popts path
     "bundle" : "rego" : _ -> void $ loadBundle h path
     "yaml" : _            -> loadYaml h path
+    "json" : _            -> loadJson h path
     _                     -> fatal $ Error.mkErrorNoMeta "interpreter" $
         "Unknown rego file extension:" <+> PP.pretty path <+>
         ", expected .rego or .bundle.rego"

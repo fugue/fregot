@@ -7,6 +7,7 @@ module Fregot.Prepare.Json
     ) where
 
 import           Control.Applicative       ((<|>))
+import           Control.Lens              ((^.))
 import           Control.Monad.Parachute
 import qualified Data.Text                 as T
 import qualified Fregot.Error              as Error
@@ -15,6 +16,7 @@ import qualified Fregot.Parser.Internal    as P
 import qualified Fregot.Parser.Sugar       as P
 import           Fregot.Prepare.Ast
 import           Fregot.Prepare.BuildTree
+import           Fregot.Prepare.Lens       (termAnn)
 import           Fregot.Prepare.Package    (PreparedRule)
 import           Fregot.Sources.SourceSpan (SourcePointer)
 import qualified Fregot.Tree               as Tree
@@ -26,7 +28,11 @@ loadJson
     -> ParachuteT Error.Error m (Tree.Tree PreparedRule)
 loadJson sourcePointer text = do
     tree <- lexAndParse parseJson sourcePointer text
-    pure Tree.empty
+    case tree of
+        BuildTree _ btree -> pure $ toTree mempty btree
+        BuildSingleton term -> fatal $ Error.mkError
+            "parse" (term ^. termAnn) "parse failed"
+            "expected object at the top level"
 
 parseJson :: FregotParser BuildTree
 parseJson =
