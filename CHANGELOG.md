@@ -1,5 +1,22 @@
 # CHANGELOG
 
+ -  0.7.0 (2019-12-19)
+     *  Change the return type of set() to set{unknown}.
+     *  Add `--input` option to `fregot repl`.
+     *  Add support for loading JSON/YAML files as data.
+     *  Use a tree datastructure to store rules, fix Value.
+
+        This is a huge refactoring that changes the following things:
+
+         -  We now store rules in a tree structure (see `Fregot.Tree`) rather
+            than having a collection of packages with rules.
+         -  The evaluation distinguishes between `Value` (a grounded value) and
+            `Mu` (a *M*aybe *u*ngrounded value), which allows us to reify
+            packages.
+         -  References into packages are extended, allowing us to e.g. iterate
+            over all packages under a prefix.
+         -  Improved dependency tracking for dynamic references to rules.
+
  -  0.6.0 (2019-12-14)
      *  Add support for raw strings.
 
