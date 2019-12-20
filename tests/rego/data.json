@@ -1,0 +1,10 @@
+{
+    "json_policy": {
+        "filename": "stdlib.h"
+    },
+    "common_policy": {
+        "numbers": {
+            "one": 1
+        }
+    }
+}

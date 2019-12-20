@@ -17,4 +17,4 @@ findRegoFiles paths = fmap concat $ forM paths $ \path -> ifM
         Find.recursivelyFindFilesWithExtensions extensions path)
     (return [path])
   where
-    extensions = [".rego"]
+    extensions = [".rego", ".yaml", ".json"]

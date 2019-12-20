@@ -1,0 +1,5 @@
+yaml_policy:
+  filename: "sqlite.c"
+common_policy:
+  numbers:
+    two: 2
