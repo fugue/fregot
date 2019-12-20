@@ -141,8 +141,9 @@ readRuleDependencyGraph h = do
     return $ Deps.Graph
         { Deps.graphDone         = Tree.keys tree
         , Deps.graphIsDone       = \k -> Tree.member k tree
-        , Deps.graphDependencies = \k ->
-            maybe [] (^.. Compile.ruleDependencies tree) (Tree.lookup k tree)
+        , Deps.graphDependencies = \k -> maybe
+            -- TODO(jaspervdj): This needs caching!!
+            [] (HS.toList . Compile.ruleDependencies tree) (Tree.lookup k tree)
         }
 
 -- | Auxiliary function for hooking into the renamer.

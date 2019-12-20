@@ -95,6 +95,7 @@ Library
     Data.Unique
     Language.Dot
 
+    Control.Lens.Unsound.Extended
     Control.Monad.Except.Extended
     Control.Monad.Extended
     Data.Aeson.Extended

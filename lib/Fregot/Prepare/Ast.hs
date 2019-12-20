@@ -37,9 +37,9 @@ module Fregot.Prepare.Ast
 
     , Sugar.Scalar (..)
 
-      -- * Constructors
+      -- * Constructors and destructors
     , literal
-
+    , unRefT
 
     , prettyComprehensionBody
     ) where
@@ -249,3 +249,9 @@ instance PP.Pretty PP.Sem (With a) where
 
 literal :: a -> Statement a -> Literal a
 literal a s = Literal a False s []
+
+unRefT :: Term a -> Maybe (Term a, [Term a])
+unRefT (RefT _ l k) = case unRefT l of
+    Nothing       -> Just (l, [k])
+    Just (l', ks) -> Just (l', ks ++ [k])
+unRefT _ = Nothing

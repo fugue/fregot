@@ -2,7 +2,10 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 module Fregot.Prepare.Lens
-    ( ruleTerms
+    ( _RefT, _CallT, _NameT, _ScalarT, _ArrayT, _SetT, _ObjectT, _ArrayCompT
+    , _SetCompT, _ObjectCompT
+
+    , ruleTerms
     , ruleDefinitionTerms
 
     , ruleBodyTerms
