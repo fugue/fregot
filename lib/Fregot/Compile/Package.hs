@@ -25,7 +25,6 @@ import qualified Data.HashSet.Extended        as HS
 import           Data.List.NonEmpty.Extended  (NonEmpty (..))
 import           Data.Proxy                   (Proxy (..))
 import           Data.Traversable.HigherOrder (htraverse)
-import           Debug.Trace                  (traceM)
 import           Fregot.Compile.Graph
 import           Fregot.Compile.Order
 import           Fregot.Error                 (Error)
@@ -57,10 +56,7 @@ compileTree builtins ctree0 prep = do
     -- Build dependency graph.
     let graph = do
             (key, rule) <- Tree.toList prep
-            let deps = HS.toList $ ruleDependencies prep rule
-            traceM $ show $ "Dependencies for " <> PP.pretty' key <> " => " <>
-                PP.commaSep (map PP.pretty' deps)
-            return (rule, key, deps)
+            return (rule, key, HS.toList $ ruleDependencies prep rule)
 
     -- Order rules according to dependency graph.
     ordering <- fmap concat $ forM (Graph.stronglyConnComp graph) $ \case
