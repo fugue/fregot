@@ -507,7 +507,7 @@ builtin_union = Builtin
 builtin_set :: Monad m => Builtin m
 builtin_set = Builtin
     Out
-    (Ty.out (Ty.setOf Ty.empty)) $ pure $
+    (Ty.out (Ty.setOf Ty.unknown)) $ pure $
     \Nil -> return $! Value $ SetV HS.empty
 
 builtin_sort :: Monad m => Builtin m
