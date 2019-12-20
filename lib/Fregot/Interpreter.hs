@@ -142,7 +142,7 @@ readRuleDependencyGraph h = do
         { Deps.graphDone         = Tree.keys tree
         , Deps.graphIsDone       = \k -> Tree.member k tree
         , Deps.graphDependencies = \k ->
-            maybe [] (^.. Compile.ruleDependencies) (Tree.lookup k tree)
+            maybe [] (^.. Compile.ruleDependencies tree) (Tree.lookup k tree)
         }
 
 -- | Auxiliary function for hooking into the renamer.

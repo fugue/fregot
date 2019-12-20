@@ -8,6 +8,5 @@ test_json_policy {
 }
 
 test_common_policy {
-  # common_policy.numbers == {"one": 1, "two": 2}
-  common_policy.numbers.one == 1
+  common_policy.numbers == {"one": 1, "two": 2}
 }

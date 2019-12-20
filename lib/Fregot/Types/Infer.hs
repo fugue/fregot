@@ -52,7 +52,6 @@ import           Data.Maybe                  (catMaybes, fromMaybe, listToMaybe,
 import           Data.Proxy                  (Proxy)
 import           Data.Traversable            (for)
 import qualified Data.Unification            as Unify
-import           Debug.Trace
 import           Fregot.Arity
 import           Fregot.Error                (Error)
 import qualified Fregot.Error                as Error
@@ -360,9 +359,7 @@ inferTerm (NameT source (LocalName var)) = do
 inferTerm (NameT source (QualifiedName key)) = do
     tree <- view ieTree
     case Tree.descendant key tree of
-        Nothing -> do
-            traceM $ "Nothing here!! " ++ show (Tree.keys tree)
-            fatal $ UnboundName (QualifiedName key) source
+        Nothing -> fatal $ UnboundName (QualifiedName key) source
         Just d | Just rule <- Tree.root d ->
             pure (Types.ruleTypeToType (rule ^. ruleInfo), NonEmpty.singleton source)
         Just d ->

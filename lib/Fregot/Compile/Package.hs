@@ -56,7 +56,7 @@ compileTree builtins ctree0 prep = do
     -- Build dependency graph.
     let graph = do
             (key, rule) <- Tree.toList prep
-            return (rule, key, rule ^.. ruleDependencies)
+            return (rule, key, rule ^.. ruleDependencies prep)
 
     -- Order rules according to dependency graph.
     ordering <- fmap concat $ forM (Graph.stronglyConnComp graph) $ \case
