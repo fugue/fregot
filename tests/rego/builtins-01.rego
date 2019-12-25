@@ -20,6 +20,9 @@ test_split_01 {
 test_sprintf {
   sprintf("I would like %d slices of %s pizza", [4, "pepperoni"]) ==
       "I would like 4 slices of pepperoni pizza"
+
+  sprintf("Resources: %v", [[{"rec": true}, [["list"]]]]) ==
+      `Resources: [{"rec": true}, [["list"]]]`
 }
 
 test_substring {
