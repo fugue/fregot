@@ -1,5 +1,8 @@
 # CHANGELOG
 
+ -  0.7.1 (2019-12-25)
+     *  Extend `%v` formatting in `sprintf` to work for objects, lists and sets.
+
  -  0.7.0 (2019-12-19)
      *  Change the return type of set() to set{unknown}.
      *  Add `--input` option to `fregot repl`.
