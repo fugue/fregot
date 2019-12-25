@@ -1,6 +1,6 @@
+{-# LANGUAGE DeriveFoldable             #-}
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE DeriveGeneric              #-}
-{-# LANGUAGE DeriveFoldable             #-}
 {-# LANGUAGE DeriveTraversable          #-}
 {-# LANGUAGE DerivingVia                #-}
 {-# LANGUAGE FlexibleContexts           #-}
@@ -103,19 +103,29 @@ updateObject (v : vs) insertee (Value (ObjectV o)) =
 updateObject _ _ _ = Nothing
 
 instance Pf.PrintfArg Value where
+    -- Strings are always rendered as strings.
     formatArg (Value (StringV t)) fmt =
         Pf.formatString (T.unpack t) fmt {Pf.fmtChar = 's'}
 
+    -- Whole numbers.
     formatArg (Value (NumberV n)) fmt
             | Pf.fmtChar fmt `elem` ("cdoxXbu" :: String)
             , Just int <- preview Number.int n =
         Pf.formatInt int fmt
 
+    -- Floating numbers.
     formatArg (Value (NumberV n)) fmt =
         Pf.formatRealFloat (n ^. Number.double) fmt
 
+    -- Booleans.
     formatArg (Value (BoolV b)) fmt | Pf.fmtChar (Pf.vFmt 't' fmt) == 't' =
         Pf.formatString (if b then "true" else "false") fmt
+
+    -- For other user-defined types, records, sets, strings, etc., the Pretty
+    -- instance is used.
+    formatArg value fmt | Pf.fmtChar fmt == 'v' = Pf.formatString
+        (PP.display . PP.removeLines . PP.renderDefaults $ PP.pretty' value)
+        fmt {Pf.fmtChar = 's', Pf.fmtPrecision = Nothing}
 
     formatArg _ fmt = Pf.errorBadFormat $ Pf.fmtChar fmt
 

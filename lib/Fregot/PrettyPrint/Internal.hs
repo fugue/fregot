@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveAnyClass        #-}
 {-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
@@ -34,14 +35,20 @@ module Fregot.PrettyPrint.Internal
     , Pretty (..)
 
       -- * Outputting
+    , toString
     , toText
     , toLazyText
     , hPutColDoc
     , renderSpanSimpleDoc
     , renderDefaults
+
+      -- * Internals
+    , removeIndentOnly
+    , removeLines
     ) where
 
 import qualified Data.Aeson                        as Aeson
+import           Data.Char                         (isSpace)
 import           Data.Int                          (Int64)
 import qualified Data.Scientific                   as Scientific
 import           Data.Semigroup                    (Semigroup, (<>))
@@ -182,8 +189,11 @@ instance Pretty a T.Text where
 instance Pretty a TL.Text where
     pretty = string . TL.unpack
 
+toString :: Doc a -> String
+toString = display . renderDefaults
+
 toText :: Doc a -> T.Text
-toText = T.pack . display . renderDefaults
+toText = T.pack . toString
 
 -- | Pretty-printer with reasonable defaults.
 toLazyText :: Doc a -> TL.Text
@@ -210,18 +220,6 @@ hPutSimpleColDoc h = IO.hWithEncoding h IO.utf8 . go
 renderDefaults :: Doc a -> SimpleDoc a
 renderDefaults = removeIndentOnly . renderPretty 0.9 80
 
--- | Remove lines with only indentation.
-removeIndentOnly :: SimpleDoc a -> SimpleDoc a
-removeIndentOnly = go
-  where
-    go SEmpty                    = SEmpty
-    go (SChar c doc)             = SChar c (go doc)
-    go (SText w str doc)         = SText w str (go doc)
-    go (SLine _ doc@(SLine _ _)) = SLine 0 (go doc)
-    go (SLine i doc)             = SLine i (go doc)
-    go (SAnnotStart ann doc)     = SAnnotStart ann (go doc)
-    go (SAnnotStop doc)          = SAnnotStop (go doc)
-
 renderSpanSimpleDoc :: SimpleDoc T.Text -> T.Text
 renderSpanSimpleDoc = TL.toStrict . Html.renderHtml . go
   where
@@ -234,3 +232,40 @@ renderSpanSimpleDoc = TL.toStrict . Html.renderHtml . go
         Html.preEscapedText ("<span class=\"" <> klass <> "\">") <> go doc
     go (SAnnotStop doc) =
         Html.preEscapedText "</span>" <> go doc
+
+-- | Remove lines with only indentation.
+removeIndentOnly :: SimpleDoc a -> SimpleDoc a
+removeIndentOnly = go
+  where
+    go SEmpty                    = SEmpty
+    go (SChar c doc)             = SChar c (go doc)
+    go (SText w str doc)         = SText w str (go doc)
+    go (SLine _ doc@(SLine _ _)) = SLine 0 (go doc)
+    go (SLine i doc)             = SLine i (go doc)
+    go (SAnnotStart ann doc)     = SAnnotStart ann (go doc)
+    go (SAnnotStop doc)          = SAnnotStop (go doc)
+
+-- | Remove newlines followed by indentation.
+removeLines :: SimpleDoc a -> SimpleDoc a
+removeLines = go
+  where
+    go = \case
+        SEmpty              -> SEmpty
+        SChar c doc         -> SChar c (go doc)
+        SText w str doc     -> SText w str (go doc)
+        SLine i doc | i > 0 -> SChar ' ' . go $ removeLineIndent doc
+        SLine _ doc         -> go $ removeLineIndent doc
+        SAnnotStart ann doc -> SAnnotStart ann (go doc)
+        SAnnotStop doc      -> SAnnotStop (go doc)
+
+    -- Small hack: Sometimes indent renders literal spaces rather than 'SLine'
+    -- with indent set, so we take care of that here.
+    removeLineIndent = \case
+        SEmpty                        -> SEmpty
+        SChar c doc | isSpace c       -> removeLineIndent doc
+        SChar c doc                   -> SChar c doc
+        SText _ s doc | all isSpace s -> removeLineIndent doc
+        SText w s doc                 -> SText w s doc
+        SLine i doc                   -> SLine i doc
+        SAnnotStart ann doc           -> SAnnotStart ann (removeLineIndent doc)
+        SAnnotStop doc                -> SAnnotStop (removeLineIndent doc)
