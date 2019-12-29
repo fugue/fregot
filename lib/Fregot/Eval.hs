@@ -45,7 +45,7 @@ import           Data.Foldable             (for_)
 import qualified Data.HashMap.Strict       as HMS
 import qualified Data.HashSet              as HS
 import           Data.Int                  (Int64)
-import           Data.Maybe                (fromMaybe)
+import           Data.Maybe                (catMaybes, fromMaybe)
 import qualified Data.Unification          as Unification
 import qualified Data.Vector.Extended      as V
 import           Fregot.Arity
@@ -79,19 +79,23 @@ ground source = unMu >>> \case
                 "Unkown variable:" <+> PP.pretty (Mu WildcardM)
     GroundedM v -> pure v
     RecM v -> Value <$> traverse (ground source) v
-    TreeM env _ tree -> local (const env) $ groundTree source tree
+    TreeM env _ tree -> local (const env) $
+        fromMaybe emptyObject <$> groundTree source tree
 
-groundTree :: SourceSpan -> Tree.Tree CompiledRule -> EvalM Value
+groundTree :: SourceSpan -> Tree.Tree CompiledRule -> EvalM (Maybe Value)
 groundTree source tree = case Tree.root tree of
-    Just crule -> evalCompiledRule source crule Nothing
-    Nothing | null (Tree.children tree) -> cut
+    Just crule -> case crule ^. ruleKind of
+        FunctionRule _ -> pure Nothing  -- Don't include functions.
+        _              -> Just <$> evalCompiledRule source crule Nothing
+    Nothing | null (Tree.children tree) -> pure Nothing
     Nothing -> do
         -- NOTE(jaspervdj): If there is both a rule as well as children,
         -- we'll need to do some sort of merge here.
-        children <- forM (Tree.children tree) $ \(v, child) -> do
-            gtree <- groundTree source child
-            pure (Value (StringV (unVar v)), gtree)
-        mkObject source children
+        children <- forM (Tree.children tree) $
+            \(v, child) -> fmap ((,) (key v)) <$> groundTree source child
+        fmap Just . mkObject source $ catMaybes children
+  where
+    key = Value . StringV . unVar
 
 mkObject :: SourceSpan -> [(Value, Value)] -> EvalM Value
 mkObject source assoc = do
@@ -445,7 +449,7 @@ evalCompiledRule callerSource crule mbIndex
             _ -> raise' callerSource "type error" $
                 "Internal error:" <+>
                 PP.pretty (crule ^. ruleName) <+>
-                "is a not a rule that defined an object or set."
+                "is a not a rule that defines an object or set."
   where
     -- Standard branching evaluation of rule definitions; used for all
     -- evaluations.
