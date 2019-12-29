@@ -18,13 +18,11 @@ module Fregot.Eval.Mu
     , muTrue
 
     , muToString
-    , muToNumber
     ) where
 
 import           Control.Lens              (preview, re)
 import           Data.Maybe                (fromMaybe)
 import qualified Data.Text                 as T
-import           Fregot.Eval.Number        (Number)
 import           Fregot.Eval.Value
 import           Fregot.Names
 import           Fregot.Prepare.Ast        (Rule)
@@ -84,8 +82,3 @@ muToString :: Mu e -> Maybe T.Text
 muToString (Mu (GroundedM (Value (StringV t)))) = Just t
 muToString (Mu (RecM (StringV t)))              = Just t
 muToString _                                    = Nothing
-
-muToNumber :: Mu e -> Maybe Number
-muToNumber (Mu (GroundedM (Value (NumberV n)))) = Just n
-muToNumber (Mu (RecM (NumberV n)))              = Just n
-muToNumber _                                    = Nothing

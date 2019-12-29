@@ -34,8 +34,8 @@ module Fregot.Eval
 
 import           Control.Arrow             ((>>>))
 import           Control.Exception         (try)
-import           Control.Lens              (review, to, use, view, (%=), (.=),
-                                            (.~), (^.), (^?))
+import           Control.Lens              (isn't, review, to, use, view, (%=),
+                                            (.=), (.~), (^.), (^?))
 import           Control.Monad             (unless, when)
 import           Control.Monad.Extended    (forM, zipWithM_)
 import           Control.Monad.Identity    (Identity (..))
@@ -48,6 +48,7 @@ import           Data.Int                  (Int64)
 import           Data.Maybe                (catMaybes, fromMaybe)
 import qualified Data.Unification          as Unification
 import qualified Data.Vector.Extended      as V
+import           Debug.Trace
 import           Fregot.Arity
 import           Fregot.Compile.Package    (CompiledRule)
 import           Fregot.Eval.Builtins
@@ -82,9 +83,17 @@ ground source = unMu >>> \case
     TreeM env _ tree -> local (const env) $
         fromMaybe emptyObject <$> groundTree source tree
 
+-- NOTE(jaspervdj): If we use `branch` here; we can probably get rid of the
+-- maybe, but I'm not sure if that's faster.
 groundTree :: SourceSpan -> Tree.Tree CompiledRule -> EvalM (Maybe Value)
 groundTree source tree = case Tree.root tree of
     Just crule -> case crule ^. ruleKind of
+        {-
+        Just d | Just r <- Tree.root d, FunctionRule _ <- r ^. ruleKind ->
+            -- We allow calling a null-ary function `report()` both
+            -- as just `report` as well as `report()`
+            muValue <$> evalUserFunction source r []
+        -}
         FunctionRule _ -> pure Nothing  -- Don't include functions.
         _              -> Just <$> evalCompiledRule source crule Nothing
     Nothing | null (Tree.children tree) -> pure Nothing
@@ -121,20 +130,9 @@ evalGroundTerm term = evalTerm term >>= ground (term ^. termAnn)
 
 evalTerm :: Term SourceSpan -> EvalM Mu'
 evalTerm (RefT source lhs arg) = do
-    mbCompiledRule <- case lhs of
-        NameT _ n -> lookupRule n
-        _         -> return Nothing
-    case mbCompiledRule of
-        -- Using a rule with an index.  This only triggers if the rule requires
-        -- an argument, i.e. it is not a complete rule.
-        Just crule
-                | Nothing <- crule ^? ruleKind . _CompleteRule
-                , Nothing <- crule ^? ruleKind . _FunctionRule -> do
-            arg' <- evalTerm arg
-            muValue <$> evalCompiledRule source crule (Just arg')
-        _ -> do
-            val <- evalTerm lhs
-            evalRefArg source val arg
+    val <- evalTerm lhs
+    idx <- evalTerm arg
+    evalRefArg source val idx
 
 evalTerm (CallT source f args) = do
     builtins' <- view builtins
@@ -199,12 +197,6 @@ evalName source name@(QualifiedName key) = do
     case Tree.descendant key (env ^. rules) of
         Nothing -> raise' source "rule not found" $
             "Rule not found:" <+> PP.pretty name
-        Just d | Just r <- Tree.root d, FunctionRule _ <- r ^. ruleKind ->
-            -- We allow calling a null-ary function `report()` both
-            -- as just `report` as well as `report()`
-            muValue <$> evalUserFunction source r []
-        Just d | Just r <- Tree.root d ->
-            muValue <$> evalCompiledRule source r Nothing
         Just d ->
             -- No rule found here; return the whole tree.
             pure $! Mu $ TreeM env key d
@@ -256,90 +248,111 @@ evalBuiltin source builtin@(Builtin sig _ (Identity impl)) args0 = do
             unify (Mu (GroundedM result)) fa
             return true
 
--- NOTE (jaspervdj): I suspect these are roughly the cases we want to care
--- about:
---
--- * indexing rules
--- * indexing "cached/precomputed" rules
--- * indexing actual values, i.e. objects and arrays
-evalRefArg :: SourceSpan -> Mu' -> Term SourceSpan -> EvalM Mu'
-evalRefArg source indexee refArg = do
-    idx <- evalTerm refArg
+
+evalRefArg :: SourceSpan -> Mu' -> Mu' -> EvalM Mu'
+
+evalRefArg source (Mu (TreeM env _path tree)) idx
+    -- Indexing into a tree that has a root (i.e. there's a rule at that
+    -- location) can be done by just evaluating the rule with that argument.
+        | Just crule <- Tree.root tree
+        , isn't _CompleteRule (crule ^. ruleKind)
+        , isn't _FunctionRule (crule ^. ruleKind) =
+    local (const env) $
+    muValue <$> evalCompiledRule source crule (Just idx)
+
+evalRefArg source lhs@(Mu (TreeM e p tree)) idx | Nothing <- Tree.root tree =
     case idx of
-        -- Indexing into the tree works slightly differently.
-        _ | TreeM e p tree <- unMu indexee, Just s <- muToString idx ->
+        _ | Just s <- muToString idx ->
+            -- Indexing into the tree towards packages works slightly
+            -- differently.
             let k = review varFromKey (mkVar s) in
             maybe cut (return . Mu . TreeM e (p <> k)) (Tree.descendant k tree)
-        _ | TreeM e p tree <- unMu indexee, Mu WildcardM <- idx -> branch
+
+        Mu WildcardM -> branch
             [ pure $! Mu $ TreeM e (p <> review varFromKey v) t
             | (v, t) <- Tree.children tree
             ]
-        _ | TreeM e p tree <- unMu indexee, Mu (FreeM unbound) <- idx -> branch
+
+        Mu (FreeM unbound) -> branch
             [ do
                 Unification.bindTerm unbound (muValueF $ StringV $ unVar v)
                 pure $! Mu $ TreeM e (p <> review varFromKey v) t
             | (v, t) <- Tree.children tree
             ]
 
-        Mu WildcardM -> do
-            gindexee <- ground source indexee
-            case unValue gindexee of
-                ArrayV a  -> branch [return (muValue val) | val <- V.toList a]
-                SetV s -> branch [return (muValue val) | val <- HS.toList s]
-                ObjectV o -> branch [return (muValue val) | (_, val) <- HMS.toList o]
-                _ -> raise' source "reference error" $
-                    "Cannot index" <+> PP.pretty (describeValue gindexee) <+>
-                    " using a free variable"
-
-        Mu (FreeM unbound) -> do
-            gindexee <- ground source indexee
-            case unValue gindexee of
-                ArrayV a -> branch
-                    [ Unification.bindTerm unbound (muValueF $ NumberV $ review Number.int i) >> return (muValue val)
-                    | (i, val) <- zip [0 :: Int64 ..] (V.toList a)
-                    ]
-                SetV s -> branch
-                    [ Unification.bindTerm unbound (muValue val) >> return (muValue val)
-                    | val <- HS.toList s
-                    ]
-                ObjectV o -> branch
-                    [ Unification.bindTerm unbound (muValue key) >> return (muValue val)
-                    | (key, val) <- HMS.toList o
-                    ]
-                _ -> raise' source "reference error" $
-                    "Cannot index" <+> PP.pretty (describeValue gindexee) <+>
-                    " using a free variable"
-
         _ -> do
-            gindexee <- ground source indexee
-            case unValue gindexee of
-                ObjectV o -> do
-                    gidx <- ground source idx
-                    -- NOTE(jaspervdj): We can omit some warning here.
-                    maybe cut (return . muValue) $! HMS.lookup gidx o
+            -- Ground and try again.
+            glhs <- ground source lhs
+            evalRefArg source (Mu (GroundedM glhs)) idx
 
-                ArrayV a
-                        | Just n <- muToNumber idx
-                        , Just i <- n ^? Number.int . to fromIntegral ->
-                    if i >= 0 && i < V.length a
-                        then return (muValue $ a V.! i)
-                        else cut
+evalRefArg source indexee (Mu WildcardM) = do
+    gindexee <- ground source indexee
+    traceM $ "gindexee: " ++ show (PP.pretty' gindexee)
+    case unValue gindexee of
+        ArrayV a  -> branch [return (muValue val) | val <- V.toList a]
+        SetV s -> branch [return (muValue val) | val <- HS.toList s]
+        ObjectV o -> branch [return (muValue val) | (_, val) <- HMS.toList o]
+        _ -> raise' source "reference error" $
+            "Cannot index" <+> PP.pretty (describeValue gindexee) <+>
+            " using a free variable"
 
-                SetV set -> do
-                    -- If the LHS is a set, we just test if the index is in there.
-                    --
-                    -- NOTE(jaspervdj): Another implementation would be to loop over
-                    -- all elements in the set, and try to unify `idx` with those.
-                    -- However, the opa interpreter doesn't seem to do this.
-                    gidx <- ground source idx
-                    if gidx `HS.member` set
-                        then return (muValue gidx)
-                        else cut
+evalRefArg source indexee (Mu (FreeM unbound)) = do
+    gindexee <- ground source indexee
+    case unValue gindexee of
+        ArrayV a -> branch
+            [ Unification.bindTerm unbound (muValueF $ NumberV $ review Number.int i) >> return (muValue val)
+            | (i, val) <- zip [0 :: Int64 ..] (V.toList a)
+            ]
+        SetV s -> branch
+            [ Unification.bindTerm unbound (muValue val) >> return (muValue val)
+            | val <- HS.toList s
+            ]
+        ObjectV o -> branch
+            [ Unification.bindTerm unbound (muValue key) >> return (muValue val)
+            | (key, val) <- HMS.toList o
+            ]
+        _ -> raise' source "reference error" $
+            "Cannot index" <+> PP.pretty (describeValue gindexee) <+>
+            " using a free variable"
 
-                _ -> raise' source "index type error" $
-                    "evalRefArg: cannot index" <+>
-                    PP.pretty (describeMu indexee) <+>
-                    "with a" <+> PP.pretty (describeMu idx)
+evalRefArg source indexee idx = do
+    gindexee <- ground source indexee
+    traceM $ "gindexee: " ++ show (PP.pretty' gindexee)
+    case unValue gindexee of
+        ObjectV o -> do
+            gidx <- ground source idx
+            -- NOTE(jaspervdj): We can omit some warning here.
+            maybe cut (return . muValue) $! HMS.lookup gidx o
+
+        ArrayV a -> do
+            gidx <- ground source idx
+            i    <- case gidx of
+                Value (NumberV n) |
+                        Just i <- n ^? Number.int . to fromIntegral ->
+                    pure i
+                _ -> raise' source "reference error" $
+                    "Can only index" <+>
+                    PP.pretty (describeValue gindexee) <+>
+                    " using an integral number."
+            if i >= 0 && i < V.length a
+                then return (muValue $ a V.! i)
+                else cut
+
+        SetV set -> do
+            -- If the LHS is a set, we just test if the index is in there.
+            --
+            -- NOTE(jaspervdj): Another implementation would be to loop over
+            -- all elements in the set, and try to unify `idx` with those.
+            -- However, the opa interpreter doesn't seem to do this.
+            gidx <- ground source idx
+            if gidx `HS.member` set
+                then return (muValue gidx)
+                else cut
+
+        _ -> raise' source "index type error" $
+            "evalRefArg: cannot index" <+>
+            PP.pretty (describeMu indexee) <+>
+            "with a" <+> PP.pretty (describeMu idx)
 
 -- | Returns the value of the index value (if given) as well as the result of
 -- the rule.
@@ -636,8 +649,10 @@ unify (Mu (GroundedM (Value (ArrayV larr)))) (Mu (RecM (ArrayV rarr))) = do
 unify (Mu (RecM (ArrayV larr))) (Mu (GroundedM (Value (ArrayV rarr)))) = do
     unifyArrayLength larr rarr
     V.zipWithM_ unify larr (fmap muValue rarr)
+unify x y = do
+    gx <- ground
 unify (Mu (GroundedM x)) (Mu (GroundedM y)) = unless (x == y) cut
-unify _ _ = cut  -- TODO(jaspervdj): Unify RecM/RecM through ground?
+    cut  -- TODO(jaspervdj): Unify RecM/RecM through ground?
 
 unifyArrayLength :: V.Vector a -> V.Vector b -> EvalM ()
 unifyArrayLength larr rarr = when (V.length larr /= V.length rarr) cut
