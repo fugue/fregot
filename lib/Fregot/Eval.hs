@@ -326,12 +326,11 @@ evalRefArg source indexee idx = do
             -- NOTE(jaspervdj): We can omit some warning here.
             maybe cut (return . muValue) $! HMS.lookup gidx o
 
-        ArrayV a
-                | Just n <- muToNumber idx
-                , Just i <- n ^? Number.int . to fromIntegral ->
-            if i >= 0 && i < V.length a
-                then return (muValue $ a V.! i)
-                else cut
+        ArrayV a -> case muToNumber idx of
+            Just n  | Just i <- n ^? Number.int . to fromIntegral
+                    , i >= 0 && i < V.length a ->
+                return (muValue $ a V.! i)
+            _ -> cut
 
         SetV set -> do
             -- If the LHS is a set, we just test if the index is in there.
