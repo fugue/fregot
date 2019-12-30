@@ -1,5 +1,11 @@
 # CHANGELOG
 
+ -  0.7.2 (2019-12-30)
+     *  Ignore partial rules when converting packages to objects.
+     *  Fix issue where we would index into packages rather than rules;
+        sometimes resulting in empty sets for collection references that had at
+        least some dynamic part in them.
+
  -  0.7.1 (2019-12-25)
      *  Extend `%v` formatting in `sprintf` to work for objects, lists and sets.
 
