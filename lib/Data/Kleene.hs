@@ -6,8 +6,8 @@
 -- However, you can still derive useful results from logical operations, even if
 -- some operands are unknown.  For example:
 --
--- > any [False, Unknown, True]   == True
--- > all [Unkown, Unknown, False] == False
+-- > any [False, Unknown, True]    == True
+-- > all [Unknown, Unknown, False] == False
 module Data.Kleene
     ( -- * Datatype
       Ternary (..)
