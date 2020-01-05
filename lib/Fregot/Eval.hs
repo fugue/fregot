@@ -73,10 +73,10 @@ ground source = unMu >>> \case
         mbMu <- Unification.lookup v
         case mbMu of
             Nothing -> raise' source "unknown variable" $
-                "Unkown variable:" <+> PP.pretty v
+                "Unknown variable:" <+> PP.pretty v
             Just mu -> ground source mu
     WildcardM -> raise' source "unknown variable" $
-                "Unkown variable:" <+> PP.pretty (Mu WildcardM)
+                "Unknown variable:" <+> PP.pretty (Mu WildcardM)
     GroundedM v -> pure v
     RecM v -> Value <$> traverse (ground source) v
     TreeM env _ tree -> local (const env) $
