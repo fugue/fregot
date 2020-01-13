@@ -1,5 +1,10 @@
 # CHANGELOG
 
+ -  0.7.3 (2020-01-13)
+     *  Fix typo in "Unknown type" error message.
+     *  Fix issue where referencing into `null` would crash.
+     *  Fix issue where refactoring into an array using a key would crash.
+
  -  0.7.2 (2019-12-30)
      *  Ignore partial rules when converting packages to objects.
      *  Fix issue where we would index into packages rather than rules;
