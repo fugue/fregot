@@ -295,9 +295,10 @@ evalRefArg source indexee (Mu WildcardM) = do
         ArrayV a  -> branch [return (muValue val) | val <- V.toList a]
         SetV s -> branch [return (muValue val) | val <- HS.toList s]
         ObjectV o -> branch [return (muValue val) | (_, val) <- HMS.toList o]
+        NullV -> cut
         _ -> raise' source "reference error" $
             "Cannot index" <+> PP.pretty (describeValue gindexee) <+>
-            " using a free variable"
+            "using a free variable"
 
 evalRefArg source indexee (Mu (FreeM unbound)) = do
     gindexee <- ground source indexee
@@ -314,9 +315,10 @@ evalRefArg source indexee (Mu (FreeM unbound)) = do
             [ Unification.bindTerm unbound (muValue key) >> return (muValue val)
             | (key, val) <- HMS.toList o
             ]
+        NullV -> cut
         _ -> raise' source "reference error" $
             "Cannot index" <+> PP.pretty (describeValue gindexee) <+>
-            " using a free variable"
+            "using a free variable"
 
 evalRefArg source indexee idx = do
     gindexee <- ground source indexee
