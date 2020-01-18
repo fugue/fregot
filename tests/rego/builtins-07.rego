@@ -20,3 +20,8 @@ test_walk {
   walk(document, [["email",0],"doe@example.com"])
   walk(document, [["email",1],"admin@doe.com"])
 }
+
+test_walk_set {
+  walk({"a", "b"}, [["a"], "a"])
+  walk({"a", "b"}, [["b"], "b"])
+}
