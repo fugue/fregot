@@ -596,7 +596,7 @@ builtin_walk = Builtin
 builtin_equal :: Monad m => Builtin m
 builtin_equal = Builtin
   (In (In Out))
-  (\c (Ty.Cons x (Ty.Cons y Ty.Nil)) -> Ty.bcUnify c x y)
+  (\c (Ty.Cons x (Ty.Cons y Ty.Nil)) -> Ty.bcUnify c x y >> pure Ty.boolean)
   $ pure $
   -- TODO(jaspervdj): These don't currently work:
   --
