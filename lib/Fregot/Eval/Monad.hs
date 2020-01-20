@@ -50,9 +50,10 @@ module Fregot.Eval.Monad
 
     , raise
     , raise'
+
+    , runBuiltinM
     ) where
 
-import           Control.Exception         (Exception, catch, throwIO)
 import           Control.Lens              (view, (%~), (&), (.~), (^.))
 import           Control.Lens.TH           (makeLenses)
 import           Control.Monad.Reader      (MonadReader (..), ask)
@@ -65,6 +66,7 @@ import           Data.List                 (find)
 import           Fregot.Error              (Error)
 import qualified Fregot.Error              as Error
 import qualified Fregot.Error.Stack        as Stack
+import           Fregot.Eval.Builtins     (BuiltinException (..))
 import           Fregot.Eval.Internal
 import           Fregot.Eval.Value
 import           Fregot.Names
@@ -82,12 +84,11 @@ instance Show EvalException where
     -- pretty-print the thing inside.
     show _ = "EvalException _ _ _"
 
-instance Exception EvalException
-
 type Suspension = (SourceSpan, Context, Environment)
 
 newtype EvalM a = EvalM
-    { unEvalM :: Environment -> Context -> Stream Suspension IO (Row a)
+    { unEvalM
+        :: Environment -> Context -> Stream EvalException Suspension IO (Row a)
     } deriving (Functor)
 
 instance Applicative EvalM where
@@ -136,33 +137,34 @@ data EnvContext = EnvContext
 $(makeLenses ''EnvContext)
 
 runEvalM :: EnvContext -> EvalM a -> IO (Either Error (Document a))
-runEvalM (EnvContext ctx0 env0) (EvalM f) = catch
-    (Right <$> Stream.toList (f env0 ctx0))
-    (\(EvalException _env _context err) -> return (Left err))
+runEvalM (EnvContext ctx0 env0) (EvalM f) =
+    Stream.toList $
+    Stream.mapError (\(EvalException _env _context err) -> err) $
+    f env0 ctx0
 
-type ResumeStep a = (EnvContext, Stream Suspension IO (Row a))
+type ResumeStep a = (EnvContext, Stream EvalException Suspension IO (Row a))
 
 newResumeStep :: EnvContext -> EvalM a -> ResumeStep a
 newResumeStep envctx@(EnvContext ctx env) (EvalM f) = (envctx, f env ctx)
 
 data Step a
-    = Yield   (Row a)    EnvContext (Stream Suspension IO (Row a))
-    | Suspend SourceSpan EnvContext (Stream Suspension IO (Row a))
+    = Yield   (Row a)    EnvContext (Stream EvalException Suspension IO (Row a))
+    | Suspend SourceSpan EnvContext (Stream EvalException Suspension IO (Row a))
     | Error              EnvContext Error
     | Done
 
 runStep :: ResumeStep a -> IO (Step a)
-runStep (ss, stream) = catch
-    (do
-        sstep <- Stream.step stream
-        case sstep of
-            Stream.Yield r ns ->
-                return $ Yield r (ss & ecContext .~ (r ^. rowContext)) ns
-            Stream.Suspend (i, ctx, env') ns ->
-                return $ Suspend i (EnvContext ctx env') ns
-            Stream.Done         -> return Done)
-    (\(EvalException env context err) ->
-        return (Error (EnvContext context env) err))
+runStep (ss, stream) = do
+    sstep <- Stream.step stream
+    case sstep of
+        Stream.Yield r ns ->
+            return $ Yield r (ss & ecContext .~ (r ^. rowContext)) ns
+        Stream.Suspend (i, ctx, env') ns ->
+            return $ Suspend i (EnvContext ctx env') ns
+        Stream.Done         -> return Done
+        Stream.Error e      ->
+            let (EvalException env context err) = e in
+            return (Error (EnvContext context env) err)
 
 suspend :: SourceSpan -> EvalM a -> EvalM a
 suspend source (EvalM f) =
@@ -220,7 +222,7 @@ requireComplete source (EvalM f) = EvalM $ \env ctx -> do
     case rows of
         (r : more)
             | Just d <- find ((/= r ^. rowValue) . view rowValue) more ->
-                liftIO $ throwIO $ EvalException env (r ^. rowContext) $ Error.mkError
+                Stream.throw $ EvalException env (r ^. rowContext) $ Error.mkError
                     "eval" source "inconsistent result" $
                     "Inconsistent result for complete rule, but got:" <$$>
                     PP.ind (PP.pretty $ r ^. rowValue) <$$>
@@ -272,8 +274,17 @@ pushFunctionStackFrame src n = local $ \env -> env
 -- handled at the top level `runEvalM` and converted to an `Either`.
 raise :: Error -> EvalM a
 raise err = EvalM $ \env ctx ->
-    liftIO $ throwIO $ EvalException env ctx $
+    Stream.throw $ EvalException env ctx $
     err & Error.stack .~ (env ^. stack)
 
 raise' :: SourceSpan -> PP.SemDoc -> PP.SemDoc -> EvalM a
 raise' source title body = raise (Error.mkError "eval" source title body)
+
+runBuiltinM :: SourceSpan -> Stream BuiltinException Suspension IO a -> EvalM a
+runBuiltinM source stream = EvalM $ \env ctx ->
+    -- Stream.throw $ EvalException env ctx $
+    Stream.mapError
+        (\(BuiltinException err) -> EvalException env ctx $
+            (Error.mkError "eval" source "builtin error" $ PP.pretty err)
+                & Error.stack .~ (env ^. stack))
+        (Row ctx <$> stream)
