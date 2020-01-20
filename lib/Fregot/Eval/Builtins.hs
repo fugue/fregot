@@ -33,9 +33,11 @@ module Fregot.Eval.Builtins
 
 import           Control.Applicative          ((<|>))
 import           Control.Arrow                ((>>>))
-import           Control.Exception            (Exception, throwIO)
 import           Control.Lens                 (preview, review)
 import           Control.Monad.Identity       (Identity)
+import           Control.Monad.Stream         (Stream)
+import           Control.Monad.Stream         as Stream
+import           Control.Monad.Trans          (liftIO)
 import qualified Data.Aeson                   as A
 import           Data.Bifunctor               (first)
 import           Data.Char                    (intToDigit)
@@ -52,6 +54,7 @@ import qualified Data.Time.Clock.POSIX        as Time.POSIX
 import qualified Data.Time.RFC3339            as Time.RFC3339
 import           Data.Traversable.HigherOrder (HTraversable (..))
 import qualified Data.Vector                  as V
+import           Data.Void                    (Void)
 import qualified Fregot.Eval.Json             as Json
 import           Fregot.Eval.Number           (Number)
 import qualified Fregot.Eval.Number           as Number
@@ -187,15 +190,13 @@ toArgs (In sig) (x : xs) = Cons <$> fromVal x <*> toArgs sig xs
 
 data BuiltinException = BuiltinException String deriving (Show)
 
-instance Exception BuiltinException
-
-type BuiltinM a = IO a
+type BuiltinM a = Stream BuiltinException Void IO a
 
 eitherToBuiltinM :: Either String a -> BuiltinM a
 eitherToBuiltinM = either throwBuiltinException return
 
 throwBuiltinException :: String -> BuiltinM a
-throwBuiltinException = throwIO . BuiltinException
+throwBuiltinException = Stream.throw . BuiltinException
 
 -- | A builtin function and its signature.
 data Builtin m where
@@ -435,7 +436,7 @@ builtin_re_match = Builtin
     cacheRef <- newIORef HMS.empty
     pure $
         \(Cons pattern (Cons value Nil)) -> do
-        errOrRegex <- atomicModifyIORef' cacheRef $ \cache ->
+        errOrRegex <- liftIO $ atomicModifyIORef' cacheRef $ \cache ->
             case HMS.lookup pattern cache of
                 Just errOrRegex -> return errOrRegex
                 Nothing         ->
@@ -461,7 +462,7 @@ builtin_time_now_ns :: Monad m => Builtin m
 builtin_time_now_ns = Builtin
     Out
     (Ty.out Ty.number) $ pure $
-    \Nil -> review Number.int . utcToNs <$> Time.getCurrentTime
+    \Nil -> review Number.int . utcToNs <$> liftIO Time.getCurrentTime
 
 builtin_time_date :: Monad m => Builtin m
 builtin_time_date = Builtin

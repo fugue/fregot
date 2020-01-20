@@ -33,14 +33,13 @@ module Fregot.Eval
     ) where
 
 import           Control.Arrow             ((>>>))
-import           Control.Exception         (try)
 import           Control.Lens              (review, to, use, view, (%=), (.=),
                                             (.~), (^.), (^?))
 import           Control.Monad             (unless, when)
 import           Control.Monad.Extended    (forM, zipWithM_)
 import           Control.Monad.Identity    (Identity (..))
 import           Control.Monad.Reader      (ask, local)
-import           Control.Monad.Trans       (liftIO)
+import qualified Control.Monad.Stream      as Stream
 import           Data.Foldable             (for_)
 import qualified Data.HashMap.Strict       as HMS
 import qualified Data.HashSet              as HS
@@ -250,14 +249,7 @@ evalBuiltin source builtin@(Builtin sig _ (Identity impl)) args0 = do
         Left err -> raise' source "builtin type error" $ PP.pretty err
         Right x  -> return x
 
-    -- Call the function.  Note that we can probably make 'try' here at the
-    -- builtin a bit faster by moving it to the top-level, but we'll get less
-    -- nice error messages.
-    errOrResult <- liftIO $ try (impl args3)
-    result      <- case errOrResult of
-        Right x                     -> return $ toVal x
-        Left (BuiltinException err) ->
-            raise' source "builtin error" $ PP.pretty err
+    result <- fmap toVal . runBuiltinM source . Stream.coerce $ impl args3
 
     -- Return value depends on supplied arguments.
     case mbFinalArg of
