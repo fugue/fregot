@@ -260,7 +260,7 @@ defaultBuiltins = HMS.fromList
     , (NamedFunction (BuiltinName "trim"),                      builtin_trim)
     , (NamedFunction (BuiltinName "upper"),                     builtin_upper)
     , (NamedFunction (BuiltinName "union"),                     builtin_union)
-    , (NamedFunction (BuiltinName "walk"),                         builtin_walk)
+    , (NamedFunction (BuiltinName "walk"),                      builtin_walk)
     , (OperatorFunction BinAndO,             builtin_bin_and)
     , (OperatorFunction EqualO,              builtin_equal)
     , (OperatorFunction NotEqualO,           builtin_not_equal)
@@ -573,7 +573,7 @@ builtin_walk = Builtin
     (In Out)
     -- TODO(jaspervdj): We could type this way better if we had proper "pair"
     -- array types.
-    (Ty.any 🡒 Ty.out (Ty.arrayOf Ty.any)) $ pure $
+    (Ty.any 🡒 Ty.out (Ty.arrayOf Ty.unknown)) $ pure $
     \(Cons val Nil) -> walk V.empty val
   where
     walk path val =
