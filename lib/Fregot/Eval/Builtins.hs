@@ -5,6 +5,7 @@
 {-# LANGUAGE KindSignatures    #-}
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE MultiWayIf        #-}
+{-# LANGUAGE OverloadedLists   #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PolyKinds         #-}
 {-# LANGUAGE Rank2Types        #-}
@@ -33,7 +34,7 @@ module Fregot.Eval.Builtins
 
 import           Control.Applicative          ((<|>))
 import           Control.Arrow                ((>>>))
-import           Control.Lens                 (preview, review)
+import           Control.Lens                 (ifoldMap, preview, review)
 import           Control.Monad.Identity       (Identity)
 import           Control.Monad.Stream         (Stream)
 import           Control.Monad.Stream         as Stream
@@ -259,6 +260,7 @@ defaultBuiltins = HMS.fromList
     , (NamedFunction (BuiltinName "trim"),                      builtin_trim)
     , (NamedFunction (BuiltinName "upper"),                     builtin_upper)
     , (NamedFunction (BuiltinName "union"),                     builtin_union)
+    , (NamedFunction (BuiltinName "walk"),                         builtin_walk)
     , (OperatorFunction BinAndO,             builtin_bin_and)
     , (OperatorFunction EqualO,              builtin_equal)
     , (OperatorFunction NotEqualO,           builtin_not_equal)
@@ -454,6 +456,13 @@ builtin_replace = Builtin
     (Ty.string 🡒 Ty.string 🡒 Ty.string 🡒 Ty.out Ty.string) $ pure $
     \(Cons str (Cons old (Cons new Nil))) -> return $! T.replace old new str
 
+-- `set()` is OPA's constructor for an empty set, since `{}` is an empty object
+builtin_set :: Monad m => Builtin m
+builtin_set = Builtin
+    Out
+    (Ty.out (Ty.setOf Ty.unknown)) $ pure $
+    \Nil -> return $! Value $ SetV HS.empty
+
 utcToNs :: Time.UTCTime -> Int64
 utcToNs =
     floor . ((1e9 :: Double) *) . realToFrac . Time.POSIX.utcTimeToPOSIXSeconds
@@ -472,7 +481,7 @@ builtin_time_date = Builtin
     let secs      = (fromIntegral $ Number.floor ns) / 1e9
         utc       = Time.POSIX.posixSecondsToUTCTime secs
         (y, m, d) = Time.toGregorian (Time.utctDay utc) in
-    return [fromIntegral y, m, d]
+    return ([fromIntegral y, m, d] :: [Int])
 
 builtin_time_parse_rfc3339_ns :: Monad m => Builtin m
 builtin_time_parse_rfc3339_ns = Builtin
@@ -482,41 +491,6 @@ builtin_time_parse_rfc3339_ns = Builtin
         Just zoned -> return $! utcToNs $ Time.zonedTimeToUTC zoned
         Nothing    -> throwBuiltinException $
             "Could not parse RFC3339 time: " ++ T.unpack txt
-
-builtin_trim :: Monad m => Builtin m
-builtin_trim = Builtin
-    (In (In Out))
-    (Ty.string 🡒 Ty.string 🡒 Ty.out Ty.string) $ pure $
-    \(Cons str (Cons cutset Nil)) ->
-        return $! T.dropAround (\c -> T.any (== c) cutset) str
-
-builtin_upper :: Monad m => Builtin m
-builtin_upper = Builtin
-    (In Out)
-    (Ty.string 🡒 Ty.out Ty.string) $ pure $
-    \(Cons str Nil) -> return $! T.toUpper str
-
-builtin_union :: Monad m => Builtin m
-builtin_union = Builtin
-    (In Out)
-    -- TODO(jaspervdj): Maybe this should be `∀a. set<set<a>> -> set<a>`.
-    (Ty.setOf (Ty.setOf Ty.any) 🡒 Ty.out (Ty.setOf Ty.unknown)) $ pure $
-    \(Cons set Nil) ->
-        return $! HS.unions $ HS.toList (set :: (HS.HashSet (HS.HashSet Value)))
-
--- `set()` is OPA's constructor for an empty set, since `{}` is an empty object
-builtin_set :: Monad m => Builtin m
-builtin_set = Builtin
-    Out
-    (Ty.out (Ty.setOf Ty.unknown)) $ pure $
-    \Nil -> return $! Value $ SetV HS.empty
-
-builtin_sort :: Monad m => Builtin m
-builtin_sort = Builtin
-    (In Out)
-    -- TODO(jaspervdj): Something more akin to `∀a. collection<a> -> array<a>`.
-    (Ty.collectionOf Ty.any 🡒 Ty.out (Ty.arrayOf Ty.unknown)) $ pure $
-    \(Cons (Collection vals) Nil) -> return $! L.sort (vals :: [Value])
 
 builtin_split :: Monad m => Builtin m
 builtin_split = Builtin
@@ -547,6 +521,13 @@ builtin_sum = Builtin
     (Ty.collectionOf Ty.number 🡒 Ty.out Ty.number) $ pure $
     \(Cons (Collection vals) Nil) -> return $! num $ sum vals
 
+builtin_sort :: Monad m => Builtin m
+builtin_sort = Builtin
+    (In Out)
+    -- TODO(jaspervdj): Something more akin to `∀a. collection<a> -> array<a>`.
+    (Ty.collectionOf Ty.any 🡒 Ty.out (Ty.arrayOf Ty.unknown)) $ pure $
+    \(Cons (Collection vals) Nil) -> return $! L.sort (vals :: [Value])
+
 builtin_startswith :: Monad m => Builtin m
 builtin_startswith = Builtin
     (In (In Out))
@@ -565,6 +546,43 @@ builtin_to_number = Builtin
                 "to_number: couldn't read " ++ str
             Just (Left i)  -> return $ review Number.int i
             Just (Right d) -> return $ review Number.double d
+
+builtin_trim :: Monad m => Builtin m
+builtin_trim = Builtin
+    (In (In Out))
+    (Ty.string 🡒 Ty.string 🡒 Ty.out Ty.string) $ pure $
+    \(Cons str (Cons cutset Nil)) ->
+        return $! T.dropAround (\c -> T.any (== c) cutset) str
+
+builtin_upper :: Monad m => Builtin m
+builtin_upper = Builtin
+    (In Out)
+    (Ty.string 🡒 Ty.out Ty.string) $ pure $
+    \(Cons str Nil) -> return $! T.toUpper str
+
+builtin_union :: Monad m => Builtin m
+builtin_union = Builtin
+    (In Out)
+    -- TODO(jaspervdj): Maybe this should be `∀a. set<set<a>> -> set<a>`.
+    (Ty.setOf (Ty.setOf Ty.any) 🡒 Ty.out (Ty.setOf Ty.unknown)) $ pure $
+    \(Cons set Nil) ->
+        return $! HS.unions $ HS.toList (set :: (HS.HashSet (HS.HashSet Value)))
+
+builtin_walk :: Monad m => Builtin m
+builtin_walk = Builtin
+    (In Out)
+    -- TODO(jaspervdj): We could type this way better if we had proper "pair"
+    -- array types.
+    (Ty.any 🡒 Ty.out (Ty.arrayOf Ty.any)) $ pure $
+    \(Cons val Nil) -> walk V.empty val
+  where
+    walk path val =
+        (pure $ Value $ ArrayV [Value (ArrayV path), val]) <>
+        (case unValue val of
+            ArrayV v  -> ifoldMap (\i -> walk (path <> [toVal i])) v
+            SetV   s  -> foldMap (\v -> walk (path <> [v]) v) s
+            ObjectV o -> ifoldMap (\k -> walk (path <> [toVal k])) o
+            _         -> mempty)
 
 builtin_equal :: Monad m => Builtin m
 builtin_equal = Builtin
