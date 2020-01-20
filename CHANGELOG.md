@@ -1,5 +1,10 @@
 # CHANGELOG
 
+ -  0.7.4 (2020-01-20)
+     *  Add `walk` builtin function.
+     *  Allow builtin functions to stream values rather than just returning a
+        single one.
+
  -  0.7.3 (2020-01-13)
      *  Fix typo in "Unknown type" error message.
      *  Fix issue where referencing into `null` would crash.
