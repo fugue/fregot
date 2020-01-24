@@ -1,6 +1,6 @@
 {
     "command": "fregot",
-    "arguments": ["repl"],
+    "arguments": ["repl", "--no-history-file"],
     "stdin": [
         ":l granular.rego",
         ":type people",

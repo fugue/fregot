@@ -1,6 +1,6 @@
 {
     "command": "fregot",
-    "arguments": ["repl"],
+    "arguments": ["repl", "--no-history-file"],
     "stdin": [
         ":type [x | nums = [1, 2, 3]; x = nums[_]]",
         ":type {x | nums = [1, 2, 3]; x = nums[_]}",

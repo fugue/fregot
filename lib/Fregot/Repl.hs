@@ -4,7 +4,9 @@
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE TemplateHaskell   #-}
 module Fregot.Repl
-    ( Handle
+    ( Config (..)
+    , defaultConfig
+    , Handle
     , withHandle
     , run
 
@@ -77,8 +79,13 @@ data StepTo
     | StepInto
     | StepOver    Stack.StackTrace
 
+data Config = Config
+    { _historyFile   :: !(Maybe FilePath)
+    , _resumeHistory :: !Int
+    } deriving (Show)
+
 data Handle = Handle
-    { _resumeHistory :: !Int
+    { _config        :: !Config
     , _sources       :: !Sources.Handle
     , _fileWatch     :: !FileWatch.Handle
     -- | Stored in an MVar so we have a mutex.
@@ -104,17 +111,23 @@ data MetaCommand = MetaCommand
     , _metaRun         :: Handle -> [T.Text] -> IO Bool
     }
 
+$(makeLenses ''Config)
 $(makeLenses ''Handle)
 $(makeLenses ''MetaCommand)
 
+defaultConfig :: IO Config
+defaultConfig = do
+    home <- Directory.getHomeDirectory
+    pure $ Config (Just $ home </> ".fregot.repl") 10
+
 withHandle
-    :: Sources.Handle
+    :: Config
+    -> Sources.Handle
     -> FileWatch.Handle
     -> Interpreter.Handle
     -> (Handle -> IO a)
     -> IO a
-withHandle _sources _fileWatch interp f = do
-    let _resumeHistory = 10
+withHandle _config _sources _fileWatch interp f = do
     _replCount   <- IORef.newIORef 0
     _interpreter <- MVar.newMVar interp
     _openPackage <- IORef.newIORef "repl"
@@ -257,7 +270,7 @@ processStep h suspends stepTo resume = do
                     sauce <- IORef.readIORef (h ^. sources)
                     PP.hPutSemDoc IO.stdout $ prettySnippet sauce source
                     IORef.writeIORef (h ^. mode) $ Suspended $
-                        (source, (ec, cont)) :| take (h ^. resumeHistory) suspends
+                        (source, (ec, cont)) :| take (h ^. config . resumeHistory) suspends
         Just (Interpreter.Error envctx e)   -> do
             PP.hPutSemDoc IO.stdout $ prefix "error"
             sauce <- IORef.readIORef (h ^. sources)
@@ -298,9 +311,8 @@ run h = do
     IO.hPutStrLn IO.stderr $
         "fregot v" <> showVersion version <> " repl - use :help for usage info"
 
-    home <- Directory.getHomeDirectory
     let settings = Hl.Settings
-            { Hl.historyFile    = Just (home </> ".fregot.repl")
+            { Hl.historyFile    = h ^. config . historyFile
             , Hl.autoAddHistory = False
             , Hl.complete       = Hl.concatCompletion
                 [ Hl.completeFilename

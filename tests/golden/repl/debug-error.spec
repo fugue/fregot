@@ -1,6 +1,6 @@
 {
     "command": "fregot",
-    "arguments": ["repl", "debug-error.rego"],
+    "arguments": ["repl", "--no-history-file", "debug-error.rego"],
     "asserts": [
         {"exit_code": 0},
         {"stderr": "${SPEC_NAME}.stderr"},
