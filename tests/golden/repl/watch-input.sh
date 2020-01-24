@@ -14,7 +14,7 @@ mkfifo "$pipe"
 sleep 500 >"$pipe" 2>/dev/null &  # Just to keep this file open.
 doorstop_pid=$!
 
-fregot repl --watch <"$pipe" &
+fregot repl --no-history-file --watch <"$pipe" &
 fregot_pid="$!"
 
 function enter() {

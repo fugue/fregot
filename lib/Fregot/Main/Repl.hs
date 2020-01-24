@@ -25,9 +25,10 @@ import           System.Exit               (ExitCode (..))
 import qualified System.IO                 as IO
 
 data Options = Options
-    { _input :: Maybe FilePath
-    , _watch :: Bool
-    , _paths :: [FilePath]
+    { _input         :: Maybe FilePath
+    , _watch         :: Bool
+    , _noHistoryFile :: Bool
+    , _paths         :: [FilePath]
     } deriving (Show)
 
 $(makeLenses ''Options)
@@ -39,6 +40,10 @@ parseOptions = Options
             OA.long  "watch" <>
             OA.short 'w' <>
             OA.help  "Watch files for changes and reload automatically")
+    <*> (OA.switch $
+            OA.long "no-history-file" <>
+            OA.hidden <>
+            OA.help "Don't save repl history to a file")
     <*> (OA.many $ OA.strArgument $
             OA.metavar "PATHS" <>
             OA.help    "Rego files or directories to load into repl")
@@ -49,8 +54,14 @@ main _ opts = do
     itpr        <- Interpreter.newHandle sources
     regoPaths   <- Find.findRegoFiles (opts ^. paths)
 
+    replConfig <-
+        (\c -> if opts ^. noHistoryFile
+            then c {Repl._historyFile = Nothing}
+            else c) <$>
+        Repl.defaultConfig
+
     FileWatch.withHandle (FileWatch.Config (opts ^. watch)) $ \fileWatch ->
-        Repl.withHandle sources fileWatch itpr $ \repl -> do
+        Repl.withHandle replConfig sources fileWatch itpr $ \repl -> do
         (lerrs, mbResult) <- runParachuteT $ do
             forM_ (opts ^. input) $ \path -> do
                 Interpreter.setInputFile itpr path

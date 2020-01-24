@@ -1,6 +1,6 @@
 {
     "command": "fregot",
-    "arguments": ["repl"],
+    "arguments": ["repl", "--no-history-file"],
     "stdin": [
         ":l rules.rego",
         ":type some_number",
