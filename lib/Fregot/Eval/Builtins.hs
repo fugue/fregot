@@ -41,12 +41,13 @@ import           Control.Monad.Stream         as Stream
 import           Control.Monad.Trans          (liftIO)
 import qualified Data.Aeson                   as A
 import           Data.Bifunctor               (first)
-import           Data.Char                    (intToDigit)
+import           Data.Char                    (intToDigit, isSpace)
 import           Data.Hashable                (Hashable)
 import qualified Data.HashMap.Strict          as HMS
 import qualified Data.HashSet                 as HS
 import           Data.Int                     (Int64)
 import           Data.IORef                   (atomicModifyIORef', newIORef)
+import           Data.Maybe                   (fromMaybe)
 import qualified Data.List                    as L
 import qualified Data.Text                    as T
 import qualified Data.Text.Encoding           as T
@@ -259,6 +260,11 @@ defaultBuiltins = HMS.fromList
     , (NamedFunction (QualifiedName "time.date"),               builtin_time_date)
     , (NamedFunction (QualifiedName "time.parse_rfc3339_ns"),   builtin_time_parse_rfc3339_ns)
     , (NamedFunction (BuiltinName "trim"),                      builtin_trim)
+    , (NamedFunction (BuiltinName "trim_left"),                 builtin_trim_left)
+    , (NamedFunction (BuiltinName "trim_prefix"),               builtin_trim_prefix)
+    , (NamedFunction (BuiltinName "trim_right"),                builtin_trim_right)
+    , (NamedFunction (BuiltinName "trim_suffix"),               builtin_trim_suffix)
+    , (NamedFunction (BuiltinName "trim_space"),                builtin_trim_space)
     , (NamedFunction (BuiltinName "upper"),                     builtin_upper)
     , (NamedFunction (BuiltinName "union"),                     builtin_union)
     , (NamedFunction (BuiltinName "walk"),                      builtin_walk)
@@ -562,6 +568,40 @@ builtin_trim = Builtin
     (Ty.string 🡒 Ty.string 🡒 Ty.out Ty.string) $ pure $
     \(Cons str (Cons cutset Nil)) ->
         return $! T.dropAround (\c -> T.any (== c) cutset) str
+
+builtin_trim_left :: Monad m => Builtin m
+builtin_trim_left = Builtin
+    (In (In Out))
+    (Ty.string 🡒 Ty.string 🡒 Ty.out Ty.string) $ pure $
+    \(Cons str (Cons cutset Nil)) ->
+        return $! T.dropWhile (\c -> T.any (== c) cutset) str
+
+builtin_trim_prefix :: Monad m => Builtin m
+builtin_trim_prefix = Builtin
+    (In (In Out))
+    (Ty.string 🡒 Ty.string 🡒 Ty.out Ty.string) $ pure $
+    \(Cons str (Cons prefix Nil)) ->
+        return $! fromMaybe str $ T.stripPrefix prefix str
+
+builtin_trim_right :: Monad m => Builtin m
+builtin_trim_right = Builtin
+    (In (In Out))
+    (Ty.string 🡒 Ty.string 🡒 Ty.out Ty.string) $ pure $
+    \(Cons str (Cons cutset Nil)) ->
+        return $! T.dropWhileEnd (\c -> T.any (== c) cutset) str
+
+builtin_trim_suffix :: Monad m => Builtin m
+builtin_trim_suffix = Builtin
+    (In (In Out))
+    (Ty.string 🡒 Ty.string 🡒 Ty.out Ty.string) $ pure $
+    \(Cons str (Cons suffix Nil)) ->
+        return $! fromMaybe str $ T.stripSuffix suffix str
+
+builtin_trim_space :: Monad m => Builtin m
+builtin_trim_space = Builtin
+    (In Out)
+    (Ty.string 🡒 Ty.out Ty.string) $ pure $
+    \(Cons str Nil) -> return $! T.dropAround isSpace str
 
 builtin_upper :: Monad m => Builtin m
 builtin_upper = Builtin
