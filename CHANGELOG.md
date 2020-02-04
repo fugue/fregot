@@ -1,5 +1,13 @@
 # CHANGELOG
 
+ -  0.7.5 (2020-02-04)
+     *  Add `is_number` builtin function.
+     *  Add more trim builtins functions: `trim_left`, `trim_prefix`,
+        `trim_right`, `trim_suffix`, `trim_space`.
+     *  Add `--no-history-file` flag to `fregot repl`.
+     *  Make the return type of `==` a boolean.
+     *  Fix issue with return type of `walk()`.
+
  -  0.7.4 (2020-01-20)
      *  Add `walk` builtin function.
      *  Allow builtin functions to stream values rather than just returning a
