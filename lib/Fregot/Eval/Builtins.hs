@@ -246,6 +246,7 @@ defaultBuiltins = HMS.fromList
     , (NamedFunction (BuiltinName "min"),                       builtin_min)
     , (NamedFunction (BuiltinName "or"),                        builtin_bin_or)
     , (NamedFunction (BuiltinName "product"),                   builtin_product)
+    , (NamedFunction (QualifiedName "regex.split"),             builtin_regex_split)
     , (NamedFunction (BuiltinName "re_match"),                  builtin_re_match)
     , (NamedFunction (BuiltinName "replace"),                   builtin_replace)
     , (NamedFunction (BuiltinName "set"),                       builtin_set)
@@ -445,6 +446,33 @@ builtin_product = Builtin
     (In Out)
     (Ty.collectionOf Ty.number 🡒 Ty.out Ty.number) $ pure $
     \(Cons (Collection vals) Nil) -> return $! num $ product vals
+
+builtin_regex_split :: Builtin IO
+builtin_regex_split = Builtin
+    (In (In Out))
+    (Ty.string 🡒 Ty.string 🡒 Ty.out (Ty.arrayOf Ty.string)) $ do
+    cacheRef <- newIORef HMS.empty
+    pure $
+        -- TODO(jaspervdj): Clean up duplication between this and
+        -- `builtin_re_match`.
+        \(Cons pattern (Cons value Nil)) -> do
+        errOrRegex <- liftIO $ atomicModifyIORef' cacheRef $ \cache ->
+            case HMS.lookup pattern cache of
+                Just errOrRegex -> return errOrRegex
+                Nothing         ->
+                    let errOrRegex = Pcre2.compile pattern in
+                    (HMS.insert pattern errOrRegex cache, errOrRegex)
+
+        eitherToBuiltinM $ do
+            regex <- first show errOrRegex
+            match <- first show (Pcre2.match regex value)
+            return $! split match 0 value
+  where
+    split :: [Pcre2.Match] -> Int -> T.Text -> [T.Text]
+    split [] !_offset remainder = [remainder]
+    split (Pcre2.Match (Pcre2.Range start len) _ : matches) !offset remainder =
+        let (pre, post) = T.splitAt (start - offset) remainder in
+        pre : split matches (start + len) (T.drop len post)
 
 builtin_re_match :: Builtin IO
 builtin_re_match = Builtin
