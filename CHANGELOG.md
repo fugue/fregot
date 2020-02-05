@@ -1,5 +1,8 @@
 # CHANGELOG
 
+ -  0.7.6 (2020-02-05)
+     *  Add `regex.split` builtin function.
+
  -  0.7.5 (2020-02-04)
      *  Add `is_number` builtin function.
      *  Add more trim builtins functions: `trim_left`, `trim_prefix`,

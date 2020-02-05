@@ -1,5 +1,5 @@
 F u g u e   R E G O   T o o l k i t
-fregot v0.7.5 repl - use :help for usage info
+fregot v0.7.6 repl - use :help for usage info
 fregot ([34meval error[0m):
   "rewind.rego" (line 5, column 3):
   builtin type error:
