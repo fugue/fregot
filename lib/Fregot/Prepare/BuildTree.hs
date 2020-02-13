@@ -49,6 +49,8 @@ toTree pkgname = L.foldl' Tree.union Tree.empty . map toRuleOrTree
     toRuleOrTree (_, var, BuildTree _ t) =
         Tree.parent [(var, toTree (pkgname <> mkPackageName [unVar var]) t)]
 
+-- NOTE(jaspervdj): Should we have this use the new 'ValueT' to only represent
+-- values?
 toTerm :: BuildTree -> Term SourceSpan
 toTerm (BuildSingleton t) = t
 toTerm (BuildTree loc children) = ObjectT loc $

@@ -191,6 +191,9 @@ evalTerm (ObjectCompT source khead vhead cbody) = do
         (,) <$> evalGroundTerm khead <*> evalGroundTerm vhead
     muValue <$> mkObject source rows
 
+evalTerm (ValueT _ v) = pure $ muValue v
+
+
 evalName :: SourceSpan -> Name -> EvalM Mu'
 evalName source (LocalName var) = evalVar source var
 evalName _source (BuiltinName "input") = muValue <$> view inputDoc

@@ -509,6 +509,10 @@ inferTerm (RefT source lhs rhs) = do
     inferElemRef lhsTy Types.Null       = fatal $ CannotRef source lhsTy
     inferElemRef lhsTy (Types.Scalar _) = fatal $ CannotRef source lhsTy
 
+inferTerm (ValueT source value) = do
+    return (Types.inferValue value, NonEmpty.singleton source)
+
+
 inferScalar :: Scalar -> Type
 inferScalar = Types.scalarType
 
