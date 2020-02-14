@@ -17,12 +17,18 @@ module Fregot.Prepare.Lens
     , termCosmosClosures
     , termRuleBodies
     , termCosmosCalls
+
+    , valueToScalar
+    , termToScalar
     ) where
 
-import           Control.Lens        (Fold, Lens', Traversal', lens, to,
-                                      traverseOf, (^.))
+import           Control.Lens        (Fold, Lens', Prism', Traversal', lens,
+                                      prism', review, to, traverseOf, (^.),
+                                      (^?))
 import           Control.Lens.Plated (Plated (..), cosmos, cosmosOnOf)
 import           Control.Lens.TH     (makePrisms)
+import           Fregot.Eval.Number  as Number
+import           Fregot.Eval.Value   (Value (..), ValueF (..))
 import           Fregot.Names
 import           Fregot.Prepare.Ast
 
@@ -164,3 +170,28 @@ termRuleBodies f e = case e of
 -- | Find referenced functions in a term.
 termCosmosCalls :: Fold (Term a) (a, Function)
 termCosmosCalls = cosmos . _CallT . to (\(ann, f, _) -> (ann, f))
+
+valueToScalar :: Prism' Value Scalar
+valueToScalar = prism' fromScalar toScalar
+  where
+    fromScalar = \case
+        String t -> Value $ StringV t
+        Number n -> Value . NumberV $ Number.fromScientific n
+        Bool   b -> Value $ BoolV b
+        Null     -> Value NullV
+
+    toScalar (Value v) = case v of
+        StringV t -> Just $ String t
+        NumberV n -> Just . Number $ Number.toScientific n
+        BoolV   b -> Just $ Bool b
+        NullV     -> Just Null
+        _         -> Nothing
+
+termToScalar :: Prism' (Term a) (a, Scalar)
+termToScalar = prism' (review _ScalarT) toScalar
+  where
+    -- NOTE(jaspervdj): This is unsound until we eliminate 'ScalarT'.
+    toScalar = \case
+        ScalarT a s -> Just (a, s)
+        ValueT  a v -> (,) a <$> (v ^? valueToScalar)
+        _           -> Nothing

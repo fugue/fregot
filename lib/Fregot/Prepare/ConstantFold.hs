@@ -2,13 +2,12 @@ module Fregot.Prepare.ConstantFold
     ( rewriteRule
     ) where
 
-import           Control.Lens        (over, (^?), _2)
+import           Control.Lens        (over, review, (^?), _2)
 import           Control.Lens.Plated (transform)
 import           Control.Monad       (forM)
-import qualified Data.HashSet        as HS
 import qualified Data.HashMap.Strict as HMS
+import qualified Data.HashSet        as HS
 import qualified Data.Vector         as V
-import qualified Fregot.Eval.Number  as Number
 import           Fregot.Eval.Value   (Value (..), ValueF (..))
 import           Fregot.Prepare.Ast
 import           Fregot.Prepare.Lens
@@ -18,12 +17,7 @@ rewriteRule = over ruleTerms (transform rewriteTerm)
 
 rewriteTerm :: Term a -> Term a
 rewriteTerm term = case term of
-    ScalarT a s -> case s of
-        -- TODO(jaspervdj): Copy of `evalScalar`.
-        String t -> ValueT a $ Value $ StringV t
-        Number n -> ValueT a $ Value $ NumberV $ Number.fromScientific n
-        Bool   b -> ValueT a $ Value $ BoolV   b
-        Null     -> ValueT a $ Value $ NullV
+    ScalarT a s -> ValueT a $ review valueToScalar s
 
     ArrayT a arr -> maybe term
         (ValueT a . Value . ArrayV . V.fromList)

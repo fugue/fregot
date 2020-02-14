@@ -626,11 +626,7 @@ evalStatement (TermS e) = suspend (e ^. termAnn) (evalTerm e)
 
 
 evalScalar :: Scalar -> EvalM Value
-evalScalar = return . Value . \case
-    String t -> StringV t
-    Number n -> NumberV $ Number.fromScientific n
-    Bool   b -> BoolV   b
-    Null     -> NullV
+evalScalar = pure . review valueToScalar
 
 
 unify :: Mu' -> Mu' -> EvalM ()
