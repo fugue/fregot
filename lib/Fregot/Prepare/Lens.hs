@@ -2,10 +2,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 module Fregot.Prepare.Lens
-    ( _RefT, _CallT, _NameT, _ScalarT, _ArrayT, _SetT, _ObjectT, _ArrayCompT
-    , _SetCompT, _ObjectCompT
-
-    , ruleTerms
+    ( ruleTerms
     , ruleDefinitionTerms
 
     , ruleBodyTerms
@@ -22,17 +19,13 @@ module Fregot.Prepare.Lens
     , termToScalar
     ) where
 
-import           Control.Lens        (Fold, Lens', Prism', Traversal', lens,
-                                      prism', review, to, traverseOf, (^.),
-                                      (^?))
+import           Control.Lens        (Fold, Lens', Prism', Traversal', aside,
+                                      lens, prism', to, traverseOf, (^.))
 import           Control.Lens.Plated (Plated (..), cosmos, cosmosOnOf)
-import           Control.Lens.TH     (makePrisms)
 import           Fregot.Eval.Number  as Number
 import           Fregot.Eval.Value   (Value (..), ValueF (..))
 import           Fregot.Names
 import           Fregot.Prepare.Ast
-
-$(makePrisms ''Term)
 
 -- All direct terms of the rule, combine with 'cosmos' to traverse deeper.
 ruleTerms :: Traversal' (Rule i a) (Term a)
@@ -74,7 +67,6 @@ termAnn = lens getAnn setAnn
         RefT        a _ _   -> a
         CallT       a _ _   -> a
         NameT       a _     -> a
-        ScalarT     a _     -> a
         ArrayT      a _     -> a
         SetT        a _     -> a
         ObjectT     a _     -> a
@@ -87,7 +79,6 @@ termAnn = lens getAnn setAnn
         RefT        _ x k   -> RefT        a x k
         CallT       _ f as  -> CallT       a f as
         NameT       _ v     -> NameT       a v
-        ScalarT     _ s     -> ScalarT     a s
         ArrayT      _ l     -> ArrayT      a l
         SetT        _ s     -> SetT        a s
         ObjectT     _ o     -> ObjectT     a o
@@ -115,7 +106,6 @@ instance Plated (Term a) where
         RefT        a x k   -> RefT a <$> f x <*> f k
         CallT       a g xs  -> CallT a g <$> traverse f xs
         NameT       a v     -> pure (NameT a v)
-        ScalarT     a s     -> pure (ScalarT a s)
         ArrayT      a xs    -> ArrayT a <$> traverse f xs
         SetT        a xs    -> SetT a <$> traverse f xs
         ObjectT     a xs    -> ObjectT a <$>
@@ -188,10 +178,4 @@ valueToScalar = prism' fromScalar toScalar
         _         -> Nothing
 
 termToScalar :: Prism' (Term a) (a, Scalar)
-termToScalar = prism' (review _ScalarT) toScalar
-  where
-    -- NOTE(jaspervdj): This is unsound until we eliminate 'ScalarT'.
-    toScalar = \case
-        ScalarT a s -> Just (a, s)
-        ValueT  a v -> (,) a <$> (v ^? valueToScalar)
-        _           -> Nothing
+termToScalar = _ValueT . aside valueToScalar

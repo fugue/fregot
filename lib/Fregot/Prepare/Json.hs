@@ -7,7 +7,7 @@ module Fregot.Prepare.Json
     ) where
 
 import           Control.Applicative       ((<|>))
-import           Control.Lens              ((^.))
+import           Control.Lens              (review, (^.))
 import           Control.Monad.Parachute
 import qualified Data.Text                 as T
 import qualified Fregot.Error              as Error
@@ -16,7 +16,7 @@ import qualified Fregot.Parser.Internal    as P
 import qualified Fregot.Parser.Sugar       as P
 import           Fregot.Prepare.Ast
 import           Fregot.Prepare.BuildTree
-import           Fregot.Prepare.Lens       (termAnn)
+import           Fregot.Prepare.Lens       (termAnn, termToScalar)
 import           Fregot.Prepare.Package    (PreparedRule)
 import           Fregot.Sources.SourceSpan (SourcePointer)
 import qualified Fregot.Tree               as Tree
@@ -38,7 +38,7 @@ parseJson :: FregotParser BuildTree
 parseJson =
     (P.withSourceSpan $ do
         scalar <- P.scalar
-        pure $ \loc -> BuildSingleton $ ScalarT loc scalar) <|>
+        pure $ \loc -> BuildSingleton $ review termToScalar (loc, scalar)) <|>
     (P.withSourceSpan $ do
         arr <- P.array parseJson
         pure $ \loc -> BuildSingleton $ ArrayT loc $ map toTerm arr) <|>

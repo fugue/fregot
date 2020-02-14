@@ -245,7 +245,7 @@ prepareTerm = \case
             "Unknown function at compile time:" <+> PP.pretty (Nested vs)
 
     Sugar.VarT source v -> pure $ NameT source v
-    Sugar.ScalarT source s -> pure $ ScalarT source s
+    Sugar.ScalarT source s -> pure . ValueT source $ review valueToScalar s
 
     Sugar.ArrayT source a -> ArrayT source <$> traverse prepareExpr a
     Sugar.SetT source a -> SetT source <$> traverse prepareExpr a
@@ -267,7 +267,7 @@ prepareRef
 prepareRef source nameSource name0 refs = foldM
     (\acc refArg -> case refArg of
         Sugar.RefDotArg ann v -> return $
-            RefT source acc (ScalarT ann (Sugar.String (unVar v)))
+            RefT source acc (review termToScalar (ann, Sugar.String (unVar v)))
         Sugar.RefBrackArg k -> do
             k' <- prepareExpr k
             return $ RefT source acc k')
@@ -285,7 +285,7 @@ prepareObjectKey
     => Sugar.ObjectKey SourceSpan Name
     -> ParachuteT Error m (Term SourceSpan)
 prepareObjectKey = \case
-    Sugar.ScalarK ann s      -> return $! ScalarT ann s
+    Sugar.ScalarK ann s      -> return $! ValueT ann $! review valueToScalar s
     Sugar.VarK    ann v      -> return $! NameT ann (LocalName v)
     Sugar.RefK    ann v args -> prepareRef ann ann v args
 

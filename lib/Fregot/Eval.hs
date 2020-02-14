@@ -163,7 +163,6 @@ evalTerm (CallT source f args) = do
 
 
 evalTerm (NameT source v) = evalName source v
-evalTerm (ScalarT _ s) = muValue <$> evalScalar s
 evalTerm (ArrayT _ a) = do
     bs <- mapM evalTerm a
     return $ Mu $ RecM $ ArrayV $ V.fromList bs
@@ -623,10 +622,6 @@ evalStatement (AssignS source v x) = suspend source $ do
     unify (Mu (FreeM iv)) xv
     return muTrue
 evalStatement (TermS e) = suspend (e ^. termAnn) (evalTerm e)
-
-
-evalScalar :: Scalar -> EvalM Value
-evalScalar = pure . review valueToScalar
 
 
 unify :: Mu' -> Mu' -> EvalM ()

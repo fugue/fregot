@@ -6,7 +6,7 @@ module Fregot.Prepare.Yaml
     ( loadYaml
     ) where
 
-import           Control.Lens              ((^.))
+import           Control.Lens              (review, (^.))
 import           Control.Monad             (forM)
 import           Data.Bifunctor            (first)
 import qualified Data.ByteString.Lazy      as BL
@@ -59,7 +59,8 @@ buildTree (Yaml.Mapping loc _ nodes) = fromMaybe
 buildTree (Yaml.Anchor _ _ node) = buildTree node
 buildTree (Yaml.Sequence loc _ nodes) = BuildSingleton . ArrayT loc $
     map (toTerm . buildTree) nodes
-buildTree (Yaml.Scalar loc scalar) = BuildSingleton . ScalarT loc $
+buildTree (Yaml.Scalar loc scalar) =
+    BuildSingleton . ValueT loc . review valueToScalar $
     case scalar of
         Yaml.SNull        -> Null
         Yaml.SBool    b   -> Bool b

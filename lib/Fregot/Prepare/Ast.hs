@@ -28,7 +28,8 @@ module Fregot.Prepare.Ast
     , RuleBody, Query
     , Literal (..), literalAnn, literalNegation, literalStatement, literalWith
     , Statement (..)
-    , Term (..), _ValueT
+    , Term (..), _RefT, _CallT, _NameT, _ArrayT, _SetT, _ObjectT, _ArrayCompT
+    , _SetCompT, _ObjectCompT, _ValueT
     , Object
     , Function (..), _OperatorFunction, _NamedFunction
     , BinOp (..)
@@ -115,15 +116,12 @@ data Term a
     = RefT        a (Term a) (Term a)
     | CallT       a Function [Term a]
     | NameT       a Name
-    | ScalarT     a Sugar.Scalar
     | ArrayT      a [Term a]
     | SetT        a [Term a]
     | ObjectT     a (Object a)
     | ArrayCompT  a (Term a) (RuleBody a)
     | SetCompT    a (Term a) (RuleBody a)
     | ObjectCompT a (Term a) (Term a) (RuleBody a)
-    -- NOTE(jaspervdj): This means I can probably get rid of 'ScalarT' which
-    -- may be another small speedup.
     | ValueT      a Value
     deriving (Eq, Functor, Show)
 
@@ -197,7 +195,6 @@ instance PP.Pretty PP.Sem (Term a) where
         PP.punctuation ")"
 
     pretty (NameT _ v)       = PP.pretty v
-    pretty (ScalarT _ s)     = PP.pretty s
 
     pretty (ArrayT _ a)      = PP.array a
     pretty (SetT _ s)        = PP.set s

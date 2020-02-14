@@ -2,7 +2,7 @@ module Fregot.Prepare.ConstantFold
     ( rewriteRule
     ) where
 
-import           Control.Lens        (over, review, (^?), _2)
+import           Control.Lens        (over, (^?), _2)
 import           Control.Lens.Plated (transform)
 import           Control.Monad       (forM)
 import qualified Data.HashMap.Strict as HMS
@@ -17,8 +17,6 @@ rewriteRule = over ruleTerms (transform rewriteTerm)
 
 rewriteTerm :: Term a -> Term a
 rewriteTerm term = case term of
-    ScalarT a s -> ValueT a $ review valueToScalar s
-
     ArrayT a arr -> maybe term
         (ValueT a . Value . ArrayV . V.fromList)
         (mapM (^? _ValueT . _2) arr)

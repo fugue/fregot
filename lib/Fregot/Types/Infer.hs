@@ -325,9 +325,6 @@ inferStatement = \case
 inferTerm
     :: Term SourceSpan -> InferM SourceType
 
-inferTerm (ScalarT source scalar) =
-    return $ (, NonEmpty.singleton source) $ inferScalar scalar
-
 inferTerm (CallT source fun args) = do
     let cannotCall = fatal $ CannotCall source fun
     builtins <- view ieBuiltins
@@ -514,9 +511,6 @@ inferTerm (RefT source lhs rhs) = do
 inferTerm (ValueT source value) = do
     return (Types.inferValue value, NonEmpty.singleton source)
 
-
-inferScalar :: Scalar -> Type
-inferScalar = Types.scalarType
 
 unifyTermTerm
     :: SourceSpan -> Term SourceSpan -> Term SourceSpan -> InferM ()
