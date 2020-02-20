@@ -8,6 +8,7 @@ module Fregot.Interpreter
     ( InterpreterM
     , Handle
     , newHandle
+    , copyHandle
 
     , readBuiltins
     , insertBuiltin
@@ -112,7 +113,7 @@ data Handle = Handle
     -- name.
     , _modules  :: !(IORef (HMS.HashMap PackageName ModuleBatch))
     , _yamls    :: !(IORef (HMS.HashMap FilePath Prepare.PreparedTree))
-    -- | Tree of compiled rules.  Replaces the above.
+    -- | Tree of compiled rules.
     , _ruleTree :: !(IORef (Tree.Tree CompiledRule))
     , _cache    :: !(IORef EvalCache)
     , _inputDoc :: !(IORef Eval.Value)
@@ -129,11 +130,25 @@ newHandle _sources = do
     _builtins     <- IORef.newIORef initializedBuiltins
     _modules      <- IORef.newIORef HMS.empty
     _yamls        <- IORef.newIORef HMS.empty
-    _compiled     <- IORef.newIORef HMS.empty
     _ruleTree     <- IORef.newIORef Tree.empty
     _cache        <- Cache.new >>= IORef.newIORef
     _inputDoc     <- IORef.newIORef emptyObject
     return Handle {..}
+
+-- | Create a new copy of this interpreter.  Copies all internal handles and
+-- clears the cache.
+copyHandle :: Handle -> IO Handle
+copyHandle h = do
+    _sources  <- copy (h ^. sources)
+    _builtins <- copy (h ^. builtins)
+    _modules  <- copy (h ^. modules)
+    _yamls    <- copy (h ^. yamls)
+    _ruleTree <- copy (h ^. ruleTree)
+    _cache    <- Cache.new >>= IORef.newIORef
+    _inputDoc <- copy (h ^. inputDoc)
+    return Handle {..}
+  where
+    copy ref = IORef.readIORef ref >>= IORef.newIORef
 
 readRuleDependencyGraph
     :: Handle -> IO (Deps.Graph Tree.Key)
