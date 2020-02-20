@@ -10,6 +10,8 @@ module Fregot.Interpreter
     , newHandle
     , copyHandle
 
+    , readSources
+
     , readBuiltins
     , insertBuiltin
 
@@ -149,6 +151,9 @@ copyHandle h = do
     return Handle {..}
   where
     copy ref = IORef.readIORef ref >>= IORef.newIORef
+
+readSources :: Handle -> IO Sources.Sources
+readSources h = IORef.readIORef (h ^. sources)
 
 readRuleDependencyGraph
     :: Handle -> IO (Deps.Graph Tree.Key)
