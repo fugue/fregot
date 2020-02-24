@@ -4,7 +4,7 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 module Fregot.Prepare.Dsl where
 
-import           Control.Lens              ((&), (.~))
+import           Control.Lens              (review, (&), (.~))
 import qualified Data.HashMap.Strict       as HMS
 import           Data.String               (IsString (..))
 import qualified Fregot.Eval.Builtins      as B
@@ -12,6 +12,7 @@ import           Fregot.Eval.Number        (Number)
 import           Fregot.Lexer.Position     (initPosition)
 import           Fregot.Names
 import           Fregot.Prepare.Ast
+import           Fregot.Prepare.Lens       (valueToScalar)
 import           Fregot.Sources.SourceSpan (SourceSpan)
 import qualified Fregot.Sources.SourceSpan as SourceSpan
 import           Fregot.Types.Builtins     ((🡒))
@@ -29,7 +30,7 @@ name :: Name -> Term SourceSpan
 name = NameT source
 
 num :: Int -> Term SourceSpan
-num = ScalarT source . Number . fromIntegral
+num = ValueT source . review valueToScalar . Number . fromIntegral
 
 call :: Name -> [Term SourceSpan] -> Term SourceSpan
 call v args = CallT source (NamedFunction v) args
