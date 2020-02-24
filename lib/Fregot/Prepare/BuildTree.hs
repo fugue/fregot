@@ -12,6 +12,7 @@ import           Control.Lens              (review)
 import qualified Data.List                 as L
 import           Fregot.Names
 import           Fregot.Prepare.Ast
+import           Fregot.Prepare.Lens
 import           Fregot.Prepare.Package    (PreparedRule)
 import           Fregot.Sources.SourceSpan (SourceSpan)
 import qualified Fregot.Tree               as Tree
@@ -49,9 +50,11 @@ toTree pkgname = L.foldl' Tree.union Tree.empty . map toRuleOrTree
     toRuleOrTree (_, var, BuildTree _ t) =
         Tree.parent [(var, toTree (pkgname <> mkPackageName [unVar var]) t)]
 
+-- NOTE(jaspervdj): Should we have this use the new 'ValueT' to only represent
+-- values?
 toTerm :: BuildTree -> Term SourceSpan
 toTerm (BuildSingleton t) = t
 toTerm (BuildTree loc children) = ObjectT loc $
-    [ (ScalarT l (String $ unVar v), toTerm child)
+    [ (review termToScalar (l, String $ unVar v), toTerm child)
     | (l, v, child) <- children
     ]

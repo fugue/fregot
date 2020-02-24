@@ -30,7 +30,7 @@ module Fregot.Types.Infer
     ) where
 
 import           Control.Lens                (forOf_, review, view, (&), (.~),
-                                              (^.), (^?))
+                                              (^.), (^?), _2)
 import           Control.Lens.Extras         (is)
 import           Control.Lens.TH             (makeLenses, makePrisms)
 import           Control.Monad               (forM, join, unless, void,
@@ -59,6 +59,7 @@ import           Fregot.Eval.Builtins        (Builtin, Builtins)
 import qualified Fregot.Eval.Builtins        as Builtin
 import           Fregot.Names
 import           Fregot.Prepare.Ast
+import           Fregot.Prepare.Lens
 import           Fregot.PrettyPrint          ((<+>), (<+>?))
 import qualified Fregot.PrettyPrint          as PP
 import           Fregot.Sources.SourceSpan   (SourceSpan)
@@ -324,9 +325,6 @@ inferStatement = \case
 inferTerm
     :: Term SourceSpan -> InferM SourceType
 
-inferTerm (ScalarT source scalar) =
-    return $ (, NonEmpty.singleton source) $ inferScalar scalar
-
 inferTerm (CallT source fun args) = do
     let cannotCall = fatal $ CannotCall source fun
     builtins <- view ieBuiltins
@@ -391,9 +389,9 @@ inferTerm (SetT source items) = do
 inferTerm (ObjectT source obj) = do
     scalarsOrDynamics <- for obj $ \(keyTerm, valueTerm) -> do
         valueType <- inferTerm valueTerm
-        case keyTerm of
-            ScalarT _ scalar -> return (Left (scalar, valueType))
-            _                -> Right . (, valueType) <$> inferTerm keyTerm
+        case keyTerm ^? termToScalar . _2 of
+            Just scalar -> return (Left (scalar, valueType))
+            _           -> Right . (, valueType) <$> inferTerm keyTerm
 
     let scalars  :: [(Scalar, SourceType)]
         dynamics :: [(SourceType, SourceType)]
@@ -479,7 +477,8 @@ inferTerm (RefT source lhs rhs) = do
     inferElemRef lhsTy (Types.Object objTy) = case rhs of
         -- In case the index is a scalar, and it's present in the object
         -- type, we can return a very granular type.
-        ScalarT ss s | Just ty <- HMS.lookup s (Types.objStatic objTy) ->
+        _ | Just (ss, s) <- rhs ^? termToScalar
+          , Just ty <- HMS.lookup s (Types.objStatic objTy) ->
             return $ (,)
                 (Types.scalarType s, NonEmpty.singleton ss)
                 (ty, NonEmpty.singleton source)
@@ -509,8 +508,9 @@ inferTerm (RefT source lhs rhs) = do
     inferElemRef lhsTy Types.Null       = fatal $ CannotRef source lhsTy
     inferElemRef lhsTy (Types.Scalar _) = fatal $ CannotRef source lhsTy
 
-inferScalar :: Scalar -> Type
-inferScalar = Types.scalarType
+inferTerm (ValueT source value) = do
+    return (Types.inferValue value, NonEmpty.singleton source)
+
 
 unifyTermTerm
     :: SourceSpan -> Term SourceSpan -> Term SourceSpan -> InferM ()

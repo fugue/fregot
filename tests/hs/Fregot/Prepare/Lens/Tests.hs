@@ -7,6 +7,7 @@ import           Fregot.Names          (_LocalName)
 import           Fregot.Prepare.Ast
 import           Fregot.Prepare.Dsl    ()
 import           Fregot.Prepare.Lens
+import           Fregot.Eval.Value     (Value (..), ValueF (..))
 import qualified Test.Tasty            as Tasty
 import           Test.Tasty.HUnit      ((@?=))
 import qualified Test.Tasty.HUnit      as Tasty
@@ -18,7 +19,7 @@ tests = Tasty.testGroup "Fregot.Prepare.Lens.Tests"
         [ l $ UnifyS () (v "a") (v "b")
         , l $ TermS (ArrayCompT () (v "c") [l $ TermS (v "c")])
         , l $ TermS $ ArrayT ()
-            [ ScalarT () (String "wat")
+            [ ValueT () (Value $ StringV "wat")
             , ArrayCompT () (v "d") [l $ TermS (v "d")]
             , ArrayCompT () (v "e") [l $ TermS (v "e")]
             ]
@@ -28,7 +29,7 @@ tests = Tasty.testGroup "Fregot.Prepare.Lens.Tests"
         [ l $ UnifyS () (v "a") (v "b")
         , l $ TermS (ArrayCompT () (v "c") [l $ TermS (v "c")])
         , l $ TermS $ ArrayT ()
-            [ ScalarT () (String "wat")
+            [ ValueT () (Value $ StringV "wat")
             , ArrayCompT () (v "d") [l $ TermS (v "d")]
             , ArrayCompT () (v "e") [l $ TermS (v "e")]
             , v "dontforgetme"

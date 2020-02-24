@@ -6,7 +6,7 @@ module Fregot.Compile.Graph
     ( ruleDependencies
     ) where
 
-import           Control.Lens        (to, toListOf, (^..))
+import           Control.Lens        (to, toListOf, (^..), (^?), _2)
 import           Control.Lens.Plated (plate)
 import qualified Data.HashSet        as HS
 import qualified Data.Vector         as V
@@ -45,7 +45,7 @@ ruleDependencies tree0 =
             Nothing -> mempty) <>
         (case refs of
             [] -> HS.fromList $ map (prefix <>) (Tree.keys tree)
-            ScalarT _ (String s) : t ->
+            h : t | Just (String s) <- h ^? termToScalar . _2 ->
                 let k = Key (V.singleton (mkVar s)) in
                 case Tree.descendant k tree of
                     Nothing -> mempty

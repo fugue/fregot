@@ -2,10 +2,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 module Fregot.Prepare.Lens
-    ( _RefT, _CallT, _NameT, _ScalarT, _ArrayT, _SetT, _ObjectT, _ArrayCompT
-    , _SetCompT, _ObjectCompT
-
-    , ruleTerms
+    ( ruleTerms
     , ruleDefinitionTerms
 
     , ruleBodyTerms
@@ -17,16 +14,18 @@ module Fregot.Prepare.Lens
     , termCosmosClosures
     , termRuleBodies
     , termCosmosCalls
+
+    , valueToScalar
+    , termToScalar
     ) where
 
-import           Control.Lens        (Fold, Lens', Traversal', lens, to,
-                                      traverseOf, (^.))
+import           Control.Lens        (Fold, Lens', Prism', Traversal', aside,
+                                      lens, prism', to, traverseOf, (^.))
 import           Control.Lens.Plated (Plated (..), cosmos, cosmosOnOf)
-import           Control.Lens.TH     (makePrisms)
+import           Fregot.Eval.Number  as Number
+import           Fregot.Eval.Value   (Value (..), ValueF (..))
 import           Fregot.Names
 import           Fregot.Prepare.Ast
-
-$(makePrisms ''Term)
 
 -- All direct terms of the rule, combine with 'cosmos' to traverse deeper.
 ruleTerms :: Traversal' (Rule i a) (Term a)
@@ -68,25 +67,25 @@ termAnn = lens getAnn setAnn
         RefT        a _ _   -> a
         CallT       a _ _   -> a
         NameT       a _     -> a
-        ScalarT     a _     -> a
         ArrayT      a _     -> a
         SetT        a _     -> a
         ObjectT     a _     -> a
         ArrayCompT  a _ _   -> a
         SetCompT    a _ _   -> a
         ObjectCompT a _ _ _ -> a
+        ValueT      a _     -> a
 
     setAnn t a = case t of
         RefT        _ x k   -> RefT        a x k
         CallT       _ f as  -> CallT       a f as
         NameT       _ v     -> NameT       a v
-        ScalarT     _ s     -> ScalarT     a s
         ArrayT      _ l     -> ArrayT      a l
         SetT        _ s     -> SetT        a s
         ObjectT     _ o     -> ObjectT     a o
         ArrayCompT  _ x b   -> ArrayCompT  a x b
         SetCompT    _ x b   -> SetCompT    a x b
         ObjectCompT _ k x b -> ObjectCompT a k x b
+        ValueT      _ v     -> ValueT      a v
 
 statementTerms :: Traversal' (Statement a) (Term a)
 statementTerms f = \case
@@ -107,7 +106,6 @@ instance Plated (Term a) where
         RefT        a x k   -> RefT a <$> f x <*> f k
         CallT       a g xs  -> CallT a g <$> traverse f xs
         NameT       a v     -> pure (NameT a v)
-        ScalarT     a s     -> pure (ScalarT a s)
         ArrayT      a xs    -> ArrayT a <$> traverse f xs
         SetT        a xs    -> SetT a <$> traverse f xs
         ObjectT     a xs    -> ObjectT a <$>
@@ -116,6 +114,7 @@ instance Plated (Term a) where
         SetCompT    a h b   -> SetCompT a <$> f h <*> ruleBodyTerms f b
         ObjectCompT a k v b -> ObjectCompT a <$>
                                 f k <*> f v <*> ruleBodyTerms f b
+        ValueT      a v     -> pure (ValueT a v)
 
 -- | Fold over the direct names of a term.
 termNames :: Traversal' (Term a) (a, Name)
@@ -161,3 +160,22 @@ termRuleBodies f e = case e of
 -- | Find referenced functions in a term.
 termCosmosCalls :: Fold (Term a) (a, Function)
 termCosmosCalls = cosmos . _CallT . to (\(ann, f, _) -> (ann, f))
+
+valueToScalar :: Prism' Value Scalar
+valueToScalar = prism' fromScalar toScalar
+  where
+    fromScalar = \case
+        String t -> Value $ StringV t
+        Number n -> Value . NumberV $ Number.fromScientific n
+        Bool   b -> Value $ BoolV b
+        Null     -> Value NullV
+
+    toScalar (Value v) = case v of
+        StringV t -> Just $ String t
+        NumberV n -> Just . Number $ Number.toScientific n
+        BoolV   b -> Just $ Bool b
+        NullV     -> Just Null
+        _         -> Nothing
+
+termToScalar :: Prism' (Term a) (a, Scalar)
+termToScalar = _ValueT . aside valueToScalar

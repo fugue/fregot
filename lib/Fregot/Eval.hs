@@ -163,7 +163,6 @@ evalTerm (CallT source f args) = do
 
 
 evalTerm (NameT source v) = evalName source v
-evalTerm (ScalarT _ s) = muValue <$> evalScalar s
 evalTerm (ArrayT _ a) = do
     bs <- mapM evalTerm a
     return $ Mu $ RecM $ ArrayV $ V.fromList bs
@@ -190,6 +189,9 @@ evalTerm (ObjectCompT source khead vhead cbody) = do
     rows <- unbranch $ evalRuleBody cbody $
         (,) <$> evalGroundTerm khead <*> evalGroundTerm vhead
     muValue <$> mkObject source rows
+
+evalTerm (ValueT _ v) = pure $ muValue v
+
 
 evalName :: SourceSpan -> Name -> EvalM Mu'
 evalName source (LocalName var) = evalVar source var
@@ -620,14 +622,6 @@ evalStatement (AssignS source v x) = suspend source $ do
     unify (Mu (FreeM iv)) xv
     return muTrue
 evalStatement (TermS e) = suspend (e ^. termAnn) (evalTerm e)
-
-
-evalScalar :: Scalar -> EvalM Value
-evalScalar = return . Value . \case
-    String t -> StringV t
-    Number n -> NumberV $ Number.fromScientific n
-    Bool   b -> BoolV   b
-    Null     -> NullV
 
 
 unify :: Mu' -> Mu' -> EvalM ()

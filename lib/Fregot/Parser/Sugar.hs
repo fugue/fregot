@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns      #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE TemplateHaskell   #-}
@@ -134,23 +135,23 @@ query = blockOrSemi ruleStatement
 blockOrSemi :: FregotParser a -> FregotParser [a]
 blockOrSemi linep =
     (do
-        pos <- Parsec.getPosition
-        l   <- linep
+        !pos <- Parsec.getPosition
+        !l   <- linep
         (l :) <$> go pos) <|>
     (return [])
   where
     go pos0 =
         (do
             Tok.symbol Tok.TSemicolon
-            pos1 <- Parsec.getPosition
-            l    <- linep
+            !pos1 <- Parsec.getPosition
+            !l    <- linep
             (l :) <$> go pos1) <|>
         (do
-            pos1 <- Parsec.getPosition
+            !pos1 <- Parsec.getPosition
             if Parsec.sourceLine pos1 <= Parsec.sourceLine pos0
                 then Parsec.parserFail "expected newline before next statement"
                 else do
-                    l <- linep
+                    !l <- linep
                     (l :) <$> go pos1) <|>
         return []
 
@@ -300,11 +301,12 @@ objectOrSet key value = do
   where
     item =
         (do
-            k <- Parsec.try $ key <* Tok.symbol Tok.TColon
-            e <- value
+            !k <- Parsec.try $ key <* Tok.symbol Tok.TColon
+            !e <- value
             return $ Left (k, e)) <|>
         (do
-            fmap Right value)
+            !e <- value
+            pure $ Right e)
 
 objectKey :: FregotParser (ObjectKey SourceSpan Var)
 objectKey = withSourceSpan $

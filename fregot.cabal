@@ -61,6 +61,7 @@ Library
     Fregot.Prepare
     Fregot.Prepare.Ast
     Fregot.Prepare.BuildTree
+    Fregot.Prepare.ConstantFold
     Fregot.Prepare.Json
     Fregot.Prepare.Lens
     Fregot.Prepare.Package

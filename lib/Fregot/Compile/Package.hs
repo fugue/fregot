@@ -32,6 +32,7 @@ import qualified Fregot.Error                 as Error
 import           Fregot.Eval.Builtins         (Builtins)
 import           Fregot.Names
 import           Fregot.Prepare.Ast
+import qualified Fregot.Prepare.ConstantFold  as ConstantFold
 import           Fregot.Prepare.Lens
 import           Fregot.Prepare.Package
 import           Fregot.PrettyPrint           ((<$$>), (<+>))
@@ -83,7 +84,8 @@ compileTree builtins ctree0 prep = do
                         (rule ^. rulePackage, rule ^. ruleName)
             cRule  <- compileRule inferEnv rule
             tyRule <- Infer.evalInfer inferEnv $ Infer.inferRule cRule
-            return $ inferEnv & Infer.ieTree . at key .~ Just tyRule)
+            let optRule = ConstantFold.rewriteRule tyRule
+            return $! inferEnv & Infer.ieTree . at key .~ Just optRule)
         -- TODO(jaspervdj): We'll want to replace them with error nodes and an
         -- 'unknown' type.
         (\errs -> do

@@ -28,7 +28,8 @@ module Fregot.Prepare.Ast
     , RuleBody, Query
     , Literal (..), literalAnn, literalNegation, literalStatement, literalWith
     , Statement (..)
-    , Term (..)
+    , Term (..), _RefT, _CallT, _NameT, _ArrayT, _SetT, _ObjectT, _ArrayCompT
+    , _SetCompT, _ObjectCompT, _ValueT
     , Object
     , Function (..), _OperatorFunction, _NamedFunction
     , BinOp (..)
@@ -48,6 +49,7 @@ import           Control.Lens              ((^.))
 import           Control.Lens.TH           (makeLenses, makePrisms)
 import           Data.Hashable             (Hashable)
 import qualified Data.List                 as L
+import           Fregot.Eval.Value         (Value)
 import           Fregot.Names
 import           Fregot.Names.Imports      (Imports)
 import           Fregot.PrettyPrint        ((<+>), (<+>?), (?<+>))
@@ -114,13 +116,13 @@ data Term a
     = RefT        a (Term a) (Term a)
     | CallT       a Function [Term a]
     | NameT       a Name
-    | ScalarT     a Sugar.Scalar
     | ArrayT      a [Term a]
     | SetT        a [Term a]
     | ObjectT     a (Object a)
     | ArrayCompT  a (Term a) (RuleBody a)
     | SetCompT    a (Term a) (RuleBody a)
     | ObjectCompT a (Term a) (Term a) (RuleBody a)
+    | ValueT      a Value
     deriving (Eq, Functor, Show)
 
 data Function
@@ -163,6 +165,7 @@ $(makeLenses ''RuleDefinition)
 $(makeLenses ''RuleElse)
 $(makeLenses ''Literal)
 $(makeLenses ''With)
+$(makePrisms ''Term)
 
 --------------------------------------------------------------------------------
 -- NOTE(jaspervdj): These instances are pretty much copied from the sugared
@@ -192,7 +195,6 @@ instance PP.Pretty PP.Sem (Term a) where
         PP.punctuation ")"
 
     pretty (NameT _ v)       = PP.pretty v
-    pretty (ScalarT _ s)     = PP.pretty s
 
     pretty (ArrayT _ a)      = PP.array a
     pretty (SetT _ s)        = PP.set s
@@ -211,6 +213,8 @@ instance PP.Pretty PP.Sem (Term a) where
         PP.pretty x <+> PP.punctuation "|" <+>
         prettyComprehensionBody lits <>
         PP.punctuation "}"
+
+    pretty (ValueT _ v) = PP.literal $ PP.pretty v
 
 prettyComprehensionBody :: RuleBody a -> PP.SemDoc
 prettyComprehensionBody lits = mconcat $ L.intersperse
