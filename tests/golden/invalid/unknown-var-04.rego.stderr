@@ -1,12 +1,3 @@
-fregot ([34mtypecheck error[0m):
-  "unknown-var-04.rego" (line 4, column 3):
-  Unbound name:
-
-    4|   double(1, 2)
-         [31m^^^^^^^^^^^^[0m
-
-  The name [33m[35mfregot[0m[36m.[0m[35mtests[0m[36m.[0m[35minvalid[0m[36m.[0m[35munkown_var_04[0m[36m.[0mdouble[0m is not defined
-
 fregot ([34mrenamer error[0m):
   "unknown-var-04.rego" (line 4, column 3):
   unknown function:
