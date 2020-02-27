@@ -1,5 +1,11 @@
 # CHANGELOG
 
+ -  0.8.0 (2020-02-27)
+     *  Small performance tweaks.
+     *  Add `copyHandle` to interpreter module.
+     *  Replace problematic AST nodes by errors.  This drastically reduces the
+        amount of errors you see; hopefully leaving only the root causes.
+
  -  0.7.6 (2020-02-05)
      *  Add `regex.split` builtin function.
 
