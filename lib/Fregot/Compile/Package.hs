@@ -19,6 +19,7 @@ import           Control.Monad                (foldM, forM)
 import           Control.Monad.Identity       (runIdentity)
 import           Control.Monad.Parachute      (ParachuteT, catching, tellError,
                                                tellErrors)
+import           Data.Functor                 (($>))
 import qualified Data.Graph                   as Graph
 import qualified Data.HashMap.Strict.Extended as HMS
 import qualified Data.HashSet.Extended        as HS
@@ -40,7 +41,7 @@ import qualified Fregot.PrettyPrint           as PP
 import           Fregot.Sources.SourceSpan    (SourceSpan)
 import qualified Fregot.Tree                  as Tree
 import qualified Fregot.Types.Infer           as Infer
-import           Fregot.Types.Rule            (RuleType)
+import           Fregot.Types.Rule            (RuleType (..))
 import           Fregot.Types.Value           (TypeContext)
 import           Prelude                      hiding (head, lookup)
 
@@ -62,11 +63,9 @@ compileTree builtins ctree0 prep = do
     -- Order rules according to dependency graph.
     ordering <- fmap concat $ forM (Graph.stronglyConnComp graph) $ \case
         Graph.AcyclicSCC rule -> return [rule]
-        Graph.CyclicSCC  cycl ->
-            -- If rules have recursion errors, we drop them here.
-            --
-            -- TODO(jaspervdj): We'll want to replace them with error nodes.
-            tellError (recursionError cycl) >> return []
+        Graph.CyclicSCC  cycl -> do
+            tellError (recursionError cycl)
+            pure $ fmap (ruleKind .~ ErrorRule) cycl
 
     let inferEnv0 = Infer.emptyInferEnv
             -- TODO(jaspervdj): Builtins Proxy works quite well, we should move
@@ -76,21 +75,17 @@ compileTree builtins ctree0 prep = do
             , Infer._ieTree = ctree0
             }
 
-    inferEnv1 <- foldM (\inferEnv rule -> catching
-        (\errs -> if null errs then Nothing else Just errs)
-        (do
-            -- Simple compilation and checks.
+    inferEnv1 <- foldM
+        (\inferEnv rule -> do
             let key = review Tree.qualifiedVarFromKey
-                        (rule ^. rulePackage, rule ^. ruleName)
+                            (rule ^. rulePackage, rule ^. ruleName)
             cRule  <- compileRule inferEnv rule
-            tyRule <- Infer.evalInfer inferEnv $ Infer.inferRule cRule
+            tyRule <- catching
+                (\errs -> if null errs then Nothing else Just errs)
+                (Infer.evalInfer inferEnv $ Infer.inferRule cRule)
+                (\errs -> tellErrors errs $> (rule & ruleInfo .~ ErrorType))
             let optRule = ConstantFold.rewriteRule tyRule
             return $! inferEnv & Infer.ieTree . at key .~ Just optRule)
-        -- TODO(jaspervdj): We'll want to replace them with error nodes and an
-        -- 'unknown' type.
-        (\errs -> do
-            tellErrors errs
-            return inferEnv))
         inferEnv0
         ordering
 
@@ -98,7 +93,10 @@ compileTree builtins ctree0 prep = do
 
 compileRule
     :: Monad m => Infer.InferEnv -> Rule' -> ParachuteT Error m Rule'
-compileRule ie = traverseOf (ruleDefs . traverse) (compileRuleDefinition ie)
+compileRule ie rule = catching
+    (\errs -> if null errs then Nothing else Just errs)
+    (traverseOf (ruleDefs . traverse) (compileRuleDefinition ie) rule)
+    (\errs -> tellErrors errs $> (rule & ruleKind .~ ErrorRule))
 
 compileRuleDefinition
     :: forall m. Monad m

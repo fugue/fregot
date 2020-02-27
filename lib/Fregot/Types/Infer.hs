@@ -229,6 +229,8 @@ inferRule rule = case rule ^. ruleKind of
                 _  -> Just (idxType, valType)
         pure $ rule & ruleInfo .~ Types.GenObjectRuleType objType
 
+    ErrorRule -> pure $ rule & ruleInfo .~ Types.ErrorType
+
     _ -> fatal $ InternalError
         -- Absurd: the 'kind' rule is exhaustive but GHC can't tell.
         "inferRule with absurd rule kind"
@@ -508,9 +510,11 @@ inferTerm (RefT source lhs rhs) = do
     inferElemRef lhsTy Types.Null       = fatal $ CannotRef source lhsTy
     inferElemRef lhsTy (Types.Scalar _) = fatal $ CannotRef source lhsTy
 
-inferTerm (ValueT source value) = do
-    return (Types.inferValue value, NonEmpty.singleton source)
+inferTerm (ValueT source value) =
+    pure (Types.inferValue value, NonEmpty.singleton source)
 
+inferTerm (ErrorT source) =
+    pure (Types.unknown, NonEmpty.singleton source)
 
 unifyTermTerm
     :: SourceSpan -> Term SourceSpan -> Term SourceSpan -> InferM ()

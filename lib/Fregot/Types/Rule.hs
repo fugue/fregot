@@ -15,7 +15,8 @@ data RuleType
     = CompleteRuleType Type
     | GenSetRuleType Type
     | GenObjectRuleType (Object Ast.Scalar Type)
-    | FunctionType  Int  -- TODO(jaspervdj)
+    | FunctionType  Int
+    | ErrorType
     deriving (Show)
 
 instance PP.Pretty PP.Sem RuleType where
@@ -27,5 +28,6 @@ ruleTypeToType (CompleteRuleType ty)   = ty
 ruleTypeToType (GenSetRuleType ty)     = setOf ty
 ruleTypeToType (GenObjectRuleType oty) = object oty
 ruleTypeToType (FunctionType _)        = error "ruleTypeToType (FunctionType _)"
+ruleTypeToType ErrorType               = unknown
 
 $(makePrisms ''RuleType)
