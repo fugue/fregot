@@ -161,7 +161,7 @@ specialBuiltinVar _       = False
 resolveRef
     :: SourceSpan
     -> Var -> [RefArg SourceSpan Var]
-    -> RenamerM (Name, [RefArg SourceSpan Name])
+    -> RenamerM (Maybe (Name, [RefArg SourceSpan Name]))
 resolveRef source var refArgs = do
     imports   <- view reImports
     rules     <- view rePackageRules
@@ -170,33 +170,34 @@ resolveRef source var refArgs = do
     locals    <- view reLocalVars
 
     -- Auxiliary to check if something actually exists in the deps.
-    let checkExists pkg _ | pkg == thispkg = return ()
-        checkExists pkg name = case universe pkg of
-            [] ->
+    let checkExists pkg _ cont | pkg == thispkg = cont
+        checkExists pkg name cont = case universe pkg of
+            [] -> do
                 tellRenameError source "unknown package" $
-                "Package" <+> PP.pretty pkg <+>
-                "is imported but not loaded (or empty)."
-            uni | not (name `elem` uni) ->
+                    "Package" <+> PP.pretty pkg <+>
+                    "is imported but not loaded (or empty)."
+                pure Nothing
+            uni | not (name `elem` uni) -> do
                 tellRenameError source "unknown function" $
-                "Rule" <+> PP.pretty name <+>
-                "is not defined in package" <+> PP.pretty pkg
-            _ -> return ()
+                    "Rule" <+> PP.pretty name <+>
+                    "is not defined in package" <+> PP.pretty pkg
+                pure Nothing
+            _ -> cont
 
     case var of
 
         "data"  | Just (pkg, rname, remainder) <-
-                    resolveData thispkg universe refArgs -> do
-            checkExists pkg rname
+                    resolveData thispkg universe refArgs ->
+            checkExists pkg rname $ do
             remainder' <- traverse renameRefArg remainder
-            return (mkQualifiedName pkg rname, remainder')
+            pure $ Just (mkQualifiedName pkg rname, remainder')
 
         _       | Just (_, ImportData pkg) <- HMS.lookup var imports
                 , (ra1 : ras)              <- refArgs
-                , Just rname               <- refArgToVar ra1 -> do
-
-            checkExists pkg rname
+                , Just rname               <- refArgToVar ra1 ->
+            checkExists pkg rname $ do
             ras' <- traverse renameRefArg ras
-            return (mkQualifiedName pkg rname, ras')
+            pure $ Just (mkQualifiedName pkg rname, ras')
 
         -- For input imports, it's relatively simple.  If we have something like
         --
@@ -208,7 +209,7 @@ resolveRef source var refArgs = do
         _       | Just (src, ImportInput pkg) <- HMS.lookup var imports -> do
             let importRefs = map (RefDotArg src . mkVar) (unPackageName pkg)
             refArgs' <- traverse renameRefArg refArgs
-            return (BuiltinName "input", importRefs ++ refArgs')
+            pure $ Just (BuiltinName "input", importRefs ++ refArgs')
 
         -- Nothing was found.  We will assume it is a local var.
         _ -> do
@@ -218,7 +219,7 @@ resolveRef source var refArgs = do
                     | HS.member var rules    = mkQualifiedName thispkg var
                     | var `HS.member` locals = LocalName var
                     | otherwise              = LocalName var
-            return (name, refArgs')
+            return $ Just (name, refArgs')
 
   where
     refArgToVar = \case
@@ -243,10 +244,11 @@ resolveRef source var refArgs = do
 renameTerm :: Rename Term
 renameTerm = \case
     RefT source varSource var refArgs -> do
-        (name, refArgs') <- resolveRef source var refArgs
-        case refArgs' of
-            [] -> pure $ VarT source name
-            _  -> pure $ RefT source varSource name refArgs'
+        mbResolved <- resolveRef source var refArgs
+        case mbResolved of
+            Just (name, [])       -> pure $ VarT source name
+            Just (name, refArgs') -> pure $ RefT source varSource name refArgs'
+            Nothing               -> pure $ ErrorT source
 
     CallT source ns args -> do
         builtins <- view reBuiltins
@@ -321,6 +323,8 @@ renameTerm = \case
         ObjectCompT a
             <$> renameObjectKey k <*> renameTerm x <*> renameRuleBody b
 
+    ErrorT a -> pure $ ErrorT a
+
 renameObject :: Object SourceSpan Var -> RenamerM (Object SourceSpan Name)
 renameObject = traverse renameItem
   where
@@ -331,8 +335,11 @@ renameObjectKey = \case
     ScalarK a s -> pure (ScalarK a s)
     VarK a uv -> pure (VarK a uv)
     RefK source var refArgs -> do
-        (name, refArgs') <- resolveRef source var refArgs
-        return $ RefK source name refArgs'
+        mbResolved <- resolveRef source var refArgs
+        case mbResolved of
+            Just (name, refArgs') -> pure $ RefK source name refArgs'
+            Nothing               -> pure $ ErrorK source
+    ErrorK a -> pure (ErrorK a)
 
 renameWith :: Rename With
 renameWith with = With

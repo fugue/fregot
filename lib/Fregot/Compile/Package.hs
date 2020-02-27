@@ -40,7 +40,7 @@ import qualified Fregot.PrettyPrint           as PP
 import           Fregot.Sources.SourceSpan    (SourceSpan)
 import qualified Fregot.Tree                  as Tree
 import qualified Fregot.Types.Infer           as Infer
-import           Fregot.Types.Rule            (RuleType)
+import           Fregot.Types.Rule            (RuleType (..))
 import           Fregot.Types.Value           (TypeContext)
 import           Prelude                      hiding (head, lookup)
 
@@ -76,21 +76,25 @@ compileTree builtins ctree0 prep = do
             , Infer._ieTree = ctree0
             }
 
-    inferEnv1 <- foldM (\inferEnv rule -> catching
-        (\errs -> if null errs then Nothing else Just errs)
-        (do
-            -- Simple compilation and checks.
-            let key = review Tree.qualifiedVarFromKey
-                        (rule ^. rulePackage, rule ^. ruleName)
-            cRule  <- compileRule inferEnv rule
-            tyRule <- Infer.evalInfer inferEnv $ Infer.inferRule cRule
-            let optRule = ConstantFold.rewriteRule tyRule
-            return $! inferEnv & Infer.ieTree . at key .~ Just optRule)
-        -- TODO(jaspervdj): We'll want to replace them with error nodes and an
-        -- 'unknown' type.
-        (\errs -> do
-            tellErrors errs
-            return inferEnv))
+    inferEnv1 <- foldM (\inferEnv rule ->
+        let key = review Tree.qualifiedVarFromKey
+                        (rule ^. rulePackage, rule ^. ruleName) in
+        catching
+            (\errs -> if null errs then Nothing else Just errs)
+            (do
+                -- Simple compilation and checks.
+                cRule  <- compileRule inferEnv rule
+                tyRule <- Infer.evalInfer inferEnv $ Infer.inferRule cRule
+                let optRule = ConstantFold.rewriteRule tyRule
+                return $! inferEnv & Infer.ieTree . at key .~ Just optRule)
+            -- NOTE(jaspervdj): Perhaps we should catch errors in the functions
+            -- 'compileRule' and 'inferRule' instead.
+            (\errs -> do
+                let brokenRule = rule
+                        & ruleKind .~ ErrorRule
+                        & ruleInfo .~ ErrorType
+                tellErrors errs
+                return $! inferEnv & Infer.ieTree . at key .~ Just brokenRule))
         inferEnv0
         ordering
 

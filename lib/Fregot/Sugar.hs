@@ -160,6 +160,8 @@ data Term a n
     | ArrayCompT  a (Term a n) (RuleBody a n)
     | SetCompT    a (Term a n) (RuleBody a n)
     | ObjectCompT a (ObjectKey a n) (Term a n) (RuleBody a n)
+
+    | ErrorT a
     deriving (Generic, Show)
 
 instance (Binary a, Binary n) => Binary (Term a n)
@@ -187,6 +189,7 @@ data ObjectKey a n
     = ScalarK a Scalar
     | VarK    a UnqualifiedVar
     | RefK    a n [RefArg a n]
+    | ErrorK  a
     deriving (Generic, Show)
 
 instance (Binary a, Binary n) => Binary (ObjectKey a n)
@@ -341,6 +344,8 @@ instance PP.Pretty PP.Sem n => PP.Pretty PP.Sem (Term a n) where
         prettyComprehensionBody lits <>
         PP.punctuation "}"
 
+    pretty (ErrorT _) = PP.errorNode
+
 prettyComprehensionBody :: PP.Pretty PP.Sem n => RuleBody a n -> PP.SemDoc
 prettyComprehensionBody lits = mconcat $ L.intersperse
     (PP.punctuation ";" <> PP.space)
@@ -362,6 +367,7 @@ instance PP.Pretty PP.Sem n => PP.Pretty PP.Sem (ObjectKey a n) where
     pretty (ScalarK _ s) = PP.pretty s
     pretty (VarK _ v)    = PP.pretty v
     pretty (RefK _ v a)  = PP.pretty v <> mconcat (map PP.pretty a)
+    pretty (ErrorK _)    = PP.errorNode
 
 instance PP.Pretty PP.Sem BinOp where
     pretty = PP.punctuation . \case
@@ -415,6 +421,7 @@ termAnn = lens getAnn setAnn
         ArrayCompT  a _ _   -> a
         SetCompT    a _ _   -> a
         ObjectCompT a _ _ _ -> a
+        ErrorT      a       -> a
 
     setAnn t a = case t of
         RefT        _ b v r -> RefT        a b v r
@@ -427,6 +434,7 @@ termAnn = lens getAnn setAnn
         ArrayCompT  _ x b   -> ArrayCompT  a x b
         SetCompT    _ x b   -> SetCompT    a x b
         ObjectCompT _ k x b -> ObjectCompT a k x b
+        ErrorT      _       -> ErrorT      a
 
 moduleRuleNames :: Fold (Module a n) Var
 moduleRuleNames = modulePolicy . traverse . ruleHead . ruleName
