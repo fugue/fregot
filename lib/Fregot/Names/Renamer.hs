@@ -258,9 +258,8 @@ renameTerm = \case
         args'    <- traverse renameExpr args
         case first (map unVar) <$> unsnoc ns of
             Nothing -> do
-                -- NOTE(jaspervdj): We can use ErrorT here.
                 tellRenameError source "internal error" "Invalid empty call"
-                pure $ CallT source [] args'
+                pure $ ErrorT source
 
             -- Fully qualified call.
             Just (("data" : pkg), n) ->
@@ -282,8 +281,7 @@ renameTerm = \case
                 | otherwise -> do
                     tellRenameError source "unknown function" $
                         "Function" <+> PP.pretty n <+> "is not defined."
-                    -- NOTE(jaspervdj): We can use ErrorT here.
-                    pure $ CallT source [mkQualifiedName thispkg n] args'
+                    pure $ ErrorT source
 
             -- Calling a rule in another package.
             Just ([imp], n)
