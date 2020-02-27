@@ -63,6 +63,7 @@ data RuleKind
     | GenSetRule
     | GenObjectRule
     | FunctionRule Int  -- Arity.
+    | ErrorRule         -- Rule that failed compilation.
     deriving (Eq, Show)
 
 data Rule i a = Rule
@@ -123,6 +124,7 @@ data Term a
     | SetCompT    a (Term a) (RuleBody a)
     | ObjectCompT a (Term a) (Term a) (RuleBody a)
     | ValueT      a Value
+    | ErrorT      a
     deriving (Eq, Functor, Show)
 
 data Function
@@ -215,6 +217,8 @@ instance PP.Pretty PP.Sem (Term a) where
         PP.punctuation "}"
 
     pretty (ValueT _ v) = PP.literal $ PP.pretty v
+
+    pretty (ErrorT _) = PP.errorNode
 
 prettyComprehensionBody :: RuleBody a -> PP.SemDoc
 prettyComprehensionBody lits = mconcat $ L.intersperse

@@ -8,6 +8,8 @@ module Fregot.PrettyPrint
     , array
     , set
     , object
+
+    , errorNode
     ) where
 
 import           Data.Foldable               (toList)
@@ -33,3 +35,6 @@ object o = parensSepVert
     [ pretty k <> punctuation ":" <+> pretty t
     | (k, t) <- o
     ]
+
+errorNode :: SemDoc
+errorNode = punctuation "<ERROR>"

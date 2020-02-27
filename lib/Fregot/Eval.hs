@@ -192,6 +192,10 @@ evalTerm (ObjectCompT source khead vhead cbody) = do
 
 evalTerm (ValueT _ v) = pure $ muValue v
 
+evalTerm (ErrorT source) = raise' source "internal error" $
+    "An error node was created during compilation so evaluation should" <+>
+    "be allowed."
+
 
 evalName :: SourceSpan -> Name -> EvalM Mu'
 evalName source (LocalName var) = evalVar source var

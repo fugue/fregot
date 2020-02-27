@@ -18,6 +18,7 @@ module Control.Monad.Parachute
     , try
     , catching
     , catch
+    , handling
     ) where
 
 import           Control.Monad.Except (MonadError (..))
@@ -149,6 +150,12 @@ catch mx f = try mx >>= either f return
 
 catching
     :: Monad m
-    => ([e] -> Maybe a) -> ParachuteT e m b -> (a -> ParachuteT e m b)
-    -> ParachuteT e m b
+    => ([e] -> Maybe i) -> ParachuteT e m a -> (i -> ParachuteT e m a)
+    -> ParachuteT e m a
 catching shouldCatch mx my = trying shouldCatch mx >>= either my return
+
+handling
+    :: Monad m
+    => ([e] -> Maybe i) -> (i -> ParachuteT e m a) -> ParachuteT e m a
+    -> ParachuteT e m a
+handling shouldCatch mx my = catching shouldCatch my mx

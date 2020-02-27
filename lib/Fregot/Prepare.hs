@@ -147,7 +147,7 @@ mergeRules x y = do
         | def <- defaults
         ]
 
-    when (x ^. ruleKind /= y ^. ruleKind) $ tellError $
+    unless (compatible (x ^. ruleKind) (y ^. ruleKind)) $ tellError $
         Error.mkMultiError
             "compile" "complete definition mismatch"
             [ (c ^. ruleAnn, describeKind (c ^. ruleKind))
@@ -160,11 +160,16 @@ mergeRules x y = do
         & ruleDefs    %~ (++ y ^. ruleDefs)
 
   where
+    compatible ErrorRule _         = True
+    compatible _         ErrorRule = True
+    compatible k         l         = k == l
+
     describeKind = \case
         CompleteRule   -> "is a complete rule"
         GenSetRule     -> "generates a set"
         GenObjectRule  -> "generates an object"
         FunctionRule a -> "is a function of arity" <+> PP.pretty a
+        ErrorRule      -> "broken rule"
 
 --------------------------------------------------------------------------------
 
@@ -259,6 +264,7 @@ prepareTerm = \case
         <$> prepareObjectKey k
         <*> prepareTerm h
         <*> prepareRuleBody b
+    Sugar.ErrorT ann -> pure $ ErrorT ann
 
 prepareRef
     :: Monad m
@@ -288,6 +294,7 @@ prepareObjectKey = \case
     Sugar.ScalarK ann s      -> return $! ValueT ann $! review valueToScalar s
     Sugar.VarK    ann v      -> return $! NameT ann (LocalName v)
     Sugar.RefK    ann v args -> prepareRef ann ann v args
+    Sugar.ErrorK  ann        -> return $! ErrorT ann
 
 prepareBinOp
     :: Monad m

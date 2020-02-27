@@ -74,6 +74,7 @@ termAnn = lens getAnn setAnn
         SetCompT    a _ _   -> a
         ObjectCompT a _ _ _ -> a
         ValueT      a _     -> a
+        ErrorT      a       -> a
 
     setAnn t a = case t of
         RefT        _ x k   -> RefT        a x k
@@ -86,6 +87,7 @@ termAnn = lens getAnn setAnn
         SetCompT    _ x b   -> SetCompT    a x b
         ObjectCompT _ k x b -> ObjectCompT a k x b
         ValueT      _ v     -> ValueT      a v
+        ErrorT      _       -> ErrorT      a
 
 statementTerms :: Traversal' (Statement a) (Term a)
 statementTerms f = \case
@@ -115,6 +117,7 @@ instance Plated (Term a) where
         ObjectCompT a k v b -> ObjectCompT a <$>
                                 f k <*> f v <*> ruleBodyTerms f b
         ValueT      a v     -> pure (ValueT a v)
+        ErrorT      a       -> pure (ErrorT a)
 
 -- | Fold over the direct names of a term.
 termNames :: Traversal' (Term a) (a, Name)
