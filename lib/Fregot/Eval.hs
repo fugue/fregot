@@ -582,14 +582,15 @@ evalQuery lits0 = case reverse lits0 of
 -- if the literal was a negation that passed.
 evalLiteral :: Literal SourceSpan -> (Value -> EvalM a) -> EvalM a
 evalLiteral lit next
-    | lit ^. literalNegation = localWiths (lit ^. literalWith) $ do
-        negation trueish $
+    | lit ^. literalNegation = do
+        localWiths (lit ^. literalWith) $ negation trueish $
             evalStatement (lit ^. literalStatement) >>=
             ground (lit ^. literalAnn)
         next true
-    | otherwise = localWiths (lit ^. literalWith) $ do
-        v <- evalStatement $ lit ^. literalStatement
-        r <- ground (lit ^. literalAnn) v
+    | otherwise = do
+        r <- localWiths (lit ^. literalWith) $
+            evalStatement (lit ^. literalStatement) >>=
+            ground (lit ^. literalAnn)
         next r
   where
     localWiths []    mx = mx
