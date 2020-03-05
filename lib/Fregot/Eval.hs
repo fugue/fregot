@@ -343,6 +343,8 @@ evalRefArg source indexee idx = do
                 then return (muValue gidx)
                 else cut
 
+        NullV -> cut
+
         _ -> raise' source "index type error" $
             "evalRefArg: cannot index" <+>
             PP.pretty (describeMu indexee) <+>

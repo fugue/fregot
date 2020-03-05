@@ -17,3 +17,11 @@ input_has_tags {
 test_access_null {
   not input_has_tags with input as {"tags": null}
 }
+
+input_has_name_tag {
+  input.tags.name = _
+}
+
+test_access_null_with_key {
+  not input_has_name_tag with input as {"tags": null}
+}
