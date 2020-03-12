@@ -34,6 +34,7 @@ module Fregot.Prepare.Ast
     , Function (..), _OperatorFunction, _NamedFunction
     , BinOp (..)
 
+    , Sugar.WithPath (..)
     , With (..), withAnn, withPath, withAs
 
     , Sugar.Scalar (..)
@@ -98,20 +99,20 @@ data RuleElse a = RuleElse
     { _ruleElseAnn   :: !a
     , _ruleElseValue :: !(Maybe (Term a))
     , _ruleElseBody  :: !(RuleBody a)
-    } deriving (Eq, Functor, Show)
+    } deriving (Functor, Show)
 
 data Literal a = Literal
     { _literalAnn       :: !a
     , _literalNegation  :: !Bool
     , _literalStatement :: !(Statement a)
     , _literalWith      :: ![With a]
-    } deriving (Eq, Functor, Show)
+    } deriving (Functor, Show)
 
 data Statement a
     = UnifyS  a (Term a) (Term a)
     | AssignS a UnqualifiedVar (Term a)
     | TermS     (Term a)
-    deriving (Eq, Functor, Show)
+    deriving (Functor, Show)
 
 data Term a
     = RefT        a (Term a) (Term a)
@@ -125,7 +126,7 @@ data Term a
     | ObjectCompT a (Term a) (Term a) (RuleBody a)
     | ValueT      a Value
     | ErrorT      a
-    deriving (Eq, Functor, Show)
+    deriving (Functor, Show)
 
 data Function
     = NamedFunction Name
@@ -156,9 +157,9 @@ instance Hashable BinOp
 
 data With a = With
     { _withAnn  :: !a
-    , _withPath :: [UnqualifiedVar]
+    , _withPath :: Sugar.WithPath
     , _withAs   :: !(Term a)
-    } deriving (Eq, Functor, Show)
+    } deriving (Functor, Show)
 
 $(makePrisms ''RuleKind)
 $(makePrisms ''Function)
@@ -247,9 +248,7 @@ instance PP.Pretty PP.Sem BinOp where
 
 instance PP.Pretty PP.Sem (With a) where
     pretty with = PP.keyword "with" <+>
-        (mconcat $ L.intersperse
-            (PP.punctuation ".")
-            (map PP.pretty (with ^. withPath))) <+>
+        PP.pretty (with ^. withPath) <+>
         PP.keyword "as" <+> PP.pretty (with ^. withAs)
 
 --------------------------------------------------------------------------------

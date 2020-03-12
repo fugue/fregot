@@ -345,5 +345,5 @@ renameObjectKey = \case
 renameWith :: Rename With
 renameWith with = With
     <$> pure (with ^. withAnn)
-    <*> pure (with ^. withWith)
+    <*> pure (with ^. withPath)
     <*> renameTerm (with ^. withAs)

@@ -595,25 +595,26 @@ evalLiteral lit next
             ground (lit ^. literalAnn)
         next r
   where
-    localWiths []    mx = mx
-    localWiths withs mx = do
-        -- Since we changed the input, we need to bump up the cache.  This will
-        -- also be the case when we modify `data`.
-        let updateInput input0 [] = do
-                c <- view cache >>= Cache.bump
-                local (cache .~ c) $ local (inputDoc .~ input0) $ mx
-            updateInput input0 (w : ws) = do
-                val    <- evalTerm (w ^. withAs) >>= ground (w ^. withAnn)
-                input1 <- case updateObject (w ^. withPath) val input0 of
-                    Nothing -> raise' (w ^. withAnn) "with error" $
-                        "Could not update input document." <$$>
-                        "Path:" <$$>
-                        PP.ind (PP.pretty (Nested $ w ^. withPath))
-                    Just i  -> return i
-                updateInput input1 ws
+    localWiths (w : ws) mx = localWith w $ localWiths ws mx
+    localWiths []       mx = do
+        c <- view cache >>= Cache.bump
+        local (cache .~ c) mx
 
-        input <- view inputDoc
-        updateInput input withs
+    localWith w mx | InputWithPath path <- w ^. withPath = do
+        input0 <- view inputDoc
+        val    <- evalTerm (w ^. withAs) >>= ground (w ^. withAnn)
+        input1 <- case updateObject path val input0 of
+            Nothing -> raise' (w ^. withAnn) "with error" $
+                "Could not update input document." <$$>
+                "Path:" <$$>
+                PP.ind (PP.pretty (w ^. withPath))
+            Just i  -> return i
+        -- NOTE(jaspervdj): Should we bump the cache here?  I think multiple
+        -- with statements may lead to inconsistencies right now.
+        local (inputDoc .~ input1) mx
+    localWith _w mx =
+        -- TODO(jaspervdj): Updates using data paths.
+        mx
 {-# INLINE evalLiteral #-}
 
 

@@ -13,7 +13,6 @@ import           Control.Applicative       ((<|>))
 import           Control.Lens              (review, view, (%~), (&), (^.))
 import           Control.Monad.Extended    (foldM, unless, when)
 import           Control.Monad.Parachute   (ParachuteT, fatal, tellError)
-import qualified Data.List.Extended        as L
 import           Data.Maybe                (catMaybes, isJust, isNothing,
                                             mapMaybe)
 import           Fregot.Error              (Error)
@@ -333,10 +332,5 @@ prepareWith
     => Sugar.With SourceSpan Name
     -> ParachuteT Error m (With SourceSpan)
 prepareWith with = do
-    path <- case L.stripPrefix ["input"] (with ^. Sugar.withWith) of
-        Just p  -> return p
-        Nothing -> fatal $ Error.mkError "compile" (with ^. Sugar.withAnn)
-            "invalid with"
-            "The path for the with modifier should start with `input`."
     term <- prepareTerm (with ^. Sugar.withAs)
-    return $ With (with ^. Sugar.withAnn) path term
+    return $ With (with ^. Sugar.withAnn) (with ^. Sugar.withPath) term

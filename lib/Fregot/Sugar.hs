@@ -37,7 +37,8 @@ module Fregot.Sugar
     , Object
     , ObjectKey (..)
     , BinOp (..)
-    , With (..), withAnn, withWith, withAs
+    , WithPath (..)
+    , With (..), withAnn, withPath, withAs
 
     , Nested (..)
     , nestedToString
@@ -214,9 +215,16 @@ data BinOp
 
 instance Binary BinOp
 
+data WithPath
+    = InputWithPath [UnqualifiedVar]
+    | DataWithPath  [UnqualifiedVar]
+    deriving (Generic, Show)
+
+instance Binary WithPath
+
 data With a n = With
     { _withAnn  :: !a
-    , _withWith :: ![UnqualifiedVar]
+    , _withPath :: !WithPath
     , _withAs   :: !(Term a n)
     } deriving (Generic, Show)
 
@@ -387,11 +395,16 @@ instance PP.Pretty PP.Sem BinOp where
         BinAndO             -> "&"
         BinOrO              -> "|"
 
+instance PP.Pretty PP.Sem WithPath where
+    pretty = \case
+        InputWithPath p -> PP.keyword "input" <> PP.punctuation "." <> path p
+        DataWithPath  p -> PP.keyword "data"  <> PP.punctuation "." <> path p
+      where
+        path = mconcat . L.intersperse (PP.punctuation ".") . map PP.pretty
+
 instance PP.Pretty PP.Sem n => PP.Pretty PP.Sem (With a n) where
     pretty with = PP.keyword "with" <+>
-        (mconcat $ L.intersperse
-            (PP.punctuation ".")
-            (map PP.pretty (with ^. withWith))) <+>
+        PP.pretty (with ^. withPath) <+>
         PP.keyword "as" <+> PP.pretty (with ^. withAs)
 
 exprAnn :: Lens' (Expr a n) a
