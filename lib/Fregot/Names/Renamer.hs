@@ -186,12 +186,17 @@ resolveRef source var refArgs = do
 
     case var of
 
-        -- For fully qualified paths starting with "data", we **don't** call
-        -- `checkExists pkg name`.  Doing so would break resolving code which
-        -- relies on `with data.<..> as <..>` statements.  It is a bit
-        -- unfortunate though and perhaps there is a better middle ground.
+        -- Fully qualified paths starting with "data" may point to something
+        -- that exists, but that's not always the case; especially if we're
+        -- talking about code that heavily uses `with data.<..> as <..>`.
+        --
+        -- To support both access patterns, we only generate a qualified name
+        -- if the "rname" actually exists.  If not, we fall through which means
+        -- it'll end up as a `BuiltinName` which works well with the typechecker
+        -- that will generate an "unknown" type.
         "data"  | Just (pkg, rname, remainder) <-
-                    resolveData thispkg universe refArgs -> do
+                    resolveData thispkg universe refArgs
+                , rname `elem` universe pkg -> do
             remainder' <- traverse renameRefArg remainder
             pure $ Just (mkQualifiedName pkg rname, remainder')
 
