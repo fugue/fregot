@@ -1,5 +1,7 @@
-{-# LANGUAGE OverloadedLists   #-}
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedLists    #-}
+{-# LANGUAGE OverloadedStrings  #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 module Fregot.Compile.Order.Tests
     ( tests
     ) where
@@ -12,6 +14,13 @@ import           Fregot.Prepare.Dsl
 import qualified Test.Tasty           as Tasty
 import           Test.Tasty.HUnit     ((@?=))
 import qualified Test.Tasty.HUnit     as Tasty
+
+-- These instances are only used in this file.
+deriving instance Eq a => Eq (Literal a)
+deriving instance Eq a => Eq (Statement a)
+deriving instance Eq a => Eq (Term a)
+deriving instance Eq a => Eq (With a)
+deriving instance Eq WithPath
 
 tests :: Tasty.TestTree
 tests = Tasty.testGroup "Fregot.Compile.Order.Tests"
