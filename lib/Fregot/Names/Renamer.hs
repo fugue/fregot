@@ -186,9 +186,12 @@ resolveRef source var refArgs = do
 
     case var of
 
+        -- For fully qualified paths starting with "data", we **don't** call
+        -- `checkExists pkg name`.  Doing so would break resolving code which
+        -- relies on `with data.<..> as <..>` statements.  It is a bit
+        -- unfortunate though and perhaps there is a better middle ground.
         "data"  | Just (pkg, rname, remainder) <-
-                    resolveData thispkg universe refArgs ->
-            checkExists pkg rname $ do
+                    resolveData thispkg universe refArgs -> do
             remainder' <- traverse renameRefArg remainder
             pure $ Just (mkQualifiedName pkg rname, remainder')
 
