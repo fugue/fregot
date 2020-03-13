@@ -603,12 +603,10 @@ evalLiteral lit next
     localWith w mx | InputWithPath path <- w ^. withPath = do
         input0 <- view inputDoc
         val    <- evalTerm (w ^. withAs) >>= ground (w ^. withAnn)
-        input1 <- case updateObject path val input0 of
-            Nothing -> raise' (w ^. withAnn) "with error" $
-                "Could not update input document." <$$>
-                "Path:" <$$>
-                PP.ind (PP.pretty (w ^. withPath))
-            Just i  -> return i
+        input1 <- case patchObject path val input0 of
+            Left err -> raise' (w ^. withAnn) "with error" $
+                "Could not update input document." <$$> err
+            Right v  -> pure v
         -- NOTE(jaspervdj): Should we bump the cache here?  I think multiple
         -- with statements may lead to inconsistencies right now.
         local (inputDoc .~ input1) mx
@@ -662,3 +660,19 @@ instance Unification.MonadUnify InstVar (Mu Environment) EvalM where
     getUnification      = use unification
     putUnification u    = unification .= u
     modifyUnification f = unification %= f
+
+
+-- | Updates a path in a value.  This is mainly used to implement the `with`
+-- modifier.
+patchObject :: [Var] -> Value -> Value -> Either PP.SemDoc Value
+patchObject path0 insertee = patch path0
+  where
+    patch []       _                   = Right insertee
+    patch (v : vs) (Value (ObjectV o)) = fmap (Value . ObjectV) $! HMS.alterF
+        (fmap Just . patch vs . fromMaybe emptyObject)
+        (Value . StringV $ unVar v)
+        o
+    patch (v : _)  val                 = Left $
+        "`with` statements can only be used to patch object values," <$$>
+        "but found a" <+> PP.pretty (describeValue val) <+> "instead at" <$$>
+        "key" <+> PP.pretty v <+> "in path" <+> PP.pretty (Nested path0)
