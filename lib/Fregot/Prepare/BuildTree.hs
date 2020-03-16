@@ -27,25 +27,7 @@ toTree pkgname = L.foldl' Tree.union Tree.empty . map toRuleOrTree
   where
     toRuleOrTree (loc, var, BuildSingleton t) = Tree.singleton
         (review varFromKey var)
-        Rule
-            { _rulePackage = pkgname
-            , _ruleName    = var
-            , _ruleKey     = review qualifiedVarFromKey (pkgname, var)
-            , _ruleAnn     = loc
-            , _ruleKind    = CompleteRule
-            , _ruleInfo    = ()
-            , _ruleDefault = Nothing
-            , _ruleDefs    = pure RuleDefinition
-                { _ruleDefName    = var
-                , _ruleDefImports = mempty
-                , _ruleDefAnn     = loc
-                , _ruleArgs       = Nothing
-                , _ruleIndex      = Nothing
-                , _ruleValue      = Just t
-                , _ruleBodies     = []
-                , _ruleElses      = []
-                }
-            }
+        (termToRule loc pkgname var t)
 
     toRuleOrTree (_, var, BuildTree _ t) =
         Tree.parent [(var, toTree (pkgname <> mkPackageName [unVar var]) t)]

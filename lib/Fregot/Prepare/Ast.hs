@@ -42,11 +42,12 @@ module Fregot.Prepare.Ast
       -- * Constructors and destructors
     , literal
     , unRefT
+    , termToRule
 
     , prettyComprehensionBody
     ) where
 
-import           Control.Lens              ((^.))
+import           Control.Lens              (review, (^.))
 import           Control.Lens.TH           (makeLenses, makePrisms)
 import           Data.Hashable             (Hashable)
 import qualified Data.List                 as L
@@ -262,3 +263,25 @@ unRefT (RefT _ l k) = case unRefT l of
     Nothing       -> Just (l, [k])
     Just (l', ks) -> Just (l', ks ++ [k])
 unRefT _ = Nothing
+
+termToRule
+    :: SourceSpan -> PackageName -> Var -> Term SourceSpan -> Rule () SourceSpan
+termToRule source pkgname var t = Rule
+    { _rulePackage = pkgname
+    , _ruleName    = var
+    , _ruleKey     = review qualifiedVarFromKey (pkgname, var)
+    , _ruleAnn     = source
+    , _ruleKind    = CompleteRule
+    , _ruleInfo    = ()
+    , _ruleDefault = Nothing
+    , _ruleDefs    = pure RuleDefinition
+        { _ruleDefName    = var
+        , _ruleDefImports = mempty
+        , _ruleDefAnn     = source
+        , _ruleArgs       = Nothing
+        , _ruleIndex      = Nothing
+        , _ruleValue      = Just t
+        , _ruleBodies     = []
+        , _ruleElses      = []
+        }
+    }

@@ -44,11 +44,12 @@ import           Data.Foldable             (for_)
 import qualified Data.HashMap.Strict       as HMS
 import qualified Data.HashSet              as HS
 import           Data.Int                  (Int64)
+import qualified Data.List                 as L
 import           Data.Maybe                (catMaybes, fromMaybe)
 import qualified Data.Unification          as Unification
 import qualified Data.Vector.Extended      as V
 import           Fregot.Arity
-import           Fregot.Compile.Package    (CompiledRule)
+import           Fregot.Compile.Package    (CompiledRule, valueToCompiledRule)
 import           Fregot.Eval.Builtins
 import qualified Fregot.Eval.Cache         as Cache
 import           Fregot.Eval.Internal
@@ -63,6 +64,7 @@ import           Fregot.Prepare.Lens
 import           Fregot.PrettyPrint        ((<$$>), (<+>))
 import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources.SourceSpan (SourceSpan)
+import           Fregot.Tree               (Tree)
 import qualified Fregot.Tree               as Tree
 import           Fregot.Types.Rule         (RuleType (..))
 
@@ -603,10 +605,7 @@ evalLiteral lit next
     localWith w mx | InputWithPath path <- w ^. withPath = do
         input0 <- view inputDoc
         val    <- evalTerm (w ^. withAs) >>= ground (w ^. withAnn)
-        input1 <- case patchObject path val input0 of
-            Left err -> raise' (w ^. withAnn) "with error" $
-                "Could not update input document." <$$> err
-            Right v  -> pure v
+        input1 <- patchObject (w ^. withAnn) path val input0
         -- NOTE(jaspervdj): Should we bump the cache here?  I think multiple
         -- with statements may lead to inconsistencies right now.
         local (inputDoc .~ input1) mx
@@ -664,15 +663,37 @@ instance Unification.MonadUnify InstVar (Mu Environment) EvalM where
 
 -- | Updates a path in a value.  This is mainly used to implement the `with`
 -- modifier.
-patchObject :: [Var] -> Value -> Value -> Either PP.SemDoc Value
-patchObject path0 insertee = patch path0
+patchObject :: SourceSpan -> [Var] -> Value -> Value -> EvalM Value
+patchObject source path0 insertee = patch path0
   where
-    patch []       _                   = Right insertee
+    patch []       _                   = pure insertee
     patch (v : vs) (Value (ObjectV o)) = fmap (Value . ObjectV) $! HMS.alterF
         (fmap Just . patch vs . fromMaybe emptyObject)
         (Value . StringV $ unVar v)
         o
-    patch (v : _)  val                 = Left $
+    patch (v : _)  val                 = raise' source "`with` error" $
         "`with` statements can only be used to patch object values," <$$>
         "but found a" <+> PP.pretty (describeValue val) <+> "instead at" <$$>
         "key" <+> PP.pretty v <+> "in path" <+> PP.pretty (Nested path0)
+
+-- | Same as `patchObject` but works for trees instead.  We try to browse down
+-- into the tree as far as we can, and then convert it to an object if we have
+-- to.
+patchTree
+    :: SourceSpan -> [Var] -> Value -> Tree CompiledRule
+    -> EvalM (Tree CompiledRule)
+patchTree source path0 insertee tree0 = case match of
+    Nothing -> Tree.alterF
+        (\_ ->
+            let (pkgname, var) = fromMaybe
+                    (key0 ^. packageNameFromKey, "anonymous")
+                    (key0 ^? qualifiedVarFromKey) in
+            pure $ Just $ valueToCompiledRule source pkgname var insertee)
+        key0 tree0
+    Just
+  where
+    -- Keys by ascending length, including the empty one.  Then find the
+    -- shortest one that has a rule.
+    key0  = Key $! V.fromList path0
+    keys  = [Key vs | vs <- V.inits $ unKey key0]
+    match = L.find (`Tree.member` tree0) keys
