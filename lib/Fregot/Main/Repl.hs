@@ -63,9 +63,7 @@ main _ opts = do
     FileWatch.withHandle (FileWatch.Config (opts ^. watch)) $ \fileWatch ->
         Repl.withHandle replConfig sources fileWatch itpr $ \repl -> do
         (lerrs, mbResult) <- runParachuteT $ do
-            forM_ (opts ^. input) $ \path -> do
-                Interpreter.setInputFile itpr path
-                liftIO $ FileWatch.watch fileWatch path
+            forM_ (opts ^. input) $ liftIO . Repl.setInputFile repl
             forM_ regoPaths $ \path -> do
                 liftIO $ FileWatch.watch fileWatch path
                 Interpreter.loadFileByExtension itpr defaultParserOptions path
