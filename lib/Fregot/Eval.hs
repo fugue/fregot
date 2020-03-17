@@ -609,6 +609,13 @@ evalLiteral lit next
         -- NOTE(jaspervdj): Should we bump the cache here?  I think multiple
         -- with statements may lead to inconsistencies right now.
         local (inputDoc .~ input1) mx
+    localWith w mx | DataWithPath path <- w ^. withPath = do
+        tree0 <- view rules
+        val   <- evalTerm (w ^. withAs) >>= ground (w ^. withAnn)
+        tree1 <- patchTree (w ^. withAnn) path val tree0
+        -- NOTE(jaspervdj): Should we bump the cache here?  I think multiple
+        -- with statements may lead to inconsistencies right now.
+        local (rules .~ tree1) mx
     localWith _w mx =
         -- TODO(jaspervdj): Updates using data paths.
         mx
@@ -683,14 +690,23 @@ patchTree
     :: SourceSpan -> [Var] -> Value -> Tree CompiledRule
     -> EvalM (Tree CompiledRule)
 patchTree source path0 insertee tree0 = case match of
-    Nothing -> Tree.alterF
+    -- This matched a rule.  Reify the tree as value.  Patch the value.
+    Just key@(Key kv) | Just d <- Tree.descendant key tree0 -> do
+        let (pkgname, var) = fromMaybe
+                (key ^. packageNameFromKey, "anonymous")
+                (key ^? qualifiedVarFromKey)
+        value  <- fromMaybe emptyObject <$> groundTree source d
+        value' <- patchObject source (drop (V.length kv) path0) insertee value
+        pure $ Tree.insert key
+            (valueToCompiledRule source pkgname var value') tree0
+    -- No rule existed in the tree.  Insert a new one.
+    _ -> Tree.alterF
         (\_ ->
             let (pkgname, var) = fromMaybe
                     (key0 ^. packageNameFromKey, "anonymous")
                     (key0 ^? qualifiedVarFromKey) in
             pure $ Just $ valueToCompiledRule source pkgname var insertee)
         key0 tree0
-    Just
   where
     -- Keys by ascending length, including the empty one.  Then find the
     -- shortest one that has a rule.
