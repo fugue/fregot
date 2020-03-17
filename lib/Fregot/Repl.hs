@@ -12,6 +12,8 @@ module Fregot.Repl
 
     , MetaCommand (..), metaName, metaDescription, metaRun
     , metaCommands
+
+    , setInputFile
     ) where
 
 import           Control.Concurrent.MVar           (MVar)
@@ -428,14 +430,8 @@ metaCommands =
 
     , MetaCommand ":input" "set the input document" $ \h args -> do
         case args of
-            _ | [path] <- T.unpack <$> args -> do
-                mbOld <- IORef.readIORef (h ^. inputPath)
-                for_ mbOld $ \old -> FileWatch.unwatch (h ^. fileWatch) old
-                void $ runInterpreter h (`Interpreter.setInputFile` path)
-                IORef.writeIORef (h ^. inputPath) (Just path)
-                FileWatch.watch (h ^. fileWatch) path
-            _ -> IO.hPutStrLn IO.stderr $
-                ":input takes one path argument"
+            _ | [path] <- T.unpack <$> args -> setInputFile h path
+            _ -> IO.hPutStrLn IO.stderr ":input takes one path argument"
         return True
 
     , MetaCommand ":open" "open a different package, e.g. `:open foo`" $
@@ -601,6 +597,15 @@ reload h paths = fmap isJust $ runInterpreter h $ \i -> do
         [path] -> IO.hPutStrLn IO.stderr $ "Reloaded " ++ path
         _ : _  -> IO.hPutStrLn IO.stderr $
             "Reloaded " ++ show (length regoPaths) ++ " files"
+
+-- | Wraps `Interpreter.setInputFile` and takes care of file watching.
+setInputFile :: Handle -> FilePath -> IO ()
+setInputFile h path = do
+    mbOld <- IORef.readIORef (h ^. inputPath)
+    for_ mbOld $ \old -> FileWatch.unwatch (h ^. fileWatch) old
+    void $ runInterpreter h (`Interpreter.setInputFile` path)
+    IORef.writeIORef (h ^. inputPath) (Just path)
+    FileWatch.watch (h ^. fileWatch) path
 
 completeBuiltins :: Handle -> Hl.CompletionFunc IO
 completeBuiltins h = Hl.completeDictionary completeWhitespace $ do
