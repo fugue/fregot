@@ -1,5 +1,13 @@
 # CHANGELOG
 
+ -  0.9.0 (2020-03-19)
+     * Support `with data` statements in addition to `with input` statements.
+     * Fix issue when using REPL reloading and the `--input` argument.
+     * Fix a crashing when indexing the `null` value with a key.
+     * Fix scoping of `with` statements.  `with` statements used to (wrongly)
+       affect the input for the entirety of the query, whereas they should
+       really only affect the current statement.
+
  -  0.8.0 (2020-02-27)
      *  Small performance tweaks.
      *  Add `copyHandle` to interpreter module.
