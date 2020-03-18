@@ -602,23 +602,20 @@ evalLiteral lit next
         c <- view cache >>= Cache.bump
         local (cache .~ c) mx
 
-    localWith w mx | InputWithPath path <- w ^. withPath = do
-        input0 <- view inputDoc
-        val    <- evalTerm (w ^. withAs) >>= ground (w ^. withAnn)
-        input1 <- patchObject (w ^. withAnn) path val input0
+    localWith w mx = do
+        val      <- evalTerm (w ^. withAs) >>= ground (w ^. withAnn)
+        modifier <- case w ^. withPath of
+            InputWithPath path -> do
+                input0 <- view inputDoc
+                input1 <- patchObject (w ^. withAnn) path val input0
+                pure $ local (inputDoc .~ input1)
+            DataWithPath path -> do
+                tree0 <- view rules
+                tree1 <- patchTree (w ^. withAnn) path val tree0
+                pure $ local (rules .~ tree1)
         -- NOTE(jaspervdj): Should we bump the cache here?  I think multiple
         -- with statements may lead to inconsistencies right now.
-        local (inputDoc .~ input1) mx
-    localWith w mx | DataWithPath path <- w ^. withPath = do
-        tree0 <- view rules
-        val   <- evalTerm (w ^. withAs) >>= ground (w ^. withAnn)
-        tree1 <- patchTree (w ^. withAnn) path val tree0
-        -- NOTE(jaspervdj): Should we bump the cache here?  I think multiple
-        -- with statements may lead to inconsistencies right now.
-        local (rules .~ tree1) mx
-    localWith _w mx =
-        -- TODO(jaspervdj): Updates using data paths.
-        mx
+        modifier mx
 {-# INLINE evalLiteral #-}
 
 
@@ -684,27 +681,24 @@ patchObject source path0 insertee = patch path0
         "key" <+> PP.pretty v <+> "in path" <+> PP.pretty (Nested path0)
 
 -- | Same as `patchObject` but works for trees instead.  We try to browse down
--- into the tree as far as we can, and then convert it to an object if we have
--- to.
+-- into the tree as far as we can, and then convert it to an object as soon as
+-- we hit a rule.
 patchTree
     :: SourceSpan -> [Var] -> Value -> Tree CompiledRule
     -> EvalM (Tree CompiledRule)
 patchTree source path0 insertee tree0 = case match of
     -- This matched a rule.  Reify the tree as value.  Patch the value.
     Just key@(Key kv) | Just d <- Tree.descendant key tree0 -> do
-        let (pkgname, var) = fromMaybe
-                (key ^. packageNameFromKey, "anonymous")
-                (key ^? qualifiedVarFromKey)
+        let (pkgname, var) = toQualifiedVar key
         value  <- fromMaybe emptyObject <$> groundTree source d
         value' <- patchObject source (drop (V.length kv) path0) insertee value
         pure $ Tree.insert key
             (valueToCompiledRule source pkgname var value') tree0
+
     -- No rule existed in the tree.  Insert a new one.
     _ -> Tree.alterF
         (\_ ->
-            let (pkgname, var) = fromMaybe
-                    (key0 ^. packageNameFromKey, "anonymous")
-                    (key0 ^? qualifiedVarFromKey) in
+            let (pkgname, var) = toQualifiedVar key0 in
             pure $ Just $ valueToCompiledRule source pkgname var insertee)
         key0 tree0
   where
@@ -713,3 +707,9 @@ patchTree source path0 insertee tree0 = case match of
     key0  = Key $! V.fromList path0
     keys  = [Key vs | vs <- V.inits $ unKey key0]
     match = L.find (`Tree.member` tree0) keys
+
+    -- The anonymous case is unlikely to happen and should only manifest itself
+    -- in error messages since the node is still inserted into the tree at the
+    -- right location.
+    toQualifiedVar k = fromMaybe
+        (k ^. packageNameFromKey, "anonymous") (k ^? qualifiedVarFromKey)
