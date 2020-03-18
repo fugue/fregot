@@ -11,6 +11,8 @@ module Fregot.Compile.Package
     , compileTree
     , compileQuery
     , compileTerm
+
+    , valueToCompiledRule
     ) where
 
 import           Control.Lens                 (at, iforM_, review, traverseOf,
@@ -31,6 +33,7 @@ import           Fregot.Compile.Order
 import           Fregot.Error                 (Error)
 import qualified Fregot.Error                 as Error
 import           Fregot.Eval.Builtins         (Builtins)
+import           Fregot.Eval.Value            (Value)
 import           Fregot.Names
 import           Fregot.Prepare.Ast
 import qualified Fregot.Prepare.ConstantFold  as ConstantFold
@@ -42,7 +45,7 @@ import           Fregot.Sources.SourceSpan    (SourceSpan)
 import qualified Fregot.Tree                  as Tree
 import qualified Fregot.Types.Infer           as Infer
 import           Fregot.Types.Rule            (RuleType (..))
-import           Fregot.Types.Value           (TypeContext)
+import           Fregot.Types.Value           (TypeContext, inferValue)
 import           Prelude                      hiding (head, lookup)
 
 type CompiledRule = Rule RuleType SourceSpan
@@ -193,3 +196,8 @@ recursionError cycl = Error.mkMultiError
         return $ (,) (r ^. ruleAnn) $
             "These rules are mutually recursive:" <$$>
             PP.ind (PP.vcat (map (PP.code . PP.pretty . view ruleName) cycl))
+
+valueToCompiledRule :: SourceSpan -> PackageName -> Var -> Value -> CompiledRule
+valueToCompiledRule source pkgname var val =
+    termToRule source pkgname var (ValueT source val) &
+    ruleInfo .~ CompleteRuleType (inferValue val)

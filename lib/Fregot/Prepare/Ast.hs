@@ -34,6 +34,7 @@ module Fregot.Prepare.Ast
     , Function (..), _OperatorFunction, _NamedFunction
     , BinOp (..)
 
+    , Sugar.WithPath (..)
     , With (..), withAnn, withPath, withAs
 
     , Sugar.Scalar (..)
@@ -41,11 +42,12 @@ module Fregot.Prepare.Ast
       -- * Constructors and destructors
     , literal
     , unRefT
+    , termToRule
 
     , prettyComprehensionBody
     ) where
 
-import           Control.Lens              ((^.))
+import           Control.Lens              (review, (^.))
 import           Control.Lens.TH           (makeLenses, makePrisms)
 import           Data.Hashable             (Hashable)
 import qualified Data.List                 as L
@@ -98,20 +100,20 @@ data RuleElse a = RuleElse
     { _ruleElseAnn   :: !a
     , _ruleElseValue :: !(Maybe (Term a))
     , _ruleElseBody  :: !(RuleBody a)
-    } deriving (Eq, Functor, Show)
+    } deriving (Functor, Show)
 
 data Literal a = Literal
     { _literalAnn       :: !a
     , _literalNegation  :: !Bool
     , _literalStatement :: !(Statement a)
     , _literalWith      :: ![With a]
-    } deriving (Eq, Functor, Show)
+    } deriving (Functor, Show)
 
 data Statement a
     = UnifyS  a (Term a) (Term a)
     | AssignS a UnqualifiedVar (Term a)
     | TermS     (Term a)
-    deriving (Eq, Functor, Show)
+    deriving (Functor, Show)
 
 data Term a
     = RefT        a (Term a) (Term a)
@@ -125,7 +127,7 @@ data Term a
     | ObjectCompT a (Term a) (Term a) (RuleBody a)
     | ValueT      a Value
     | ErrorT      a
-    deriving (Eq, Functor, Show)
+    deriving (Functor, Show)
 
 data Function
     = NamedFunction Name
@@ -156,9 +158,9 @@ instance Hashable BinOp
 
 data With a = With
     { _withAnn  :: !a
-    , _withPath :: [UnqualifiedVar]
+    , _withPath :: Sugar.WithPath
     , _withAs   :: !(Term a)
-    } deriving (Eq, Functor, Show)
+    } deriving (Functor, Show)
 
 $(makePrisms ''RuleKind)
 $(makePrisms ''Function)
@@ -247,9 +249,7 @@ instance PP.Pretty PP.Sem BinOp where
 
 instance PP.Pretty PP.Sem (With a) where
     pretty with = PP.keyword "with" <+>
-        (mconcat $ L.intersperse
-            (PP.punctuation ".")
-            (map PP.pretty (with ^. withPath))) <+>
+        PP.pretty (with ^. withPath) <+>
         PP.keyword "as" <+> PP.pretty (with ^. withAs)
 
 --------------------------------------------------------------------------------
@@ -263,3 +263,25 @@ unRefT (RefT _ l k) = case unRefT l of
     Nothing       -> Just (l, [k])
     Just (l', ks) -> Just (l', ks ++ [k])
 unRefT _ = Nothing
+
+termToRule
+    :: SourceSpan -> PackageName -> Var -> Term SourceSpan -> Rule () SourceSpan
+termToRule source pkgname var t = Rule
+    { _rulePackage = pkgname
+    , _ruleName    = var
+    , _ruleKey     = review qualifiedVarFromKey (pkgname, var)
+    , _ruleAnn     = source
+    , _ruleKind    = CompleteRule
+    , _ruleInfo    = ()
+    , _ruleDefault = Nothing
+    , _ruleDefs    = pure RuleDefinition
+        { _ruleDefName    = var
+        , _ruleDefImports = mempty
+        , _ruleDefAnn     = source
+        , _ruleArgs       = Nothing
+        , _ruleIndex      = Nothing
+        , _ruleValue      = Just t
+        , _ruleBodies     = []
+        , _ruleElses      = []
+        }
+    }

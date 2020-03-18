@@ -323,7 +323,16 @@ objectKey = withSourceSpan $
 parseWith :: FregotParser (With SourceSpan Var)
 parseWith = withSourceSpan $ do
     Tok.symbol Tok.TWith
-    _withWith <- Parsec.sepBy1 var (Tok.symbol Tok.TPeriod)
+    pos       <- Parsec.getPosition
+    path      <- Parsec.sepBy1 var (Tok.symbol Tok.TPeriod)
+    _withPath <- case path of
+        "input" : p -> pure $! InputWithPath p
+        "data"  : p -> pure $! DataWithPath  p
+        k       : _ -> Parsec.unexpectedAt pos $
+            show (PP.pretty' k) ++
+            " (`with` statements should start with `data.` or `input.`)"
+        -- Impossible because of the `Parsec.sepBy1` above.
+        [] -> error "Internal error: empty with path"
     Tok.symbol Tok.TAs
     _withAs <- term
     return $ \_withAnn -> With {..}

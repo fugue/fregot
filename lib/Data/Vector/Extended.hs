@@ -5,9 +5,11 @@ module Data.Vector.Extended
     , uncons
     , catMaybes
     , lookup
+    , inits
     ) where
 
 import           Data.Vector
+import qualified Data.Vector           as V
 import           Data.Vector.Instances ()
 import qualified Data.Vector.Mutable   as VM
 import           Prelude               hiding (head, length, lookup, null, tail)
@@ -26,3 +28,6 @@ catMaybes vec0 = create $ do
 
 lookup :: Eq k => k -> Vector (k, v) -> Maybe v
 lookup k = fmap snd . find ((== k) . fst)
+
+inits :: Vector k -> [Vector k]
+inits vec = [V.take n vec | n <- [0 .. length vec - 1]]

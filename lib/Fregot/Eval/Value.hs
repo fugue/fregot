@@ -17,7 +17,6 @@ module Fregot.Eval.Value
     , describeValue
     , describeValueF
     , emptyObject
-    , updateObject
     , trueish
     , true
     ) where
@@ -33,8 +32,6 @@ import           Fregot.Eval.Number   (Number)
 import qualified Fregot.Eval.Number   as Number
 import           Fregot.Names         (InstVar (..))
 import qualified Fregot.PrettyPrint   as PP
-import           Fregot.Sugar         (Var)
-import qualified Fregot.Sugar         as Sugar
 import           GHC.Generics         (Generic)
 import qualified Text.Printf.Extended as Pf
 
@@ -83,24 +80,6 @@ describeValueF = \case
 
 emptyObject :: Value
 emptyObject = Value (ObjectV HMS.empty)
-
--- | Updates a path in the object.  This is mainly used to implement the `with`
--- modifier.
-updateObject :: [Var] -> Value -> Value -> Maybe Value
-updateObject []       insertee _                   = Just insertee
-updateObject (v : vs) insertee (Value (ObjectV o)) =
-    case HMS.lookup k o of
-        Nothing -> do
-            nest <- updateObject vs insertee emptyObject
-            return $ Value $ ObjectV $ HMS.insert k nest o
-        Just val -> do
-            nest <- updateObject vs insertee val
-            return $ Value $ ObjectV $ HMS.insert k nest o
-  where
-    k = Value (StringV (Sugar.unVar v))
-
--- TODO(jaspervdj): Better error
-updateObject _ _ _ = Nothing
 
 instance Pf.PrintfArg Value where
     -- Strings are always rendered as strings.

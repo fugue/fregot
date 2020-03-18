@@ -189,8 +189,8 @@ resolveRef source var refArgs = do
         "data"  | Just (pkg, rname, remainder) <-
                     resolveData thispkg universe refArgs ->
             checkExists pkg rname $ do
-            remainder' <- traverse renameRefArg remainder
-            pure $ Just (mkQualifiedName pkg rname, remainder')
+                remainder' <- traverse renameRefArg remainder
+                pure $ Just (mkQualifiedName pkg rname, remainder')
 
         _       | Just (_, ImportData pkg) <- HMS.lookup var imports
                 , (ra1 : ras)              <- refArgs
@@ -342,5 +342,5 @@ renameObjectKey = \case
 renameWith :: Rename With
 renameWith with = With
     <$> pure (with ^. withAnn)
-    <*> pure (with ^. withWith)
+    <*> pure (with ^. withPath)
     <*> renameTerm (with ^. withAs)

@@ -44,11 +44,12 @@ import           Data.Foldable             (for_)
 import qualified Data.HashMap.Strict       as HMS
 import qualified Data.HashSet              as HS
 import           Data.Int                  (Int64)
+import qualified Data.List                 as L
 import           Data.Maybe                (catMaybes, fromMaybe)
 import qualified Data.Unification          as Unification
 import qualified Data.Vector.Extended      as V
 import           Fregot.Arity
-import           Fregot.Compile.Package    (CompiledRule)
+import           Fregot.Compile.Package    (CompiledRule, valueToCompiledRule)
 import           Fregot.Eval.Builtins
 import qualified Fregot.Eval.Cache         as Cache
 import           Fregot.Eval.Internal
@@ -63,6 +64,7 @@ import           Fregot.Prepare.Lens
 import           Fregot.PrettyPrint        ((<$$>), (<+>))
 import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources.SourceSpan (SourceSpan)
+import           Fregot.Tree               (Tree)
 import qualified Fregot.Tree               as Tree
 import           Fregot.Types.Rule         (RuleType (..))
 
@@ -595,25 +597,25 @@ evalLiteral lit next
             ground (lit ^. literalAnn)
         next r
   where
-    localWiths []    mx = mx
-    localWiths withs mx = do
-        -- Since we changed the input, we need to bump up the cache.  This will
-        -- also be the case when we modify `data`.
-        let updateInput input0 [] = do
-                c <- view cache >>= Cache.bump
-                local (cache .~ c) $ local (inputDoc .~ input0) $ mx
-            updateInput input0 (w : ws) = do
-                val    <- evalTerm (w ^. withAs) >>= ground (w ^. withAnn)
-                input1 <- case updateObject (w ^. withPath) val input0 of
-                    Nothing -> raise' (w ^. withAnn) "with error" $
-                        "Could not update input document." <$$>
-                        "Path:" <$$>
-                        PP.ind (PP.pretty (Nested $ w ^. withPath))
-                    Just i  -> return i
-                updateInput input1 ws
+    localWiths (w : ws) mx = localWith w $ localWiths ws mx
+    localWiths []       mx = do
+        c <- view cache >>= Cache.bump
+        local (cache .~ c) mx
 
-        input <- view inputDoc
-        updateInput input withs
+    localWith w mx = do
+        val      <- evalTerm (w ^. withAs) >>= ground (w ^. withAnn)
+        modifier <- case w ^. withPath of
+            InputWithPath path -> do
+                input0 <- view inputDoc
+                input1 <- patchObject (w ^. withAnn) path val input0
+                pure $ local (inputDoc .~ input1)
+            DataWithPath path -> do
+                tree0 <- view rules
+                tree1 <- patchTree (w ^. withAnn) path val tree0
+                pure $ local (rules .~ tree1)
+        -- NOTE(jaspervdj): Should we bump the cache here?  I think multiple
+        -- with statements may lead to inconsistencies right now.
+        modifier mx
 {-# INLINE evalLiteral #-}
 
 
@@ -661,3 +663,53 @@ instance Unification.MonadUnify InstVar (Mu Environment) EvalM where
     getUnification      = use unification
     putUnification u    = unification .= u
     modifyUnification f = unification %= f
+
+
+-- | Updates a path in a value.  This is mainly used to implement the `with`
+-- modifier.
+patchObject :: SourceSpan -> [Var] -> Value -> Value -> EvalM Value
+patchObject source path0 insertee = patch path0
+  where
+    patch []       _                   = pure insertee
+    patch (v : vs) (Value (ObjectV o)) = fmap (Value . ObjectV) $! HMS.alterF
+        (fmap Just . patch vs . fromMaybe emptyObject)
+        (Value . StringV $ unVar v)
+        o
+    patch (v : _)  val                 = raise' source "`with` error" $
+        "`with` statements can only be used to patch object values," <$$>
+        "but found a" <+> PP.pretty (describeValue val) <+> "instead at" <$$>
+        "key" <+> PP.pretty v <+> "in path" <+> PP.pretty (Nested path0)
+
+-- | Same as `patchObject` but works for trees instead.  We try to browse down
+-- into the tree as far as we can, and then convert it to an object as soon as
+-- we hit a rule.
+patchTree
+    :: SourceSpan -> [Var] -> Value -> Tree CompiledRule
+    -> EvalM (Tree CompiledRule)
+patchTree source path0 insertee tree0 = case match of
+    -- This matched a rule.  Reify the tree as value.  Patch the value.
+    Just key@(Key kv) | Just d <- Tree.descendant key tree0 -> do
+        let (pkgname, var) = toQualifiedVar key
+        value  <- fromMaybe emptyObject <$> groundTree source d
+        value' <- patchObject source (drop (V.length kv) path0) insertee value
+        pure $ Tree.insert key
+            (valueToCompiledRule source pkgname var value') tree0
+
+    -- No rule existed in the tree.  Insert a new one.
+    _ -> Tree.alterF
+        (\_ ->
+            let (pkgname, var) = toQualifiedVar key0 in
+            pure $ Just $ valueToCompiledRule source pkgname var insertee)
+        key0 tree0
+  where
+    -- Keys by ascending length, including the empty one.  Then find the
+    -- shortest one that has a rule.
+    key0  = Key $! V.fromList path0
+    keys  = [Key vs | vs <- V.inits $ unKey key0]
+    match = L.find (`Tree.member` tree0) keys
+
+    -- The anonymous case is unlikely to happen and should only manifest itself
+    -- in error messages since the node is still inserted into the tree at the
+    -- right location.
+    toQualifiedVar k = fromMaybe
+        (k ^. packageNameFromKey, "anonymous") (k ^? qualifiedVarFromKey)
