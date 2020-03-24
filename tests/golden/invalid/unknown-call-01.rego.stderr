@@ -1,0 +1,8 @@
+fregot ([34mrenamer error[0m):
+  "unknown-call-01.rego" (line 4, column 3):
+  unknown function:
+
+    4|   bar.unknown_call(1)
+         [31m^^^^^^^^^^^^^^^^^^^[0m
+
+  Package bar is not imported.
