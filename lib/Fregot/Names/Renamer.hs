@@ -294,8 +294,7 @@ renameTerm = \case
                         "Package" <+> PP.pretty imp <+> "is not imported."
                     pure $ ErrorT source
 
-            _ ->
-                fatal $ Error.mkError "renamer" source "unknown call" $
+            _ -> fatal $ Error.mkError "renamer" source "unknown call" $
                 -- NOTE(jaspervdj): We can use ErrorT here.
                 "Unknown call to" <+> PP.pretty (Nested ns)
 
