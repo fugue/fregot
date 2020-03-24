@@ -255,6 +255,7 @@ renameTerm = \case
         imports  <- view reImports
         rules    <- view rePackageRules
         thispkg  <- view rePackage
+        universe <- view reUniverse
         args'    <- traverse renameExpr args
         case first (map unVar) <$> unsnoc ns of
             Nothing -> do
@@ -285,8 +286,13 @@ renameTerm = \case
 
             -- Calling a rule in another package.
             Just ([imp], n)
-                | Just (_, ImportData pkg) <- HMS.lookup (mkVar imp) imports ->
+                | Just (_, ImportData pkg) <- HMS.lookup (mkVar imp) imports
+                , n `elem` universe pkg ->
                     pure $ CallT source [mkQualifiedName pkg n] args'
+                | Nothing <- HMS.lookup (mkVar imp) imports -> do
+                    tellRenameError source "unknown function" $
+                        "Package" <+> PP.pretty imp <+> "is not imported."
+                    pure $ ErrorT source
 
             _ -> fatal $ Error.mkError "renamer" source "unknown call" $
                 -- NOTE(jaspervdj): We can use ErrorT here.
