@@ -20,7 +20,7 @@ module Fregot.Types.Internal
 
       -- Utilities
     , singleton
-    , empty
+    , void
     , any
     , unknown
     , boolean
@@ -193,7 +193,7 @@ union (Union l) (Union r) = Union $ HS.fromList $ foldl' insert (HS.toList r) l
         | otherwise                       = work (e : acc) es elm
 
 unions :: [Type] -> Type
-unions = foldl' union empty
+unions = foldl' union void
 
 (∪) :: Type -> Type -> Type
 (∪) = union
@@ -239,7 +239,7 @@ elemIntersection _ _                   = Nothing
 
 intersectionMaybe :: Type -> Type -> Maybe Type
 intersectionMaybe l r =
-    let lr = intersection l r in if lr == empty then Nothing else Just lr
+    let lr = intersection l r in if lr == void then Nothing else Just lr
 
 intersection :: Type -> Type -> Type
 intersection Universe  r         = r
@@ -271,8 +271,8 @@ singleton = prism'
 scalarType :: Ast.Scalar -> Type
 scalarType = review singleton . scalarElem
 
-empty :: Type
-empty = Union HS.empty
+void :: Type
+void = Union HS.empty
 
 any :: Type
 any = Universe

@@ -1,0 +1,16 @@
+fregot ([34mtypecheck error[0m):
+  "invalid_arity_assign_out.rego" (line 4, column 7):
+  Void type:
+
+    4|   x = array.concat([1], [2], out)
+             [31m^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+
+  This expression does not have a result, so it should not be assigned or used.
+
+  "invalid_arity_assign_out.rego" (line 4, column 3):
+  Void type:
+
+    4|   x = array.concat([1], [2], out)
+         [31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+
+  However, it used here.
