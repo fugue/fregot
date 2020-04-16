@@ -394,14 +394,14 @@ inferTerm (NameT source (QualifiedName key)) = do
 inferTerm (ArrayT source items) = do
     tys <- traverse (inferNonVoidTerm source) items
     pure $ maybe
-        (Types.arrayOf Types.any, NonEmpty.singleton source)
+        (Types.arrayOf Types.unknown, NonEmpty.singleton source)
         (first Types.arrayOf . mergeSourceTypes)
         (NonEmpty.fromList tys)
 
 inferTerm (SetT source items) = do
     tys <- traverse (inferNonVoidTerm source) items
     pure $ maybe
-        (Types.setOf Types.any, NonEmpty.singleton source)
+        (Types.setOf Types.unknown, NonEmpty.singleton source)
         (first Types.setOf . mergeSourceTypes)
         (NonEmpty.fromList tys)
 
