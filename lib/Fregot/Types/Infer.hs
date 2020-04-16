@@ -82,6 +82,7 @@ data TypeError
     | CannotRef SourceSpan SourceType
     | CannotCall SourceSpan Function
     | BuiltinTypeError SourceSpan PP.SemDoc
+    | VoidType SourceSpan SourceSpan
     | InternalError PP.SemDoc
 
 data InferEnv = InferEnv
@@ -146,6 +147,13 @@ fromTypeError = \case
 
     BuiltinTypeError source doc -> Error.mkError sub source
         "Builtin type error" doc
+
+    VoidType source use -> Error.mkMultiError sub "Void type" $
+        [ (,) source $
+            "This expression does not have a result, so it should not" <+>
+            "be assigned or used."
+        , (,) use "However, it used here."
+        ]
 
     InternalError msg -> Error.mkErrorNoMeta sub msg
   where
@@ -319,10 +327,19 @@ inferStatement
     :: Statement SourceSpan -> InferM ()
 inferStatement = \case
     TermS t -> () <$ inferTerm t
-    AssignS _source v t -> do
-        tty <- inferTerm t
+    AssignS source v t -> do
+        tty <- inferNonVoidTerm source t
         Unify.bindTerm v tty
     UnifyS source l r -> unifyTermTerm source l r
+
+inferNonVoidTerm :: SourceSpan -> Term SourceSpan -> InferM SourceType
+inferNonVoidTerm use term = do
+    tty <- inferTerm term
+    case tty of
+        (ty, tsource) | ty == Types.void -> do
+            tellError $ VoidType (NonEmpty.head tsource) use
+            pure (Types.unknown, tsource)
+        _ -> pure tty
 
 inferTerm
     :: Term SourceSpan -> InferM SourceType
@@ -375,22 +392,22 @@ inferTerm (NameT source (QualifiedName key)) = do
             pure (Types.object (Types.Obj stat Nothing), NonEmpty.singleton source)
 
 inferTerm (ArrayT source items) = do
-    tys <- traverse inferTerm items
+    tys <- traverse (inferNonVoidTerm source) items
     pure $ maybe
-        (Types.arrayOf Types.empty, NonEmpty.singleton source)
+        (Types.arrayOf Types.unknown, NonEmpty.singleton source)
         (first Types.arrayOf . mergeSourceTypes)
         (NonEmpty.fromList tys)
 
 inferTerm (SetT source items) = do
-    tys <- traverse inferTerm items
+    tys <- traverse (inferNonVoidTerm source) items
     pure $ maybe
-        (Types.setOf Types.empty, NonEmpty.singleton source)
+        (Types.setOf Types.unknown, NonEmpty.singleton source)
         (first Types.setOf . mergeSourceTypes)
         (NonEmpty.fromList tys)
 
 inferTerm (ObjectT source obj) = do
     scalarsOrDynamics <- for obj $ \(keyTerm, valueTerm) -> do
-        valueType <- inferTerm valueTerm
+        valueType <- inferNonVoidTerm source valueTerm
         case keyTerm ^? termToScalar . _2 of
             Just scalar -> return (Left (scalar, valueType))
             _           -> Right . (, valueType) <$> inferTerm keyTerm
@@ -518,20 +535,20 @@ inferTerm (ErrorT source) =
 
 unifyTermTerm
     :: SourceSpan -> Term SourceSpan -> Term SourceSpan -> InferM ()
-unifyTermTerm _ (NameT _ WildcardName)  r                       =
-    void (inferTerm r)  -- This might bind variables!
-unifyTermTerm _ l                       (NameT _ WildcardName)  =
-    void (inferTerm l)
+unifyTermTerm source (NameT _ WildcardName)  r                       =
+    void (inferNonVoidTerm source r)  -- This might bind variables!
+unifyTermTerm source l                       (NameT _ WildcardName)  =
+    void (inferNonVoidTerm source l)
 unifyTermTerm _ (NameT _ (LocalName α)) (NameT _ (LocalName β)) =
     Unify.bindVar α β
 
 unifyTermTerm source lhs rhs = catching
     (\errs -> listToMaybe [() | UnboundVars _ <- errs])
     (do
-        rhsty <- inferTerm rhs
+        rhsty <- inferNonVoidTerm source rhs
         unifyTermType source lhs rhsty)
     (\_ -> do
-        lhsty <- inferTerm lhs
+        lhsty <- inferNonVoidTerm source lhs
         unifyTermType source rhs lhsty)
 
 
@@ -571,9 +588,9 @@ unifyTypeType (τ, l) (σ, r)
         unifyTypeType (τ', l) (σ', r)
 
 unifyTypeType (τ, l) (σ, r)
-    | τ == σ                       = return ()
-    | ρ <- τ ∩ σ, ρ /= Types.empty = return ()
-    | otherwise                    =
+    | τ == σ                      = return ()
+    | ρ <- τ ∩ σ, ρ /= Types.void = return ()
+    | otherwise                   =
         tellError $ NoUnify Nothing (τ, l) (σ, r)
 
 inferBuiltin
@@ -639,10 +656,10 @@ inferCall source name arity args check =
     case checkArity arity args of
         ArityBad got         -> fatal $ ArityMismatch source name arity got
         ArityOk inArgs mbOut -> do
-            inferredArgs <- mapM inferTerm inArgs
+            inferredArgs <- mapM (inferNonVoidTerm source) inArgs
             outTy        <- check inferredArgs
             case mbOut of
                 Nothing -> return (outTy, NonEmpty.singleton source)
                 Just o  -> do
                     unifyTermType source o (outTy, NonEmpty.singleton source)
-                    return (Types.boolean, NonEmpty.singleton source)
+                    return (Types.void, NonEmpty.singleton source)
