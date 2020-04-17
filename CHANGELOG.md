@@ -1,12 +1,34 @@
 # CHANGELOG
 
+ -  0.9.1 (2020-04-17)
+     *  Better error for foo.bar() if foo is not imported
+     *  Disallow :reload while debugging
+     *  Type error when using satured call result
+
+        You can use functions that take arguments, such as `array.concat` in two
+        ways:
+
+        1.  `array.concat([1], [2], out)`
+        2.  `out = array.concat([1], [2])` (alternatively using `:=`)
+
+        This makes you wonder what the _return type_ of
+        `array.concat([1], [2], out)` is.  We used to have a boolean here, that
+        returned whether or not `out` unified with the result.  However, that
+        allows us to write code as:
+
+            x = array.concat([1], [2], out)
+
+        Which is almost always an arity mistake on the programmer's side.  This
+        release changes the return type of saturated calls to the _void_ type,
+        so it can't be assigned or used.
+
  -  0.9.0 (2020-03-19)
-     * Support `with data` statements in addition to `with input` statements.
-     * Fix issue when using REPL reloading and the `--input` argument.
-     * Fix a crashing when indexing the `null` value with a key.
-     * Fix scoping of `with` statements.  `with` statements used to (wrongly)
-       affect the input for the entirety of the query, whereas they should
-       really only affect the current statement.
+     *  Support `with data` statements in addition to `with input` statements.
+     *  Fix issue when using REPL reloading and the `--input` argument.
+     *  Fix a crashing when indexing the `null` value with a key.
+     *  Fix scoping of `with` statements.  `with` statements used to (wrongly)
+        affect the input for the entirety of the query, whereas they should
+        really only affect the current statement.
 
  -  0.8.0 (2020-02-27)
      *  Small performance tweaks.
