@@ -37,8 +37,7 @@ import qualified Data.IORef.Extended               as IORef
 import qualified Data.List                         as L
 import           Data.List.NonEmpty.Extended       (NonEmpty (..))
 import qualified Data.List.NonEmpty.Extended       as NonEmpty
-import           Data.Maybe                        (fromMaybe, isJust,
-                                                    isNothing)
+import           Data.Maybe                        (fromMaybe, isNothing)
 import qualified Data.Text                         as T
 import qualified Data.Text.IO                      as T
 import           Data.Version                      (showVersion)
@@ -141,8 +140,8 @@ withHandle _config _sources _fileWatch interp f = do
     let handle = Handle {..}
     FileWatch.listen _fileWatch $ \paths -> do
         IO.hPutStrLn IO.stdout ""
-        success <- reload handle paths
-        when success $ do
+        reloaded <- reload handle paths
+        when (reloaded == ReloadSuccess) $ do
             mbWatchInput <- IORef.readIORef (handle ^. watchInput)
             for_ mbWatchInput $ \input -> processLine handle input
 
@@ -475,7 +474,11 @@ metaCommands =
     , MetaCommand ":reload" "reload modified rego files" $
         \h _ -> do
             paths <- FileWatch.pop (h ^. fileWatch)
-            void $ reload h paths
+            reloaded <- reload h paths
+            when (reloaded == ReloadRefusedDebug) $ liftIO $
+                IO.hPutStrLn IO.stderr $
+                "Reloading when debugging is not possible as it would " ++
+                "modify the code currently running."
             pure True
 
     , MetaCommand ":continue" "continue running the debugged program" $
@@ -579,8 +582,14 @@ metaCommands =
         , "    :break foo/bar.rego:9"
         ]
 
-reload :: Handle -> [FilePath] -> IO Bool
-reload h paths = fmap isJust $ runInterpreter h $ \i -> do
+data Reload
+    = ReloadError
+    | ReloadSuccess
+    | ReloadRefusedDebug
+    deriving (Eq)
+
+reload :: Handle -> [FilePath] -> IO Reload
+reload h paths = guarded $ runInterpreter h $ \i -> do
     -- Separate input and normal paths.
     mbInput <- liftIO $ IORef.readIORef (h ^. inputPath)
     let (regoPaths, inputPaths) = L.partition ((/= mbInput) . Just) $ paths
@@ -597,6 +606,13 @@ reload h paths = fmap isJust $ runInterpreter h $ \i -> do
         [path] -> IO.hPutStrLn IO.stderr $ "Reloaded " ++ path
         _ : _  -> IO.hPutStrLn IO.stderr $
             "Reloaded " ++ show (length regoPaths) ++ " files"
+  where
+    guarded reloader =
+        IORef.readIORef (h ^. mode) >>= \case
+            Suspended   _ -> pure ReloadRefusedDebug
+            Errored _ _ _ -> pure ReloadRefusedDebug
+            RegularMode _ ->
+                maybe ReloadError (const ReloadSuccess) <$> reloader
 
 -- | Wraps `Interpreter.setInputFile` and takes care of file watching.
 setInputFile :: Handle -> FilePath -> IO ()
