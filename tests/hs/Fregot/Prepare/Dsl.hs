@@ -7,7 +7,7 @@ module Fregot.Prepare.Dsl where
 import           Control.Lens              (review, (&), (.~))
 import qualified Data.HashMap.Strict       as HMS
 import           Data.String               (IsString (..))
-import qualified Fregot.Eval.Builtins      as B
+import qualified Fregot.Builtins.Internal  as B
 import           Fregot.Eval.Number        (Number)
 import           Fregot.Lexer.Position     (initPosition)
 import           Fregot.Names
