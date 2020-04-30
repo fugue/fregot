@@ -63,10 +63,10 @@ import qualified Control.Monad.Stream      as Stream
 import           Control.Monad.Trans       (MonadIO (..))
 import qualified Data.HashMap.Strict       as HMS
 import           Data.List                 (find)
+import           Fregot.Builtins.Internal  (BuiltinException (..))
 import           Fregot.Error              (Error)
 import qualified Fregot.Error              as Error
 import qualified Fregot.Error.Stack        as Stack
-import           Fregot.Eval.Builtins     (BuiltinException (..))
 import           Fregot.Eval.Internal
 import           Fregot.Eval.Value
 import           Fregot.Names

@@ -71,6 +71,8 @@ import qualified Data.Text.Lazy                  as TL
 import qualified Data.Text.Lazy.Encoding         as TL
 import           Data.Traversable.HigherOrder    (htraverse)
 import qualified Data.Yaml.Extended              as Yaml
+import           Fregot.Builtins                 (Builtin, Builtins,
+                                                  defaultBuiltins)
 import qualified Fregot.Compile.Graph            as Compile
 import           Fregot.Compile.Package          (CompiledRule)
 import qualified Fregot.Compile.Package          as Compile
@@ -78,8 +80,6 @@ import           Fregot.Error                    (Error, catchIO)
 import qualified Fregot.Error                    as Error
 import qualified Fregot.Error.Stack              as Stack
 import qualified Fregot.Eval                     as Eval
-import           Fregot.Eval.Builtins            (Builtin, Builtins,
-                                                  defaultBuiltins)
 import qualified Fregot.Eval.Cache               as Cache
 import qualified Fregot.Eval.Json                as Eval.Json
 import           Fregot.Eval.Monad               (EvalCache)

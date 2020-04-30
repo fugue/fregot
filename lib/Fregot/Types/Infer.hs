@@ -53,10 +53,10 @@ import           Data.Proxy                  (Proxy)
 import           Data.Traversable            (for)
 import qualified Data.Unification            as Unify
 import           Fregot.Arity
+import           Fregot.Builtins.Internal    (Builtin, Builtins)
+import qualified Fregot.Builtins.Internal    as Builtin
 import           Fregot.Error                (Error)
 import qualified Fregot.Error                as Error
-import           Fregot.Eval.Builtins        (Builtin, Builtins)
-import qualified Fregot.Eval.Builtins        as Builtin
 import           Fregot.Names
 import           Fregot.Prepare.Ast
 import           Fregot.Prepare.Lens
