@@ -49,8 +49,8 @@ import           Data.Maybe                (catMaybes, fromMaybe)
 import qualified Data.Unification          as Unification
 import qualified Data.Vector.Extended      as V
 import           Fregot.Arity
+import           Fregot.Builtins.Internal
 import           Fregot.Compile.Package    (CompiledRule, valueToCompiledRule)
-import           Fregot.Eval.Builtins
 import qualified Fregot.Eval.Cache         as Cache
 import           Fregot.Eval.Internal
 import           Fregot.Eval.Monad

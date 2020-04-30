@@ -21,13 +21,18 @@ Library
 
   Exposed-modules:
     Fregot.Arity
+    Fregot.Builtins
+    Fregot.Builtins.Basics
+    Fregot.Builtins.Internal
+    Fregot.Builtins.Json
+    Fregot.Builtins.Regex
+    Fregot.Builtins.Time
     Fregot.Compile.Graph
     Fregot.Compile.Order
     Fregot.Compile.Package
     Fregot.Error
     Fregot.Error.Stack
     Fregot.Eval
-    Fregot.Eval.Builtins
     Fregot.Eval.Cache
     Fregot.Eval.Internal
     Fregot.Eval.Json

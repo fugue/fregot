@@ -28,11 +28,11 @@ import qualified Data.HashSet.Extended        as HS
 import           Data.List.NonEmpty.Extended  (NonEmpty (..))
 import           Data.Proxy                   (Proxy (..))
 import           Data.Traversable.HigherOrder (htraverse)
+import           Fregot.Builtins.Internal     (Builtins)
 import           Fregot.Compile.Graph
 import           Fregot.Compile.Order
 import           Fregot.Error                 (Error)
 import qualified Fregot.Error                 as Error
-import           Fregot.Eval.Builtins         (Builtins)
 import           Fregot.Eval.Value            (Value)
 import           Fregot.Names
 import           Fregot.Prepare.Ast

@@ -20,8 +20,8 @@ import qualified Data.HashMap.Strict       as HMS
 import           Data.Unification          (Unification)
 import qualified Data.Unification          as Unification
 import qualified Data.Unique               as Unique
+import           Fregot.Builtins.Internal  (ReadyBuiltin)
 import qualified Fregot.Error.Stack        as Stack
-import           Fregot.Eval.Builtins      (ReadyBuiltin)
 import           Fregot.Eval.Cache         (Cache)
 import           Fregot.Eval.Mu            (Mu)
 import           Fregot.Eval.Value         (InstVar, Value)

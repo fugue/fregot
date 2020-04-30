@@ -1,4 +1,4 @@
-{-# LANGUAGE BangPatterns      #-}
+-- | Core builtins.
 {-# LANGUAGE DataKinds         #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs             #-}
@@ -10,275 +10,75 @@
 {-# LANGUAGE PolyKinds         #-}
 {-# LANGUAGE Rank2Types        #-}
 {-# LANGUAGE TypeOperators     #-}
-module Fregot.Eval.Builtins
-    ( ToVal (..)
-    , FromVal (..)
-
-    , Sig (..)
-
-    , Args (..)
-    , toArgs
-
-    , BuiltinException (..)
-    , Builtin (..)
-    , ReadyBuiltin
-    , arity
-
-    , Function (..)
-    , Builtins
-    , defaultBuiltins
-
-    , BuiltinM
-    , eitherToBuiltinM
+module Fregot.Builtins.Basics
+    ( builtins
     ) where
 
-import           Control.Applicative          ((<|>))
-import           Control.Arrow                ((>>>))
-import           Control.Lens                 (ifoldMap, preview, review)
-import           Control.Monad.Identity       (Identity)
-import           Control.Monad.Stream         (Stream)
-import           Control.Monad.Stream         as Stream
-import           Control.Monad.Trans          (liftIO)
-import qualified Data.Aeson                   as A
-import           Data.Bifunctor               (first)
-import           Data.Char                    (intToDigit, isSpace)
-import           Data.Hashable                (Hashable)
-import qualified Data.HashMap.Strict          as HMS
-import qualified Data.HashSet                 as HS
-import           Data.Int                     (Int64)
-import           Data.IORef                   (atomicModifyIORef', newIORef)
-import qualified Data.List                    as L
-import           Data.Maybe                   (fromMaybe)
-import qualified Data.Text                    as T
-import qualified Data.Text.Encoding           as T
-import qualified Data.Text.Lazy               as TL
-import qualified Data.Text.Lazy.Encoding      as TL
-import qualified Data.Time                    as Time
-import qualified Data.Time.Clock.POSIX        as Time.POSIX
-import qualified Data.Time.RFC3339            as Time.RFC3339
-import           Data.Traversable.HigherOrder (HTraversable (..))
-import qualified Data.Vector                  as V
-import           Data.Void                    (Void)
-import qualified Fregot.Eval.Json             as Json
-import           Fregot.Eval.Number           (Number)
-import qualified Fregot.Eval.Number           as Number
+import           Control.Applicative      ((<|>))
+import           Control.Lens             (ifoldMap, review)
+import           Data.Char                (intToDigit, isSpace)
+import qualified Data.HashMap.Strict      as HMS
+import qualified Data.HashSet             as HS
+import qualified Data.List                as L
+import           Data.Maybe               (fromMaybe)
+import qualified Data.Text                as T
+import qualified Data.Vector              as V
+import           Fregot.Builtins.Internal
+import           Fregot.Eval.Number       (Number)
+import qualified Fregot.Eval.Number       as Number
 import           Fregot.Eval.Value
 import           Fregot.Names
-import           Fregot.Prepare.Ast           (BinOp (..), Function (..))
-import qualified Fregot.PrettyPrint           as PP
-import           Fregot.Types.Builtins        ((🡒))
-import qualified Fregot.Types.Builtins        as Ty
-import           Fregot.Types.Internal        ((∪))
-import qualified Fregot.Types.Internal        as Ty
-import           Numeric                      (showIntAtBase)
-import qualified Text.Pcre2                   as Pcre2
-import qualified Text.Printf.Extended         as Printf
-import           Text.Read                    (readMaybe)
+import           Fregot.Prepare.Ast       (BinOp (..), Function (..))
+import           Fregot.Types.Builtins    ((🡒))
+import qualified Fregot.Types.Builtins    as Ty
+import           Fregot.Types.Internal    ((∪))
+import qualified Fregot.Types.Internal    as Ty
+import           Numeric                  (showIntAtBase)
+import qualified Text.Printf.Extended     as Printf
+import           Text.Read                (readMaybe)
 
-class ToVal a where
-    toVal :: a -> Value
-
-instance ToVal Value where
-    toVal = id
-
-instance ToVal T.Text where
-    toVal = Value . StringV
-
-instance ToVal TL.Text where
-    toVal = toVal . TL.toStrict
-
-instance ToVal Number where
-    toVal = Value . NumberV
-
-instance ToVal Int where
-    toVal = toVal . (fromIntegral :: Int -> Int64)
-
-instance ToVal Int64 where
-    toVal = toVal . review Number.int
-
-instance ToVal Double where
-    toVal = toVal . review Number.double
-
-instance ToVal Bool where
-    toVal = Value . BoolV
-
-instance ToVal a => ToVal (V.Vector a) where
-    toVal = Value . ArrayV . fmap toVal
-
-instance ToVal a => ToVal [a] where
-    toVal = toVal . V.fromList
-
-instance ToVal a => ToVal (HS.HashSet a) where
-    toVal = Value . SetV . HS.map toVal
-
-class FromVal a where
-    fromVal :: Value -> Either String a
-
-instance FromVal Value where
-    fromVal = Right
-
-instance FromVal T.Text where
-    fromVal (Value (StringV t)) = Right t
-    fromVal v                   = Left $
-        "Expected string but got " ++ describeValue v
-
-instance FromVal Number where
-    fromVal (Value (NumberV n)) = Right n
-    fromVal v                   = Left $
-        "Expected number but got " ++ describeValue v
-
-instance FromVal Int where
-    fromVal = fmap (fromIntegral :: Int64 -> Int) . fromVal
-
-instance FromVal Int64 where
-    fromVal (Value (NumberV n)) | Just i <- preview Number.int n = Right i
-    fromVal v                                                    = Left $
-        "Expected int but got " ++ describeValue v
-
-instance FromVal Double where
-    fromVal (Value (NumberV n)) | Just d <- preview Number.double n = Right d
-    fromVal v                                                       =
-        Left $ "Expected double but got " ++ describeValue v
-
-instance FromVal Bool where
-    fromVal (Value (BoolV b)) = Right b
-    fromVal v                 = Left $
-        "Expected bool but got " ++ describeValue v
-
-instance FromVal a => FromVal (V.Vector a) where
-    fromVal (Value (ArrayV v)) = traverse fromVal v
-    fromVal v                  = Left $
-        "Expected array but got " ++ describeValue v
-
-instance FromVal a => FromVal [a] where
-    fromVal = fmap V.toList . fromVal
-
-instance (Eq a, FromVal a, Hashable a) => FromVal (HS.HashSet a)  where
-    fromVal (Value (SetV s)) = fmap HS.fromList $ traverse fromVal (HS.toList s)
-    fromVal v                = Left $ "Expected set but got " ++ describeValue v
-
--- | Sometimes builtins (e.g. `count`) do not take a specific type, but any
--- sort of collection.
-newtype Collection a = Collection [a]
-
-instance FromVal a => FromVal (Collection a) where
-    fromVal = unValue >>> \case
-        ArrayV  c -> Collection <$> traverse fromVal (V.toList c)
-        SetV    c -> Collection <$> traverse fromVal (HS.toList c)
-        ObjectV c -> Collection <$> traverse (fromVal . snd) (HMS.toList c)
-        v         -> Left $
-            "Expected collection but got " ++ describeValue (Value v)
-
--- | Either-like type for when we have weird ad-hoc polymorphism.
-data a :|: b = InL a | InR b
-
-instance (ToVal a, ToVal b) => ToVal (a :|: b) where
-    toVal (InL x) = toVal x
-    toVal (InR y) = toVal y
-
-instance (FromVal a, FromVal b) => FromVal (a :|: b) where
-    -- TODO(jaspervdj): We should use a datatype for expected result types, so
-    -- we can join them here nicely and not just return the last error message.
-    fromVal v = (InL <$> fromVal v) <|> (InR <$> fromVal v)
-
-data Sig (i :: [t]) (o :: *) where
-    In  :: FromVal a => Sig i o -> Sig (a ': i) o
-    Out :: ToVal o   => Sig '[] o
-
-data Args (a :: [t]) where
-    Nil  :: Args '[]
-    Cons :: a -> Args as -> Args (a ': as)
-
--- | TODO (jaspervdj): Use arity check instead?
-toArgs :: Sig t o -> [Value] -> Either String (Args t)
-toArgs Out      []       = return Nil
-toArgs Out      _        = Left "too many arguments supplied"
-toArgs (In _)   []       = Left "not enough arguments supplied"
-toArgs (In sig) (x : xs) = Cons <$> fromVal x <*> toArgs sig xs
-
-data BuiltinException = BuiltinException PP.SemDoc deriving (Show)
-
-type BuiltinM a = Stream BuiltinException Void IO a
-
-eitherToBuiltinM :: Either String a -> BuiltinM a
-eitherToBuiltinM = either throwString return
-
-throwString :: String -> BuiltinM a
-throwString = throwDoc . PP.pretty
-
-throwDoc :: PP.SemDoc -> BuiltinM a
-throwDoc = Stream.throw . BuiltinException
-
--- | A builtin function and its signature.
-data Builtin m where
-    -- TODO(jaspervdj): BuiltinType and Sig are somewhat redundant.
-    Builtin
-        :: ToVal o
-        => Sig i o -> Ty.BuiltinType i -> m (Args i -> BuiltinM o) -> Builtin m
-
-instance HTraversable Builtin where
-    htraverse f (Builtin sig ty impl) = Builtin sig ty <$> f impl
-
-type ReadyBuiltin = Builtin Identity
-
-arity :: Builtin m -> Int
-arity (Builtin sig _ _) = go 0 sig
-  where
-    go :: Int -> Sig i o -> Int
-    go !acc Out    = acc
-    go !acc (In s) = go (acc + 1) s
-
-type Builtins m = HMS.HashMap Function (Builtin m)
-
-defaultBuiltins :: Builtins IO
-defaultBuiltins = HMS.fromList
-    [ (NamedFunction (BuiltinName "all"),                       builtin_all)
-    , (NamedFunction (BuiltinName "any"),                       builtin_any)
-    , (NamedFunction (QualifiedName "array.concat"),            builtin_array_concat)
-    , (NamedFunction (BuiltinName "and"),                       builtin_bin_and)
-    , (NamedFunction (BuiltinName "concat"),                    builtin_concat)
-    , (NamedFunction (BuiltinName "contains"),                  builtin_contains)
-    , (NamedFunction (BuiltinName "count"),                     builtin_count)
-    , (NamedFunction (BuiltinName "endswith"),                  builtin_endswith)
-    , (NamedFunction (BuiltinName "format_int"),                builtin_format_int)
-    , (NamedFunction (BuiltinName "indexof"),                   builtin_indexof)
-    , (NamedFunction (BuiltinName "intersection"),              builtin_intersection)
-    , (NamedFunction (BuiltinName "is_array"),                  builtin_is_array)
-    , (NamedFunction (BuiltinName "is_boolean"),                builtin_is_boolean)
-    , (NamedFunction (BuiltinName "is_number"),                 builtin_is_number)
-    , (NamedFunction (BuiltinName "is_object"),                 builtin_is_object)
-    , (NamedFunction (BuiltinName "is_set"),                    builtin_is_set)
-    , (NamedFunction (BuiltinName "is_string"),                 builtin_is_string)
-    , (NamedFunction (QualifiedName "json.marshal"),            builtin_json_marshal)
-    , (NamedFunction (QualifiedName "json.unmarshal"),          builtin_json_unmarshal)
-    , (NamedFunction (BuiltinName "lower"),                     builtin_lower)
-    , (NamedFunction (BuiltinName "max"),                       builtin_max)
-    , (NamedFunction (BuiltinName "min"),                       builtin_min)
-    , (NamedFunction (BuiltinName "or"),                        builtin_bin_or)
-    , (NamedFunction (BuiltinName "product"),                   builtin_product)
-    , (NamedFunction (QualifiedName "regex.split"),             builtin_regex_split)
-    , (NamedFunction (BuiltinName "re_match"),                  builtin_re_match)
-    , (NamedFunction (BuiltinName "replace"),                   builtin_replace)
-    , (NamedFunction (BuiltinName "set"),                       builtin_set)
-    , (NamedFunction (BuiltinName "sort"),                      builtin_sort)
-    , (NamedFunction (BuiltinName "split"),                     builtin_split)
-    , (NamedFunction (BuiltinName "sprintf"),                   builtin_sprintf)
-    , (NamedFunction (BuiltinName "substring"),                 builtin_substring)
-    , (NamedFunction (BuiltinName "sum"),                       builtin_sum)
-    , (NamedFunction (BuiltinName "startswith"),                builtin_startswith)
-    , (NamedFunction (BuiltinName "to_number"),                 builtin_to_number)
-    , (NamedFunction (QualifiedName "time.now_ns"),             builtin_time_now_ns)
-    , (NamedFunction (QualifiedName "time.date"),               builtin_time_date)
-    , (NamedFunction (QualifiedName "time.parse_rfc3339_ns"),   builtin_time_parse_rfc3339_ns)
-    , (NamedFunction (BuiltinName "trim"),                      builtin_trim)
-    , (NamedFunction (BuiltinName "trim_left"),                 builtin_trim_left)
-    , (NamedFunction (BuiltinName "trim_prefix"),               builtin_trim_prefix)
-    , (NamedFunction (BuiltinName "trim_right"),                builtin_trim_right)
-    , (NamedFunction (BuiltinName "trim_suffix"),               builtin_trim_suffix)
-    , (NamedFunction (BuiltinName "trim_space"),                builtin_trim_space)
-    , (NamedFunction (BuiltinName "upper"),                     builtin_upper)
-    , (NamedFunction (BuiltinName "union"),                     builtin_union)
-    , (NamedFunction (BuiltinName "walk"),                      builtin_walk)
+builtins :: Builtins IO
+builtins = HMS.fromList
+    [ (NamedFunction (BuiltinName "all"),              builtin_all)
+    , (NamedFunction (BuiltinName "any"),              builtin_any)
+    , (NamedFunction (QualifiedName "array.concat"),   builtin_array_concat)
+    , (NamedFunction (BuiltinName "and"),              builtin_bin_and)
+    , (NamedFunction (BuiltinName "concat"),           builtin_concat)
+    , (NamedFunction (BuiltinName "contains"),         builtin_contains)
+    , (NamedFunction (BuiltinName "count"),            builtin_count)
+    , (NamedFunction (BuiltinName "endswith"),         builtin_endswith)
+    , (NamedFunction (BuiltinName "format_int"),       builtin_format_int)
+    , (NamedFunction (BuiltinName "indexof"),          builtin_indexof)
+    , (NamedFunction (BuiltinName "intersection"),     builtin_intersection)
+    , (NamedFunction (BuiltinName "is_array"),         builtin_is_array)
+    , (NamedFunction (BuiltinName "is_boolean"),       builtin_is_boolean)
+    , (NamedFunction (BuiltinName "is_number"),        builtin_is_number)
+    , (NamedFunction (BuiltinName "is_object"),        builtin_is_object)
+    , (NamedFunction (BuiltinName "is_set"),           builtin_is_set)
+    , (NamedFunction (BuiltinName "is_string"),        builtin_is_string)
+    , (NamedFunction (BuiltinName "lower"),            builtin_lower)
+    , (NamedFunction (BuiltinName "max"),              builtin_max)
+    , (NamedFunction (BuiltinName "min"),              builtin_min)
+    , (NamedFunction (BuiltinName "or"),               builtin_bin_or)
+    , (NamedFunction (BuiltinName "product"),          builtin_product)
+    , (NamedFunction (BuiltinName "replace"),          builtin_replace)
+    , (NamedFunction (BuiltinName "set"),              builtin_set)
+    , (NamedFunction (BuiltinName "sort"),             builtin_sort)
+    , (NamedFunction (BuiltinName "split"),            builtin_split)
+    , (NamedFunction (BuiltinName "sprintf"),          builtin_sprintf)
+    , (NamedFunction (BuiltinName "substring"),        builtin_substring)
+    , (NamedFunction (BuiltinName "sum"),              builtin_sum)
+    , (NamedFunction (BuiltinName "startswith"),       builtin_startswith)
+    , (NamedFunction (BuiltinName "to_number"),        builtin_to_number)
+    , (NamedFunction (BuiltinName "trim"),             builtin_trim)
+    , (NamedFunction (BuiltinName "trim_left"),        builtin_trim_left)
+    , (NamedFunction (BuiltinName "trim_prefix"),      builtin_trim_prefix)
+    , (NamedFunction (BuiltinName "trim_right"),       builtin_trim_right)
+    , (NamedFunction (BuiltinName "trim_suffix"),      builtin_trim_suffix)
+    , (NamedFunction (BuiltinName "trim_space"),       builtin_trim_space)
+    , (NamedFunction (BuiltinName "upper"),            builtin_upper)
+    , (NamedFunction (BuiltinName "union"),            builtin_union)
+    , (NamedFunction (BuiltinName "walk"),             builtin_walk)
     , (OperatorFunction BinAndO,             builtin_bin_and)
     , (OperatorFunction EqualO,              builtin_equal)
     , (OperatorFunction NotEqualO,           builtin_not_equal)
@@ -419,22 +219,6 @@ builtin_is_string = Builtin
         StringV _ -> return True
         _         -> return False
 
-builtin_json_marshal :: Monad m => Builtin m
-builtin_json_marshal = Builtin
-    (In Out)
-    (Ty.any 🡒 Ty.out Ty.string) $ pure $
-    \(Cons val Nil) -> case Json.fromValue val of
-        Left err   -> throwDoc err
-        Right json -> return $! TL.decodeUtf8 $! A.encode json
-
-builtin_json_unmarshal :: Monad m => Builtin m
-builtin_json_unmarshal = Builtin
-    (In Out)
-    (Ty.string 🡒 Ty.out Ty.unknown) $ pure $
-    \(Cons str Nil) -> case A.eitherDecodeStrict' (T.encodeUtf8 str) of
-        Left  err -> throwString err
-        Right val -> return $! Json.toValue val
-
 builtin_lower :: Monad m => Builtin m
 builtin_lower = Builtin
     (In Out)
@@ -465,52 +249,6 @@ builtin_product = Builtin
     (Ty.collectionOf Ty.number 🡒 Ty.out Ty.number) $ pure $
     \(Cons (Collection vals) Nil) -> return $! num $ product vals
 
-builtin_regex_split :: Builtin IO
-builtin_regex_split = Builtin
-    (In (In Out))
-    (Ty.string 🡒 Ty.string 🡒 Ty.out (Ty.arrayOf Ty.string)) $ do
-    cacheRef <- newIORef HMS.empty
-    pure $
-        -- TODO(jaspervdj): Clean up duplication between this and
-        -- `builtin_re_match`.
-        \(Cons pattern (Cons value Nil)) -> do
-        errOrRegex <- liftIO $ atomicModifyIORef' cacheRef $ \cache ->
-            case HMS.lookup pattern cache of
-                Just errOrRegex -> return errOrRegex
-                Nothing         ->
-                    let errOrRegex = Pcre2.compile pattern in
-                    (HMS.insert pattern errOrRegex cache, errOrRegex)
-
-        eitherToBuiltinM $ do
-            regex <- first show errOrRegex
-            match <- first show (Pcre2.match regex value)
-            return $! split match 0 value
-  where
-    split :: [Pcre2.Match] -> Int -> T.Text -> [T.Text]
-    split [] !_offset remainder = [remainder]
-    split (Pcre2.Match (Pcre2.Range start len) _ : matches) !offset remainder =
-        let (pre, post) = T.splitAt (start - offset) remainder in
-        pre : split matches (start + len) (T.drop len post)
-
-builtin_re_match :: Builtin IO
-builtin_re_match = Builtin
-    (In (In Out))
-    (Ty.string 🡒 Ty.string 🡒 Ty.out Ty.boolean) $ do
-    cacheRef <- newIORef HMS.empty
-    pure $
-        \(Cons pattern (Cons value Nil)) -> do
-        errOrRegex <- liftIO $ atomicModifyIORef' cacheRef $ \cache ->
-            case HMS.lookup pattern cache of
-                Just errOrRegex -> return errOrRegex
-                Nothing         ->
-                    let errOrRegex = Pcre2.compile pattern in
-                    (HMS.insert pattern errOrRegex cache, errOrRegex)
-
-        eitherToBuiltinM $ do
-            regex <- first show errOrRegex
-            match <- first show (Pcre2.match regex value)
-            return $! not $ null match
-
 builtin_replace :: Monad m => Builtin m
 builtin_replace = Builtin
     (In (In (In Out)))
@@ -523,35 +261,6 @@ builtin_set = Builtin
     Out
     (Ty.out (Ty.setOf Ty.unknown)) $ pure $
     \Nil -> return $! Value $ SetV HS.empty
-
-utcToNs :: Time.UTCTime -> Int64
-utcToNs =
-    floor . ((1e9 :: Double) *) . realToFrac . Time.POSIX.utcTimeToPOSIXSeconds
-
-builtin_time_now_ns :: Monad m => Builtin m
-builtin_time_now_ns = Builtin
-    Out
-    (Ty.out Ty.number) $ pure $
-    \Nil -> review Number.int . utcToNs <$> liftIO Time.getCurrentTime
-
-builtin_time_date :: Monad m => Builtin m
-builtin_time_date = Builtin
-    (In Out)
-    (Ty.number 🡒 Ty.out (Ty.arrayOf Ty.number)) $ pure $
-    \(Cons ns Nil) ->
-    let secs      = (fromIntegral $ Number.floor ns) / 1e9
-        utc       = Time.POSIX.posixSecondsToUTCTime secs
-        (y, m, d) = Time.toGregorian (Time.utctDay utc) in
-    return ([fromIntegral y, m, d] :: [Int])
-
-builtin_time_parse_rfc3339_ns :: Monad m => Builtin m
-builtin_time_parse_rfc3339_ns = Builtin
-    (In Out)
-    (Ty.string 🡒 Ty.out Ty.number) $ pure $
-    \(Cons txt Nil) -> case Time.RFC3339.parseTimeRFC3339 txt of
-        Just zoned -> return $! utcToNs $ Time.zonedTimeToUTC zoned
-        Nothing    -> throwString $
-            "Could not parse RFC3339 time: " ++ T.unpack txt
 
 builtin_split :: Monad m => Builtin m
 builtin_split = Builtin
