@@ -4,3 +4,8 @@ test_json_01 {
   out := json.unmarshal("{\"foo\": 1}")
   out == {"foo": 1}
 }
+
+test_json_02 {
+  out := json.marshal({"foo": 1, "bar": ["Hello", "World"]})
+  out == `{"foo":1,"bar":["Hello","World"]}`
+}
