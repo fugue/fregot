@@ -47,10 +47,12 @@ import qualified Data.HashMap.Strict          as HMS
 import qualified Data.HashSet                 as HS
 import           Data.Int                     (Int64)
 import           Data.IORef                   (atomicModifyIORef', newIORef)
-import           Data.Maybe                   (fromMaybe)
 import qualified Data.List                    as L
+import           Data.Maybe                   (fromMaybe)
 import qualified Data.Text                    as T
 import qualified Data.Text.Encoding           as T
+import qualified Data.Text.Lazy               as TL
+import qualified Data.Text.Lazy.Encoding      as TL
 import qualified Data.Time                    as Time
 import qualified Data.Time.Clock.POSIX        as Time.POSIX
 import qualified Data.Time.RFC3339            as Time.RFC3339
@@ -63,6 +65,7 @@ import qualified Fregot.Eval.Number           as Number
 import           Fregot.Eval.Value
 import           Fregot.Names
 import           Fregot.Prepare.Ast           (BinOp (..), Function (..))
+import qualified Fregot.PrettyPrint           as PP
 import           Fregot.Types.Builtins        ((🡒))
 import qualified Fregot.Types.Builtins        as Ty
 import           Fregot.Types.Internal        ((∪))
@@ -80,6 +83,9 @@ instance ToVal Value where
 
 instance ToVal T.Text where
     toVal = Value . StringV
+
+instance ToVal TL.Text where
+    toVal = toVal . TL.toStrict
 
 instance ToVal Number where
     toVal = Value . NumberV
@@ -190,15 +196,18 @@ toArgs Out      _        = Left "too many arguments supplied"
 toArgs (In _)   []       = Left "not enough arguments supplied"
 toArgs (In sig) (x : xs) = Cons <$> fromVal x <*> toArgs sig xs
 
-data BuiltinException = BuiltinException String deriving (Show)
+data BuiltinException = BuiltinException PP.SemDoc deriving (Show)
 
 type BuiltinM a = Stream BuiltinException Void IO a
 
 eitherToBuiltinM :: Either String a -> BuiltinM a
-eitherToBuiltinM = either throwBuiltinException return
+eitherToBuiltinM = either throwString return
 
-throwBuiltinException :: String -> BuiltinM a
-throwBuiltinException = Stream.throw . BuiltinException
+throwString :: String -> BuiltinM a
+throwString = throwDoc . PP.pretty
+
+throwDoc :: PP.SemDoc -> BuiltinM a
+throwDoc = Stream.throw . BuiltinException
 
 -- | A builtin function and its signature.
 data Builtin m where
@@ -240,6 +249,7 @@ defaultBuiltins = HMS.fromList
     , (NamedFunction (BuiltinName "is_object"),                 builtin_is_object)
     , (NamedFunction (BuiltinName "is_set"),                    builtin_is_set)
     , (NamedFunction (BuiltinName "is_string"),                 builtin_is_string)
+    , (NamedFunction (QualifiedName "json.marshal"),            builtin_json_marshal)
     , (NamedFunction (QualifiedName "json.unmarshal"),          builtin_json_unmarshal)
     , (NamedFunction (BuiltinName "lower"),                     builtin_lower)
     , (NamedFunction (BuiltinName "max"),                       builtin_max)
@@ -409,12 +419,20 @@ builtin_is_string = Builtin
         StringV _ -> return True
         _         -> return False
 
+builtin_json_marshal :: Monad m => Builtin m
+builtin_json_marshal = Builtin
+    (In Out)
+    (Ty.any 🡒 Ty.out Ty.string) $ pure $
+    \(Cons val Nil) -> case Json.fromValue val of
+        Left err   -> throwDoc err
+        Right json -> return $! TL.decodeUtf8 $! A.encode json
+
 builtin_json_unmarshal :: Monad m => Builtin m
 builtin_json_unmarshal = Builtin
     (In Out)
     (Ty.string 🡒 Ty.out Ty.unknown) $ pure $
     \(Cons str Nil) -> case A.eitherDecodeStrict' (T.encodeUtf8 str) of
-        Left  err -> throwBuiltinException err
+        Left  err -> throwString err
         Right val -> return $! Json.toValue val
 
 builtin_lower :: Monad m => Builtin m
@@ -532,7 +550,7 @@ builtin_time_parse_rfc3339_ns = Builtin
     (Ty.string 🡒 Ty.out Ty.number) $ pure $
     \(Cons txt Nil) -> case Time.RFC3339.parseTimeRFC3339 txt of
         Just zoned -> return $! utcToNs $ Time.zonedTimeToUTC zoned
-        Nothing    -> throwBuiltinException $
+        Nothing    -> throwString $
             "Could not parse RFC3339 time: " ++ T.unpack txt
 
 builtin_split :: Monad m => Builtin m
@@ -585,7 +603,7 @@ builtin_to_number = Builtin
         let str = T.unpack txt
             mbRead = (Left <$> readMaybe str) <|> (Right <$> readMaybe str) in
         case mbRead of
-            Nothing        -> throwBuiltinException $!
+            Nothing        -> throwString $!
                 "to_number: couldn't read " ++ str
             Just (Left i)  -> return $ review Number.int i
             Just (Right d) -> return $ review Number.double d
@@ -727,8 +745,8 @@ builtin_minus = Builtin
   \(Cons x (Cons y Nil)) -> case (x, y) of
       (InL x', InL y') -> return $! Value $ NumberV $ num $ x' - y'
       (InR x', InR y') -> return $! Value $ SetV $ HS.difference (x' :: HS.HashSet Value) y'
-      (InL _, InR _) -> throwBuiltinException $ "Expected number but got set"
-      (InR _, InL _) -> throwBuiltinException $ "Expected set but got number"
+      (InL _, InR _) -> throwString $ "Expected number but got set"
+      (InR _, InL _) -> throwString $ "Expected set but got number"
 
 builtin_times :: Monad m => Builtin m
 builtin_times = Builtin
