@@ -1,6 +1,7 @@
 -- | Internals that allow you to construct (and run) builtins.
 {-# LANGUAGE BangPatterns      #-}
 {-# LANGUAGE DataKinds         #-}
+{-# LANGUAGE DeriveFunctor     #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs             #-}
 {-# LANGUAGE KindSignatures    #-}
@@ -172,7 +173,7 @@ instance (FromVal a, FromVal b) => FromVal (a :|: b) where
     fromVal v = (InL <$> fromVal v) <|> (InR <$> fromVal v)
 
 -- | Convert to and from arguments through an intermediate JSON representation.
-newtype Json a = Json {unJson :: a}
+newtype Json a = Json {unJson :: a} deriving (Functor)
 
 instance Aeson.ToJSON a => ToVal (Json a) where
     toVal = Json.toValue . Aeson.toJSON . unJson

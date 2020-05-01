@@ -1,29 +1,25 @@
 # JWT tests.
 package fregot.tests.builtins_10
 
-example1 = ret {
-  ret = io.jwt.encode_sign({
-    "typ": "JWT",
-    "alg": "HS256"
-  }, {
-    "iss": "joe",
-    "exp": 1300819380,
-    "aud": ["bob", "saul"],
-    "http://example.com/is_root": true,
-    "privateParams": {
-        "private_one": "one",
-        "private_two": "two"
-    }
-  }, {
+example_01 = {
+  "header": {"typ": "JWT", "alg": "HS256"},
+  "payload": {"iss": "alice"},
+  "key": {
     "kty": "oct",
-    "k": "AyM1SysPpbyDfgZld3umj1qzKObwVMkoqQ-EstJQLr_T-1qS0gZH75aKtMN3Yj0iPS4hcgUuTwjAzZr1Z9CAow"
-  })
+    "k": base64.encode("hunter2 hunter2 hunter2 hunter2 hunter2")
+  }
 }
 
-example2 = ret {
-  ret = io.jwt.encode_sign_raw(
-    `{"typ":"JWT","alg":"HS256"}`,
-    `{}`,
-    `{"kty":"oct","k":"AyM1SysPpbyDfgZld3umj1qzKObwVMkoqQ-EstJQLr_T-1qS0gZH75aKtMN3Yj0iPS4hcgUuTwjAzZr1Z9CAow"}`
-  )
+test_round_trip_01 {
+  jwt = io.jwt.encode_sign(example_01.header, example_01.payload, example_01.key)
+  [header, payload, _] = io.jwt.decode(jwt)
+  header == example_01.header
+  payload == example_01.payload
+}
+
+test_decode_sig_01 {
+  [header, payload, sig] = io.jwt.decode("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJhbGljZSJ9.OsFj3QHjXgAhTwL7FQ2xjvJwL8FTwnQ1d3x42SuImH8")
+  header == {"alg": "HS256", "typ": "JWT"}
+  payload == {"iss": "alice"}
+  sig == "3ac163dd01e35e00214f02fb150db18ef2702fc153c27435777c78d92b88987f"
 }
