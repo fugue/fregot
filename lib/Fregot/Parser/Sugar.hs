@@ -295,8 +295,8 @@ objectOrSet
 objectOrSet key value = do
     items <- sepTrailing Tok.TLBrace Tok.TRBrace Tok.TComma item
     case partitionEithers items of
+        (objitems, []) -> return $ Left objitems  -- `{}` is an empty object
         ([], setitems) -> return $ Right setitems
-        (objitems, []) -> return $ Left objitems
         _              -> Parsec.unexpected "mixed object and set"
   where
     item =
