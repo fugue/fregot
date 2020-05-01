@@ -53,3 +53,5 @@ test_using_jkws_01 {
     ]
   )
 }
+
+# TODO A PEM encoded certificate and PEM encoded public key support
