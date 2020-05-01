@@ -19,6 +19,7 @@ module Fregot.Eval.Value
     , emptyObject
     , trueish
     , true
+    , string
     ) where
 
 import           Control.Lens         (preview, (^.))
@@ -115,3 +116,6 @@ trueish _                     = True
 
 true :: Value
 true = Value (BoolV True)
+
+string :: T.Text -> Value
+string = Value . StringV

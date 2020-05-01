@@ -18,6 +18,7 @@ module Fregot.Builtins.Internal
     -- `ToVal` / `FromVal` helper newtypes.
     , Collection (..)
     , (:|:) (..)
+    , Json (..)
 
     , Sig (..)
 
@@ -45,6 +46,8 @@ import           Control.Lens                 (preview, review)
 import           Control.Monad.Identity       (Identity)
 import           Control.Monad.Stream         (Stream)
 import           Control.Monad.Stream         as Stream
+import qualified Data.Aeson                   as Aeson
+import           Data.Bifunctor               (first)
 import           Data.Hashable                (Hashable)
 import qualified Data.HashMap.Strict          as HMS
 import qualified Data.HashSet                 as HS
@@ -54,6 +57,7 @@ import qualified Data.Text.Lazy               as TL
 import           Data.Traversable.HigherOrder (HTraversable (..))
 import qualified Data.Vector                  as V
 import           Data.Void                    (Void)
+import qualified Fregot.Eval.Json             as Json
 import           Fregot.Eval.Number           (Number)
 import qualified Fregot.Eval.Number           as Number
 import           Fregot.Eval.Value
@@ -166,6 +170,19 @@ instance (FromVal a, FromVal b) => FromVal (a :|: b) where
     -- TODO(jaspervdj): We should use a datatype for expected result types, so
     -- we can join them here nicely and not just return the last error message.
     fromVal v = (InL <$> fromVal v) <|> (InR <$> fromVal v)
+
+-- | Convert to and from arguments through an intermediate JSON representation.
+newtype Json a = Json {unJson :: a}
+
+instance Aeson.ToJSON a => ToVal (Json a) where
+    toVal = Json.toValue . Aeson.toJSON . unJson
+
+instance Aeson.FromJSON a => FromVal (Json a) where
+    fromVal val = do
+        json <- first show $ Json.fromValue val
+        case Aeson.fromJSON json of
+            Aeson.Error   str -> Left str
+            Aeson.Success p   -> Right (Json p)
 
 data Sig (i :: [t]) (o :: *) where
     In  :: FromVal a => Sig i o -> Sig (a ': i) o
