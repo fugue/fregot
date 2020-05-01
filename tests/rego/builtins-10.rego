@@ -30,3 +30,26 @@ test_decode_sig_01 {
   payload == {"iss": "alice"}
   sig == "3ac163dd01e35e00214f02fb150db18ef2702fc153c27435777c78d92b88987f"
 }
+
+es256_token = "eyJ0eXAiOiAiSldUIiwgImFsZyI6ICJFUzI1NiJ9.eyJuYmYiOiAxNDQ0NDc4NDAwLCAiaXNzIjogInh4eCJ9.lArczfN-pIL8oUU-7PU83u-zfXougXBZj6drFeKFsPEoVhy9WAyiZlRshYqjTSXdaw8yw2L-ovt4zTUZb2PWMg"
+jwks = `{
+    "keys": [{
+        "kty":"EC",
+        "crv":"P-256",
+        "x":"z8J91ghFy5o6f2xZ4g8LsLH7u2wEpT2ntj8loahnlsE",
+        "y":"7bdeXLH61KrGWRdh7ilnbcGQACxykaPKfmBccTHIOUo"
+    }]
+}`
+
+test_using_jkws_01 {
+  io.jwt.decode_verify(es256_token, {
+      "cert": jwks,
+      "iss": "xxx",
+    },
+    [
+      true,
+      {"alg": "ES256","typ": "JWT"},
+      {"iss": "xxx","nbf": 1444478400},
+    ]
+  )
+}

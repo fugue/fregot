@@ -7,6 +7,7 @@ module Fregot.Builtins.Jwt
     ( builtins
     ) where
 
+import           Control.Applicative      ((<|>))
 import           Control.Lens             (set, (^.), (^..))
 import           Control.Monad.Except     (ExceptT, catchError, runExceptT)
 import           Control.Monad.Trans      (liftIO)
@@ -99,14 +100,22 @@ builtin_decode = Builtin (In Out)
         | otherwise =
             throwString "Internal error obtaining JWT payload"
 
-data Constraints = Constraints Jwt.JWK (Maybe UTCTime) Jwt.JWTValidationSettings
-    deriving FromVal via (Json Constraints)
+-- | Rego represents a number of different concepts as a single "constraints"
+-- object.
+data Constraints = Constraints
+    { _cKeys               :: Jwt.JWKSet
+    , _cTime               :: Maybe UTCTime
+    , _cValidationSettings :: Jwt.JWTValidationSettings
+    } deriving FromVal via (Json Constraints)
 
-parseKey :: Aeson.Object -> Aeson.Parser Jwt.JWK
+parseKey :: Aeson.Object -> Aeson.Parser Jwt.JWKSet
 parseKey obj =
     (do
         secret <- obj Aeson..: "secret"
-        pure $! Jwt.fromOctets (T.encodeUtf8 secret))
+        pure $! Jwt.JWKSet [Jwt.fromOctets $! T.encodeUtf8 secret]) <|>
+    (do
+        cert <- obj Aeson..: "cert"
+        either fail pure $ Aeson.eitherDecodeStrict' (T.encodeUtf8 cert))
 
 parseTime :: Aeson.Object -> Aeson.Parser (Maybe UTCTime)
 parseTime obj = fmap (fmap nsToUtc) $! obj Aeson..:? "time"
