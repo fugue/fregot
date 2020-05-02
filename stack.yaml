@@ -9,6 +9,7 @@ packages:
 
 extra-deps:
 - './packages/pcre-simple'
+- './packages/hs-jose'
 - 'HsYAML-0.2.1.0'
 
 nix:

@@ -7,24 +7,27 @@ module Fregot.Builtins.Jwt
     ( builtins
     ) where
 
-import           Control.Applicative      ((<|>))
 import           Control.Lens             (set, (^.), (^..))
 import           Control.Monad.Except     (ExceptT, catchError, runExceptT)
 import           Control.Monad.Trans      (liftIO)
 import qualified Crypto.JWT               as Jwt
 import qualified Data.Aeson               as Aeson
 import qualified Data.Aeson.Types         as Aeson
+import           Data.Bifunctor           (first)
+import qualified Data.ByteString          as B
 import qualified Data.ByteString.Base16   as Base16
 import qualified Data.ByteString.Base64   as Base64
 import           Data.Functor.Identity    (Identity)
 import qualified Data.HashMap.Strict      as HMS
 import           Data.Maybe               (isJust)
+import qualified Data.PEM                 as PEM
 import qualified Data.Set                 as S
 import qualified Data.Text.Encoding       as T
 import qualified Data.Text.Lazy           as TL
 import qualified Data.Text.Lazy.Encoding  as TL
 import           Data.Time                (UTCTime)
 import qualified Data.Time                as Time
+import qualified Data.X509                as X509
 import           Fregot.Builtins.Internal
 import           Fregot.Builtins.Time     (nsToUtc)
 import           Fregot.Eval.Value        (emptyObject)
@@ -109,13 +112,29 @@ data Constraints = Constraints
     } deriving FromVal via (Json Constraints)
 
 parseKey :: Aeson.Object -> Aeson.Parser Jwt.JWKSet
-parseKey obj =
-    (do
+parseKey obj
+    | "secret" `HMS.member` obj && "cert" `HMS.member` obj =
+        fail "Either 'secret' and 'cert' should be set, not both"
+    | "secret" `HMS.member` obj = do
         secret <- obj Aeson..: "secret"
-        pure $! Jwt.JWKSet [Jwt.fromOctets $! T.encodeUtf8 secret]) <|>
-    (do
+        pure $! Jwt.JWKSet [Jwt.fromOctets $! T.encodeUtf8 secret]
+    | "cert" `HMS.member` obj = do
         cert <- obj Aeson..: "cert"
-        either fail pure $ Aeson.eitherDecodeStrict' (T.encodeUtf8 cert))
+        either fail pure $ parseCert (T.encodeUtf8 cert)
+    | otherwise = fail
+        "The 'constraints' parameter must have 'secret' or 'cert' set"
+  where
+    parseCert bytes
+        | "-----BEGIN" `B.isPrefixOf` bytes = do
+            pems <- PEM.pemParseBS bytes
+            certs <- mapM (X509.decodeSignedCertificate . PEM.pemContent) pems
+            jwks <- first
+                (\e -> "Error in X509 certificate: " ++ show (e :: Jwt.Error)) $
+                mapM Jwt.fromX509Certificate certs
+            pure $ Jwt.JWKSet jwks
+        | otherwise = case Aeson.eitherDecodeStrict' bytes of
+            Left err -> Left $ "Error parsing JWK cert: " ++ err
+            Right x  -> Right x
 
 parseTime :: Aeson.Object -> Aeson.Parser (Maybe UTCTime)
 parseTime obj = fmap (fmap nsToUtc) $! obj Aeson..:? "time"

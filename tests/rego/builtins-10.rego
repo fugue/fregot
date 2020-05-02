@@ -54,4 +54,25 @@ test_using_jkws_01 {
   )
 }
 
-# TODO A PEM encoded certificate and PEM encoded public key support
+cert = `-----BEGIN CERTIFICATE-----
+MIIBcDCCARagAwIBAgIJAMZmuGSIfvgzMAoGCCqGSM49BAMCMBMxETAPBgNVBAMM
+CHdoYXRldmVyMB4XDTE4MDgxMDE0Mjg1NFoXDTE4MDkwOTE0Mjg1NFowEzERMA8G
+A1UEAwwId2hhdGV2ZXIwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAATPwn3WCEXL
+mjp/bFniDwuwsfu7bASlPae2PyWhqGeWwe23Xlyx+tSqxlkXYe4pZ23BkAAscpGj
+yn5gXHExyDlKo1MwUTAdBgNVHQ4EFgQUElRjSoVgKjUqY5AXz2o74cLzzS8wHwYD
+VR0jBBgwFoAUElRjSoVgKjUqY5AXz2o74cLzzS8wDwYDVR0TAQH/BAUwAwEB/zAK
+BggqhkjOPQQDAgNIADBFAiEA4yQ/88ZrUX68c6kOe9G11u8NUaUzd8pLOtkKhniN
+OHoCIHmNX37JOqTcTzGn2u9+c8NlnvZ0uDvsd1BmKPaUmjmm
+-----END CERTIFICATE-----`
+
+test_using_x509_01 {
+  io.jwt.decode_verify(
+    es256_token,
+    {"cert": cert, "iss": "xxx"},
+    [
+      true,
+      {"alg": "ES256", "typ": "JWT"},
+      {"iss": "xxx","nbf": 1444478400},
+    ]
+  )
+}
