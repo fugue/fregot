@@ -90,15 +90,15 @@ builtin_decode = Builtin (In Out)
   where
     getPayload :: Jwt.JWS Identity () Jwt.JWSHeader -> BuiltinM Aeson.Value
     getPayload jws
-        -- This is a hack.  The `jose` library does not want you to get the
-        -- payload of unverified JWS tokens.  Good for them, I guess, but
-        -- implementing these builtins requires us to be able to shoot
-        -- ourselves in the foot.  We grab the payload from the JSON
+        -- NOTE(jaspervdj): This is a hack.  The `jose` library does not want
+        -- you to get the payload of unverified JWS tokens.  Good for them, I
+        -- guess, but implementing these builtins requires us to be able to
+        -- shoot ourselves in the foot.  We grab the payload from the JSON
         -- representation.
         | Aeson.Object obj <- Aeson.toJSON jws
         , Just (Aeson.String p64) <- HMS.lookup "payload" obj
         , Right p <- Base64.decode $! T.encodeUtf8 p64
-        , Right val <- Aeson.eitherDecodeStrict' p = do
+        , Right val <- Aeson.eitherDecodeStrict' p =
             pure val
         | otherwise =
             throwString "Internal error obtaining JWT payload"
