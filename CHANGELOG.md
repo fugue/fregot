@@ -1,5 +1,23 @@
 # CHANGELOG
 
+ -  0.10.0 (2020-05-04)
+     *  Add `json.marshal` builtin function.
+     *  Fix isssue where `{}` was treated as an empty set, not an empty object.
+     *  Add `base64` builtin functions:
+
+         -  `base64.encode`
+         -  `base64.decode`
+         -  `base64url.encode`
+         -  `base64url.decode`
+     *  Add `io.jwt` builtin functions:
+
+         -  `io.jwt.encode_sign`
+         -  `io.jwt.decode`
+         -  `io.jwt.decode_verify`
+
+        These use an external library and will not work for all key types.  We
+        can resolve that as demand for other key types comes up.
+
  -  0.9.1 (2020-04-17)
      *  Better error for foo.bar() if foo is not imported
      *  Disallow :reload while debugging
