@@ -1,0 +1,3 @@
+[submodule "packages/hs-jose"]
+	path = packages/hs-jose
+	url = https://github.com/jaspervdj/hs-jose.git

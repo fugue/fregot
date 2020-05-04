@@ -3,6 +3,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Fregot.Builtins.Time
     ( builtins
+
+    , utcToNs
+    , nsToUtc
     ) where
 
 import           Control.Lens             (review)
@@ -32,6 +35,11 @@ utcToNs :: Time.UTCTime -> Int64
 utcToNs =
     floor . ((1e9 :: Double) *) . realToFrac . Time.POSIX.utcTimeToPOSIXSeconds
 
+nsToUtc :: Int64 -> Time.UTCTime
+nsToUtc ns =
+    let secs = (fromIntegral $ Number.floor $ fromIntegral ns) / 1e9 in
+    Time.POSIX.posixSecondsToUTCTime secs
+
 builtin_time_now_ns :: Monad m => Builtin m
 builtin_time_now_ns = Builtin
     Out
@@ -43,8 +51,7 @@ builtin_time_date = Builtin
     (In Out)
     (Ty.number 🡒 Ty.out (Ty.arrayOf Ty.number)) $ pure $
     \(Cons ns Nil) ->
-    let secs      = (fromIntegral $ Number.floor ns) / 1e9
-        utc       = Time.POSIX.posixSecondsToUTCTime secs
+    let utc       = nsToUtc ns
         (y, m, d) = Time.toGregorian (Time.utctDay utc) in
     return ([fromIntegral y, m, d] :: [Int])
 

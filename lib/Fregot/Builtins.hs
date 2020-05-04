@@ -33,6 +33,7 @@ import qualified Fregot.Builtins.Base64   as Builtins.Base64
 import qualified Fregot.Builtins.Basics   as Builtins.Basics
 import           Fregot.Builtins.Internal
 import qualified Fregot.Builtins.Json     as Builtins.Json
+import qualified Fregot.Builtins.Jwt      as Builtins.Jwt
 import qualified Fregot.Builtins.Regex    as Builtins.Regex
 import qualified Fregot.Builtins.Time     as Builtins.Time
 
@@ -41,5 +42,6 @@ defaultBuiltins =
     Builtins.Base64.builtins <>
     Builtins.Basics.builtins <>
     Builtins.Json.builtins <>
+    Builtins.Jwt.builtins <>
     Builtins.Regex.builtins <>
     Builtins.Time.builtins
