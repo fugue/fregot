@@ -111,7 +111,7 @@ data Literal a = Literal
 
 data Statement a
     = UnifyS  a (Term a) (Term a)
-    | AssignS a UnqualifiedVar (Term a)
+    | AssignS a (Term a) (Term a)
     | TermS     (Term a)
     deriving (Functor, Show)
 

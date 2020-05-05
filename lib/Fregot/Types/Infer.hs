@@ -327,9 +327,9 @@ inferStatement
     :: Statement SourceSpan -> InferM ()
 inferStatement = \case
     TermS t -> () <$ inferTerm t
-    AssignS source v t -> do
-        tty <- inferNonVoidTerm source t
-        Unify.bindTerm v tty
+    AssignS source l r -> do
+        rt <- inferNonVoidTerm source r
+        unifyTermType source l rt
     UnifyS source l r -> unifyTermTerm source l r
 
 inferNonVoidTerm :: SourceSpan -> Term SourceSpan -> InferM SourceType
@@ -562,6 +562,9 @@ unifyTermType _source (NameT _ (LocalName α)) σ = Unify.bindTerm α σ
 unifyTermType source (ArrayT _ arr) (τ, s)
         | Just σ <- τ ^? Types.singleton . Types._Array =
     for_ arr $ \t -> unifyTermType source t (σ, s)
+unifyTermType source (ArrayT _ arr) (τ, s)
+        | τ == Types.unknown =
+    for_ arr $ \t -> unifyTermType source t (τ, s)
 
 unifyTermType source (SetT _ set) (τ, s)
         | Just σ <- τ ^? Types.singleton . Types._Set =

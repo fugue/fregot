@@ -625,10 +625,10 @@ evalStatement (UnifyS source x y) = suspend source $ do
     yv <- evalTerm y
     _  <- unify xv yv
     return muTrue
-evalStatement (AssignS source v x) = suspend source $ do
+evalStatement (AssignS source x y) = suspend source $ do
     xv <- evalTerm x
-    iv <- toInstVar v
-    unify (Mu (FreeM iv)) xv
+    yv <- evalTerm y
+    _  <- unify xv yv
     return muTrue
 evalStatement (TermS e) = suspend (e ^. termAnn) (evalTerm e)
 

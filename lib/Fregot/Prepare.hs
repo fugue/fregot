@@ -208,10 +208,12 @@ prepareLiteral slit = do
     statement <- case slit ^. Sugar.literalExpr of
         Sugar.BinOpE ann x Sugar.UnifyO y ->
             UnifyS ann <$> prepareExpr x <*> prepareExpr y
-        -- NOTE(jaspervdj): If there's no local name here, we obviously cannot
-        -- consider it an assignment.
-        Sugar.BinOpE ann (Sugar.TermE _ (Sugar.VarT _ (LocalName v))) Sugar.AssignO y ->
-            AssignS ann v <$> prepareExpr y
+        Sugar.BinOpE ann x Sugar.AssignO y -> do
+            unless (assignLhsExpr x) $ tellError $ Error.mkError "compile"
+                (x ^. Sugar.exprAnn)
+                "invalid lhs"
+                "You cannot assign to the expression to the left of `:=`"
+            AssignS ann <$> prepareExpr x <*> prepareExpr y
         expr -> TermS <$> prepareExpr expr
 
     with <- traverse prepareWith $ slit ^. Sugar.literalWith
@@ -221,6 +223,24 @@ prepareLiteral slit = do
         , _literalStatement = statement
         , _literalWith      = with
         }
+  where
+    assignLhsExpr = \case
+        Sugar.TermE _ t -> assignLhsTerm t
+        Sugar.BinOpE _ _ _ _ -> False
+        Sugar.ParensE _ e -> assignLhsExpr e
+
+    assignLhsTerm = \case
+        Sugar.RefT _ _ _ _ -> False
+        Sugar.CallT _ _ _ -> False
+        Sugar.VarT _ _ -> True
+        Sugar.ScalarT _ _ -> False
+        Sugar.ArrayT _ arr -> all assignLhsExpr arr
+        Sugar.SetT _ _ -> False
+        Sugar.ObjectT _ _ -> False
+        Sugar.ArrayCompT _ _ _ -> False
+        Sugar.SetCompT _ _ _ -> False
+        Sugar.ObjectCompT _ _ _ _ -> False
+        Sugar.ErrorT _ -> True
 
 prepareExpr
     :: Monad m

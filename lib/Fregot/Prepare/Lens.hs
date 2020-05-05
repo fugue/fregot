@@ -92,7 +92,7 @@ termAnn = lens getAnn setAnn
 statementTerms :: Traversal' (Statement a) (Term a)
 statementTerms f = \case
     UnifyS  a x y -> UnifyS a <$> f x <*> f y
-    AssignS a v x -> AssignS a v <$> f x
+    AssignS a x y -> AssignS a <$> f x <*> f y
     TermS       x -> TermS <$> f x
 
 literalTerms :: Traversal' (Literal a) (Term a)
