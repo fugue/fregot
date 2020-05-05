@@ -19,7 +19,6 @@ import qualified Data.Time.RFC3339        as Time.RFC3339
 import           Fregot.Builtins.Internal
 import qualified Fregot.Eval.Number       as Number
 import           Fregot.Names
-import           Fregot.Prepare.Ast       (Function (..))
 import           Fregot.Types.Builtins    ((🡒))
 import qualified Fregot.Types.Builtins    as Ty
 import qualified Fregot.Types.Internal    as Ty

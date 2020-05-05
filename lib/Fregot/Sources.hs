@@ -23,7 +23,6 @@ import           Data.Binary                  (Binary)
 import           Data.Hashable                (Hashable)
 import qualified Data.HashMap.Strict.Extended as HMS
 import qualified Data.IORef                   as IORef
-import           Data.Semigroup               (Semigroup)
 import qualified Data.Text                    as T
 import           GHC.Generics
 import           Prelude                      hiding (lookup)

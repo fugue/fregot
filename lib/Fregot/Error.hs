@@ -43,7 +43,6 @@ import qualified Data.ByteString.Lazy.Char8 as BL8
 import           Data.Data                  (Data)
 import           Data.List                  (sortBy)
 import           Data.List.NonEmpty         (NonEmpty)
-import           Data.Monoid                ((<>))
 import           Data.Ord                   (comparing)
 import qualified Data.Text                  as T
 import qualified Fregot.Error.Stack         as Stack

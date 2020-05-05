@@ -26,7 +26,6 @@ import           Data.Function             (on)
 import qualified Data.IORef                as IORef
 import qualified Data.List                 as List
 import           Data.Maybe                (fromMaybe)
-import           Data.Semigroup            (Semigroup (..))
 import qualified Data.Text                 as T
 import qualified Data.Text                 as Text
 import qualified Data.Text.Encoding        as T

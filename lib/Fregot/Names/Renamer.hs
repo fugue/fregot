@@ -36,7 +36,7 @@ import           Fregot.Error              (Error)
 import qualified Fregot.Error              as Error
 import           Fregot.Names
 import           Fregot.Names.Imports
-import           Fregot.Prepare.Ast        (Function (..), Imports)
+import           Fregot.Prepare.Ast        (Function (..))
 import           Fregot.PrettyPrint        ((<+>))
 import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources.SourceSpan (SourceSpan)

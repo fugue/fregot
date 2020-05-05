@@ -28,7 +28,7 @@ import           Fregot.Eval.Number       (Number)
 import qualified Fregot.Eval.Number       as Number
 import           Fregot.Eval.Value
 import           Fregot.Names
-import           Fregot.Prepare.Ast       (BinOp (..), Function (..))
+import           Fregot.Prepare.Ast       (BinOp (..))
 import           Fregot.Types.Builtins    ((🡒))
 import qualified Fregot.Types.Builtins    as Ty
 import           Fregot.Types.Internal    ((∪))
