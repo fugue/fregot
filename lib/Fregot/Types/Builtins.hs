@@ -15,7 +15,7 @@ module Fregot.Types.Builtins
 
 import           Fregot.Types.Internal
 
-data InTypes (i :: [t]) where
+data InTypes (i :: [*]) where
     Nil  :: InTypes '[]
     Cons :: Type -> InTypes i -> InTypes (a ': i)
 
@@ -25,7 +25,7 @@ data BuiltinChecker m = BuiltinChecker
     , bcCatch    :: forall a. m a -> m a -> m a
     }
 
-type BuiltinType (i :: [t]) =
+type BuiltinType (i :: [*]) =
     forall m. Monad m => BuiltinChecker m -> InTypes i -> m Type
 
 out :: Type -> BuiltinType '[]

@@ -45,7 +45,6 @@ import           Control.Applicative          ((<|>))
 import           Control.Arrow                ((>>>))
 import           Control.Lens                 (preview, review)
 import           Control.Monad.Identity       (Identity)
-import           Control.Monad.Stream         (Stream)
 import           Control.Monad.Stream         as Stream
 import qualified Data.Aeson                   as Aeson
 import           Data.Bifunctor               (first)

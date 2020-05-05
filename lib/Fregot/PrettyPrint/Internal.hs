@@ -51,7 +51,6 @@ import qualified Data.Aeson                        as Aeson
 import           Data.Char                         (isSpace)
 import           Data.Int                          (Int64)
 import qualified Data.Scientific                   as Scientific
-import           Data.Semigroup                    (Semigroup, (<>))
 import qualified Data.Text                         as T
 import qualified Data.Text.Lazy                    as TL
 import           Prelude                           hiding (error)

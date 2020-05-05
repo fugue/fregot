@@ -597,10 +597,7 @@ inferBuiltin
     :: SourceSpan
     -> Function -> Builtin Proxy -> [Term SourceSpan]
     -> InferM SourceType
-inferBuiltin
-        source name
-        builtin@(Builtin.Builtin (sig :: Builtin.Sig i o) ty _)
-        args =
+inferBuiltin source name builtin@(Builtin.Builtin sig ty _) args =
     inferCall source name arity args $ \inferredArgs -> do
         inTypes <- toInTypes sig $ fmap fst inferredArgs
         ty checker inTypes
