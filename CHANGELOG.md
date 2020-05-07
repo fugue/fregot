@@ -1,5 +1,12 @@
 # CHANGELOG
 
+ -  0.10.1 (2020-05-07)
+     *  Upgrade to GHC 8.8 and stack LTS-15.6.
+     *  Loosen restrictions on the LHS of `:=`.  This allows you to assign
+        to arrays, e.g.:
+
+            [_, num, _] := split("routes.1234.cidr_block", ".")
+
  -  0.10.0 (2020-05-04)
      *  Add `json.marshal` builtin function.
      *  Fix isssue where `{}` was treated as an empty set, not an empty object.
