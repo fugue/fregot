@@ -1,5 +1,6 @@
 F u g u e   R E G O   T o o l k i t
 fregot v0.10.1 repl - use :help for usage info
+Set breakpoint at rewind.crashing_rule
 fregot ([34meval error[0m):
   "rewind.rego" (line 5, column 3):
   builtin type error:
@@ -11,3 +12,4 @@ fregot ([34meval error[0m):
 
   Stack trace:
     rule [33m[35mrewind[0m[36m.[0mcrashing_rule[0m at data.rewind.crashing_rule:1:1
+Set breakpoint at rewind.failing_rule

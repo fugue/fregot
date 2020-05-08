@@ -4,7 +4,7 @@ Enter an expression to evaluate it.
 Enter a rule to add it to the current package.
 
 Other commands:
-  [33m:break     [0mSet a breakpoint
+  [33m:break     [0mSet or remove a breakpoint
   [33m:help      [0mshow this info
   [33m:input     [0mset the input document
   [33m:open      [0mopen a different package, e.g. `:open foo`

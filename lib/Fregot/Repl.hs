@@ -390,11 +390,16 @@ metaShortcuts =
 
 metaCommands :: [MetaCommand]
 metaCommands =
-    [ MetaCommand ":break" "Set a breakpoint" $ \h args -> case args of
+    [ MetaCommand ":break" "Set or remove a breakpoint" $ \h args -> case args of
         [point] | Just qualify <- point ^? breakpointFromText -> do
             openPkg <- readFocusedPackage h
             let bpt = qualifyBreakpoint openPkg qualify
-            IORef.atomicModifyIORef_ (h ^. breakpoints) $ HS.insert bpt
+            verb <- IORef.atomicModifyIORef' (h ^. breakpoints) $ \bpts ->
+                if HS.member bpt bpts
+                    then (HS.delete bpt bpts, "Removed")
+                    else (HS.insert bpt bpts, "Set")
+            T.hPutStrLn IO.stderr $
+                verb <> " breakpoint at " <> review breakpointFromText bpt
             return True
 
         [] -> do
@@ -572,14 +577,15 @@ metaCommands =
         return True
 
     breakHelp =
-        [ "You can set a breakpoint at a rule by using its full "
-        , "name, e.g.:"
+        [ "You can set a breakpoint at a rule by using its full name, e.g.:"
         , ""
         , "    :break pkg.foo.bar"
         , ""
         , "Or a source file and line number, e.g.:"
         , ""
         , "    :break foo/bar.rego:9"
+        , ""
+        , "You can remove breakpoints with the same command."
         ]
 
 data Reload
