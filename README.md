@@ -199,7 +199,7 @@ REPL
     Enter a rule to add it to the current package.
 
     Other commands:
-      :break     Set a breakpoint
+      :break     Set or remove a breakpoint
       :help      show this info
       :input     set the input document
       :open      open a different package, e.g. `:open foo`
@@ -300,6 +300,8 @@ display the list. You'll see output like this:
     examples/break_example/break_example.rego:8
     fregot.examples.break_example.function_a
     fregot.examples.break_example.test_step
+
+You can also use `:break` on an existing breakpoint to remove it again.
 
 #### Step 2: Activate breakpoint
 

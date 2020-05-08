@@ -1,0 +1,16 @@
+F u g u e   R E G O   T o o l k i t
+fregot v0.10.1 repl - use :help for usage info
+Set breakpoint at step.rego:5
+Removed breakpoint at step.rego:5
+no breakpoints set
+
+You can set a breakpoint at a rule by using its full name, e.g.:
+
+    :break pkg.foo.bar
+
+Or a source file and line number, e.g.:
+
+    :break foo/bar.rego:9
+
+You can remove breakpoints with the same command.
+
