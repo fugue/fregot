@@ -28,7 +28,7 @@
  -  0.9.1 (2020-04-17)
      *  Better error for foo.bar() if foo is not imported
      *  Disallow :reload while debugging
-     *  Type error when using satured call result
+     *  Type error when using saturated call result
 
         You can use functions that take arguments, such as `array.concat` in two
         ways:
