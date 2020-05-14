@@ -25,7 +25,7 @@ You can use `fregot` to validate just about any kind of JSON against Rego
 policy. For an example of using `fregot` to test a Terraform plan prior to
 deployment, see the [Example Use Case](#example-use-case).
 
-We are also actively working on improve the static analyzer to prevent many
+We are also actively working on improving the static analyzer to prevent many
 kinds of bugs.
 
 Table of Contents
