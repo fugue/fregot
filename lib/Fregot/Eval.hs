@@ -15,6 +15,7 @@ module Fregot.Eval
     , Value
     , Document
     , Row, rowValue
+    , prettyRowWithContext
 
     , EvalException (..)
 

@@ -244,7 +244,7 @@ processInput h input = do
             forM_ mbRows $ \rows -> case rows of
                 [] -> PP.hPutSemDoc IO.stderr $ PP.pretty Eval.emptyObject
                 _  -> forM_ rows $ \row ->
-                    PP.hPutSemDoc IO.stdout $ "=" <+> PP.pretty row
+                    PP.hPutSemDoc IO.stdout $ Eval.prettyRowWithContext row
 
         Nothing -> return ()
 
@@ -260,7 +260,7 @@ processStep h suspends stepTo resume = do
             PP.hPutSemDoc IO.stdout $ prefix "finished"
             IORef.writeIORef (h ^. mode) $ RegularMode suspends
         Just (Interpreter.Yield x ec cont)   -> do
-            PP.hPutSemDoc IO.stdout $ prefix "=" <+> PP.pretty x
+            PP.hPutSemDoc IO.stdout $ prefix (Eval.prettyRowWithContext x)
             processStep h suspends stepTo (ec, cont)
         Just (Interpreter.Suspend source ec cont) -> do
             mbNextStepTo <- continueStepping stepTo
