@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveFunctor         #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE TemplateHaskell       #-}
 module Fregot.Eval.Internal
     ( Mu'
@@ -9,6 +10,7 @@ module Fregot.Eval.Internal
 
     , Row (..), rowContext, rowValue
     , Document
+    , prettyRowWithContext
 
     , EvalCache
 
@@ -17,6 +19,7 @@ module Fregot.Eval.Internal
 
 import           Control.Lens.TH           (makeLenses)
 import qualified Data.HashMap.Strict       as HMS
+import           Data.Maybe                (maybeToList)
 import           Data.Unification          (Unification)
 import qualified Data.Unification          as Unification
 import qualified Data.Unique               as Unique
@@ -27,6 +30,7 @@ import           Fregot.Eval.Mu            (Mu)
 import           Fregot.Eval.Value         (InstVar, Value)
 import           Fregot.Names              (PackageName, Var)
 import           Fregot.Prepare.Ast        (Function, Rule)
+import           Fregot.PrettyPrint        ((<+>))
 import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources.SourceSpan (SourceSpan)
 import qualified Fregot.Tree               as Tree
@@ -58,6 +62,15 @@ instance PP.Pretty PP.Sem a => PP.Pretty PP.Sem (Row a) where
 type Document a = [Row a]
 
 type EvalCache = Cache (PackageName, Var) Value
+
+prettyRowWithContext:: PP.Pretty PP.Sem a => Row a -> PP.SemDoc
+prettyRowWithContext (Row context value) = PP.vcat $
+    [PP.punctuation "=" <+> PP.pretty value] ++
+    [ PP.punctuation "|" <+> PP.pretty var <+> PP.punctuation "=" <+>
+        PP.nest 2 (PP.pretty mu)
+    | (var, iv) <- HMS.toList $ _locals context
+    , mu <- maybeToList . Unification.lookupMaybe iv $ _unification context
+    ]
 
 --------------------------------------------------------------------------------
 

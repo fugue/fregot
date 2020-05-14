@@ -1,0 +1,11 @@
+repl% pretty% [36m=[0m [36m{[0m
+  [31m"age"[0m[36m:[0m [31m52[0m[36m,[0m
+  [31m"address"[0m[36m:[0m [31m"Sun Isle 20"[0m
+[36m}[0m
+[36m|[0m name [36m=[0m [31m"Tom Nook"[0m
+pretty% [36m=[0m [31m"Tom Nook"[0m
+[36m|[0m person [36m=[0m [36m{[0m
+    [31m"age"[0m[36m:[0m [31m52[0m[36m,[0m
+    [31m"address"[0m[36m:[0m [31m"Sun Isle 20"[0m
+  [36m}[0m
+pretty% 

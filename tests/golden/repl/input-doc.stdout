@@ -1,4 +1,4 @@
-repl% repl% fregot.tests.repl.input_doc% = [36m{[0m
+repl% repl% fregot.tests.repl.input_doc% [36m=[0m [36m{[0m
   [31m"1"[0m[36m:[0m [36m{[0m
     [31m"type"[0m[36m:[0m [31m"security_group"[0m[36m,[0m
     [31m"attributes"[0m[36m:[0m [36m{[0m[36m}[0m

@@ -2,6 +2,6 @@ repl% repl% 14|   low_a
       [32m^^^^^[0m
 step(debug)% 15|   low_b
       [32m^^^^^[0m
-step(debug)% [32m(debug)[0m = [31mtrue[0m
+step(debug)% [32m(debug)[0m [36m=[0m [31mtrue[0m
 [32m(debug)[0m finished
 repl% 
