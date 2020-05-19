@@ -25,3 +25,9 @@ test_walk_set {
   walk({"a", "b"}, [["a"], "a"])
   walk({"a", "b"}, [["b"], "b"])
 }
+
+test_walk_index {
+  [_, address] := walk(document)
+  _ := address.street
+  _ := address.number
+}
