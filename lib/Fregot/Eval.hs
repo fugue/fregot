@@ -94,8 +94,9 @@ groundTree source tree = case Tree.root tree of
     Nothing -> do
         -- NOTE(jaspervdj): If there is both a rule as well as children,
         -- we'll need to do some sort of merge here.
-        children <- forM (Tree.children tree) $
-            \(v, child) -> fmap ((,) (key v)) <$> groundTree source child
+        children <- unbranch $ mconcat $ do
+            (v, child) <- Tree.children tree
+            pure $ fmap ((,) (key v)) <$> groundTree source child
         fmap Just . mkObject source $ catMaybes children
   where
     key = Value . StringV . unVar
@@ -294,9 +295,9 @@ evalRefArg source indexee (Mu WildcardM) = do
     gindexee <- ground source indexee
     case unValue gindexee of
         ArrayV a  -> branch [return (muValue val) | val <- V.toList a]
-        SetV s -> branch [return (muValue val) | val <- HS.toList s]
+        SetV s    -> branch [return (muValue val) | val <- HS.toList s]
         ObjectV o -> branch [return (muValue val) | (_, val) <- HMS.toList o]
-        _ -> cut
+        _         -> cut
 
 evalRefArg source indexee (Mu (FreeM unbound)) = do
     gindexee <- ground source indexee
