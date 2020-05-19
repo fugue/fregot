@@ -89,7 +89,7 @@ type Suspension = (SourceSpan, Context, Environment)
 newtype EvalM a = EvalM
     { unEvalM
         :: Environment -> Context -> Stream EvalException Suspension IO (Row a)
-    } deriving (Functor)
+    } deriving (Functor, Monoid, Semigroup)
 
 instance Applicative EvalM where
     pure x = EvalM $ \_ ctx -> return (Row ctx x)
