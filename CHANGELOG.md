@@ -1,5 +1,13 @@
 # CHANGELOG
 
+ -  0.11.0 (2020-05-20)
+     *  You can now remove a breakpoint again by calling `:break` with the
+        same argument that you used to set it.
+     *  Fix bug in reification of packages as trees.
+     *  Make indexing type errors produce an empty result rather than throwing
+        an error.
+     *  Print the row context in addition to the result in the REPL.
+
  -  0.10.1 (2020-05-07)
      *  Upgrade to GHC 8.8 and stack LTS-15.6.
      *  Loosen restrictions on the LHS of `:=`.  This allows you to assign
