@@ -97,8 +97,8 @@ builtin_decode = Builtin (In Out)
         -- representation.
         | Aeson.Object obj <- Aeson.toJSON jws
         , Just (Aeson.String p64) <- HMS.lookup "payload" obj
-        , Right p <- Base64.decode $! T.encodeUtf8 p64
-        , Right val <- Aeson.eitherDecodeStrict' p =
+        , Right val <- Aeson.eitherDecodeStrict' .
+                Base64.decodeLenient $ T.encodeUtf8 p64 =
             pure val
         | otherwise =
             throwString "Internal error obtaining JWT payload"
