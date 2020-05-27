@@ -15,38 +15,39 @@ module Fregot.Compile.Package
     , valueToCompiledRule
     ) where
 
-import           Control.Lens                 (at, iforM_, review, traverseOf,
-                                               view, (&), (.~), (^.))
-import           Control.Monad                (foldM, forM)
-import           Control.Monad.Identity       (runIdentity)
-import           Control.Monad.Parachute      (ParachuteT, catching, tellError,
-                                               tellErrors)
-import           Data.Functor                 (($>))
-import qualified Data.Graph                   as Graph
-import qualified Data.HashMap.Strict.Extended as HMS
-import qualified Data.HashSet.Extended        as HS
-import           Data.List.NonEmpty.Extended  (NonEmpty (..))
-import           Data.Proxy                   (Proxy (..))
-import           Data.Traversable.HigherOrder (htraverse)
-import           Fregot.Builtins.Internal     (Builtins)
+import           Control.Lens                      (at, iforM_, review,
+                                                    traverseOf, view, (&), (.~),
+                                                    (^.))
+import           Control.Monad                     (foldM, forM)
+import           Control.Monad.Identity            (runIdentity)
+import           Control.Monad.Parachute           (ParachuteT, catching,
+                                                    tellError, tellErrors)
+import           Data.Functor                      (($>))
+import qualified Data.Graph                        as Graph
+import qualified Data.HashMap.Strict.Extended      as HMS
+import qualified Data.HashSet.Extended             as HS
+import           Data.List.NonEmpty.Extended       (NonEmpty (..))
+import           Data.Proxy                        (Proxy (..))
+import           Data.Traversable.HigherOrder      (htraverse)
+import           Fregot.Builtins.Internal          (Builtins)
 import           Fregot.Compile.Graph
 import           Fregot.Compile.Order
-import           Fregot.Error                 (Error)
-import qualified Fregot.Error                 as Error
-import           Fregot.Eval.Value            (Value)
+import           Fregot.Error                      (Error)
+import qualified Fregot.Error                      as Error
+import           Fregot.Eval.Value                 (Value)
 import           Fregot.Names
 import           Fregot.Prepare.Ast
 import qualified Fregot.Prepare.ConstantFold  as ConstantFold
 import           Fregot.Prepare.Lens
 import           Fregot.Prepare.Package
-import           Fregot.PrettyPrint           ((<$$>), (<+>))
-import qualified Fregot.PrettyPrint           as PP
-import           Fregot.Sources.SourceSpan    (SourceSpan)
-import qualified Fregot.Tree                  as Tree
-import qualified Fregot.Types.Infer           as Infer
-import           Fregot.Types.Rule            (RuleType (..))
-import           Fregot.Types.Value           (TypeContext, inferValue)
-import           Prelude                      hiding (head, lookup)
+import           Fregot.PrettyPrint                ((<$$>), (<+>))
+import qualified Fregot.PrettyPrint                as PP
+import           Fregot.Sources.SourceSpan         (SourceSpan)
+import qualified Fregot.Tree                       as Tree
+import qualified Fregot.Types.Infer                as Infer
+import           Fregot.Types.Rule                 (RuleType (..))
+import           Fregot.Types.Value                (TypeContext, inferValue)
+import           Prelude                           hiding (head, lookup)
 
 type CompiledRule = Rule RuleType SourceSpan
 

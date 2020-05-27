@@ -180,16 +180,16 @@ evalTerm (ObjectT source o) = do
         return (key, val)
     muValue <$> mkObject source obj
 
-evalTerm (ArrayCompT _ chead cbody) = do
+evalTerm (CompT _ (ArrayComp _ chead cbody)) = do
     rows <- unbranch $ evalRuleBody cbody (evalTerm chead)
     return $ Mu $ RecM $ ArrayV $ V.fromList rows
 
-evalTerm (SetCompT source shead cbody) = do
+evalTerm (CompT _ (SetComp source shead cbody)) = do
     rows     <- unbranch $ evalRuleBody cbody (evalTerm shead)
     grounded <- mapM (ground source) rows
     return $ muValueF $ SetV $ HS.fromList grounded
 
-evalTerm (ObjectCompT source khead vhead cbody) = do
+evalTerm (CompT _ (ObjectComp source khead vhead cbody)) = do
     rows <- unbranch $ evalRuleBody cbody $
         (,) <$> evalGroundTerm khead <*> evalGroundTerm vhead
     muValue <$> mkObject source rows

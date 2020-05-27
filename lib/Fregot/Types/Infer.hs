@@ -429,31 +429,22 @@ inferTerm (ObjectT source obj) = do
         , NonEmpty.singleton source
         )
 
-inferTerm (ArrayCompT source headTerm body) = do
+inferTerm (CompT csource comp) = do
     inferClosures <- view ieInferClosures
-    if not inferClosures
-        then pure (Types.unknown, NonEmpty.singleton source)
-        else do
+    case comp of
+        _ | not inferClosures ->
+            pure (Types.unknown, NonEmpty.singleton csource)
+        ArrayComp source headTerm body -> do
             headTy <- isolateUnification $ do
                 inferRuleBody body
                 inferTerm headTerm
             pure (Types.arrayOf (fst headTy), NonEmpty.singleton source)
-
-inferTerm (SetCompT source headTerm body) = do
-    inferClosures <- view ieInferClosures
-    if not inferClosures
-        then pure (Types.unknown, NonEmpty.singleton source)
-        else do
+        SetComp source headTerm body -> do
             headTy <- isolateUnification $ do
                 inferRuleBody body
                 inferTerm headTerm
             pure (Types.setOf (fst headTy), NonEmpty.singleton source)
-
-inferTerm (ObjectCompT source keyTerm valueTerm body) = do
-    inferClosures <- view ieInferClosures
-    if not inferClosures
-        then pure (Types.unknown, NonEmpty.singleton source)
-        else do
+        ObjectComp source keyTerm valueTerm body -> do
             (keyTy, valueTy) <- isolateUnification $ do
                 inferRuleBody body
                 (,) <$> inferTerm keyTerm <*> inferTerm valueTerm

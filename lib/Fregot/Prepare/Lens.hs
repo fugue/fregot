@@ -3,9 +3,11 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 module Fregot.Prepare.Lens
     ( ruleTerms
+    , ruleDefinitionBodies
     , ruleDefinitionTerms
 
     , ruleBodyTerms
+    , comprehensionTerms
     , literalTerms
     , termAnn
     , termNames
@@ -39,6 +41,19 @@ ruleTerms f rule = Rule
     <*> traverse f (rule ^. ruleDefault)
     <*> traverseOf (traverse . ruleDefinitionTerms) f (rule ^. ruleDefs)
 
+-- All rule "bodies" inside a rule.  Useful for optimizations.  Does not include
+-- nested comprehensions.
+ruleDefinitionBodies :: Traversal' (RuleDefinition a) (RuleBody a)
+ruleDefinitionBodies f rdef = RuleDefinition
+    <$> pure (rdef ^. ruleDefName)
+    <*> pure (rdef ^. ruleDefImports)
+    <*> pure (rdef ^. ruleDefAnn)
+    <*> pure (rdef ^. ruleArgs)
+    <*> pure (rdef ^. ruleIndex)
+    <*> pure (rdef ^. ruleValue)
+    <*> traverseOf traverse f (rdef ^. ruleBodies)
+    <*> traverseOf (traverse . ruleElseBody) f (rdef ^. ruleElses)
+
 -- | All direct terms of a rule definition, combine with 'cosmos' to traverse
 -- deeper.
 ruleDefinitionTerms :: Traversal' (RuleDefinition a) (Term a)
@@ -64,17 +79,15 @@ termAnn :: Lens' (Term a) a
 termAnn = lens getAnn setAnn
   where
     getAnn = \case
-        RefT        a _ _   -> a
-        CallT       a _ _   -> a
-        NameT       a _     -> a
-        ArrayT      a _     -> a
-        SetT        a _     -> a
-        ObjectT     a _     -> a
-        ArrayCompT  a _ _   -> a
-        SetCompT    a _ _   -> a
-        ObjectCompT a _ _ _ -> a
-        ValueT      a _     -> a
-        ErrorT      a       -> a
+        RefT        a _ _ -> a
+        CallT       a _ _ -> a
+        NameT       a _   -> a
+        ArrayT      a _   -> a
+        SetT        a _   -> a
+        ObjectT     a _   -> a
+        CompT       a _   -> a
+        ValueT      a _   -> a
+        ErrorT      a     -> a
 
     setAnn t a = case t of
         RefT        _ x k   -> RefT        a x k
@@ -83,9 +96,7 @@ termAnn = lens getAnn setAnn
         ArrayT      _ l     -> ArrayT      a l
         SetT        _ s     -> SetT        a s
         ObjectT     _ o     -> ObjectT     a o
-        ArrayCompT  _ x b   -> ArrayCompT  a x b
-        SetCompT    _ x b   -> SetCompT    a x b
-        ObjectCompT _ k x b -> ObjectCompT a k x b
+        CompT       _ c     -> CompT a c
         ValueT      _ v     -> ValueT      a v
         ErrorT      _       -> ErrorT      a
 
@@ -103,6 +114,13 @@ literalTerms f lit = Literal (lit ^. literalAnn) (lit ^. literalNegation)
 ruleBodyTerms :: Traversal' (RuleBody a) (Term a)
 ruleBodyTerms = traverse . literalTerms
 
+comprehensionTerms :: Traversal' (Comprehension a) (Term a)
+comprehensionTerms f = \case
+    ArrayComp  a h b   -> ArrayComp a <$> f h <*> ruleBodyTerms f b
+    SetComp    a h b   -> SetComp a <$> f h <*> ruleBodyTerms f b
+    ObjectComp a k v b -> ObjectComp a <$>
+                            f k <*> f v <*> ruleBodyTerms f b
+
 instance Plated (Term a) where
     plate f = \case
         RefT        a x k   -> RefT a <$> f x <*> f k
@@ -112,10 +130,7 @@ instance Plated (Term a) where
         SetT        a xs    -> SetT a <$> traverse f xs
         ObjectT     a xs    -> ObjectT a <$>
                                 traverse (\(k, v) -> (,) <$> f k <*> f v) xs
-        ArrayCompT  a h b   -> ArrayCompT a <$> f h <*> ruleBodyTerms f b
-        SetCompT    a h b   -> SetCompT a <$> f h <*> ruleBodyTerms f b
-        ObjectCompT a k v b -> ObjectCompT a <$>
-                                f k <*> f v <*> ruleBodyTerms f b
+        CompT       a c     -> CompT a <$> traverseOf comprehensionTerms f c
         ValueT      a v     -> pure (ValueT a v)
         ErrorT      a       -> pure (ErrorT a)
 
@@ -131,7 +146,7 @@ termCosmosNames :: Fold (Term a) (a, Name)
 termCosmosNames = cosmos . termNames
 
 -- | Fold over all closures in a term recursively.
-termCosmosClosures :: Fold (Term a) (Term a)
+termCosmosClosures :: Fold (Term a) (Comprehension a)
 termCosmosClosures = cosmos . termClosures
 
 -- | Fold over all terms that DO NOT appear in a closure.
@@ -139,26 +154,29 @@ termCosmosNoClosures :: Fold (Term a) (Term a)
 termCosmosNoClosures = cosmosOnOf noClosure (plate . noClosure)
   where
     noClosure f e = case e of
-        ArrayCompT  _ _ _   -> pure e
-        SetCompT    _ _ _   -> pure e
-        ObjectCompT _ _ _ _ -> pure e
-        _                   -> f e
+        CompT _ _ -> pure e
+        _         -> f e
 
 -- | Fold over the direct subclosures of a term.
-termClosures :: Traversal' (Term a) (Term a)
+termClosures :: Traversal' (Term a) (Comprehension a)
 termClosures f e = case e of
-    ArrayCompT  _ _ _   -> f e
-    SetCompT    _ _ _   -> f e
-    ObjectCompT _ _ _ _ -> f e
-    _                   -> pure e
+    CompT a c -> CompT a <$> f c
+    _         -> pure e
+
+comprehensionBody :: Lens' (Comprehension a) (RuleBody a)
+comprehensionBody = lens
+    (\case
+        ArrayComp  _ _ b   -> b
+        SetComp    _ _ b   -> b
+        ObjectComp _ _ _ b -> b)
+   (\comp b -> case comp of
+        ArrayComp  a h   _ -> ArrayComp  a h b
+        SetComp    a h   _ -> SetComp    a h b
+        ObjectComp a k v _ -> ObjectComp a k v b)
 
 -- | Fold over the direct closures bodies of a term.
 termRuleBodies :: Traversal' (Term a) (RuleBody a)
-termRuleBodies f e = case e of
-    ArrayCompT  a h   b -> ArrayCompT a h <$> f b
-    SetCompT    a h   b -> SetCompT a h <$> f b
-    ObjectCompT a k v b -> ObjectCompT a k v <$> f b
-    _                   -> pure e
+termRuleBodies = termClosures . comprehensionBody
 
 -- | Find referenced functions in a term.
 termCosmosCalls :: Fold (Term a) (a, Function)

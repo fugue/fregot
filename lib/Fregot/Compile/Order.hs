@@ -102,7 +102,8 @@ orderForClosures inferEnv safe body =
     step () reordered lit =
         -- Variables appearing in closures in this statement.
         let inClosureVars = HS.toHashSetOf
-                (literalTerms . termCosmosClosures . termCosmosNames . traverse . _LocalName)
+                (literalTerms . termCosmosClosures . comprehensionTerms .
+                    termCosmosNames . traverse . _LocalName)
                 lit
 
             -- Variabels that are both in the body as well as in the closures

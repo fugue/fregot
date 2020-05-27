@@ -28,8 +28,9 @@ module Fregot.Prepare.Ast
     , RuleBody, Query
     , Literal (..), literalAnn, literalNegation, literalStatement, literalWith
     , Statement (..)
-    , Term (..), _RefT, _CallT, _NameT, _ArrayT, _SetT, _ObjectT, _ArrayCompT
-    , _SetCompT, _ObjectCompT, _ValueT
+    , Comprehension (..)
+    , _ArrayComp, _SetComp, _ObjectComp
+    , Term (..), _RefT, _CallT, _NameT, _ArrayT, _SetT, _ObjectT, _ValueT
     , Object
     , Function (..), _OperatorFunction, _NamedFunction
     , BinOp (..)
@@ -113,6 +114,13 @@ data Statement a
     = UnifyS  a (Term a) (Term a)
     | AssignS a (Term a) (Term a)
     | TermS     (Term a)
+    -- | ComprehensionIndexS a UnqualifiedVar Unique (HS.HashSet Var) (RuleBody a)
+    deriving (Functor, Show)
+
+data Comprehension a
+    = ArrayComp  a (Term a) (RuleBody a)
+    | SetComp    a (Term a) (RuleBody a)
+    | ObjectComp a (Term a) (Term a) (RuleBody a)
     deriving (Functor, Show)
 
 data Term a
@@ -122,9 +130,7 @@ data Term a
     | ArrayT      a [Term a]
     | SetT        a [Term a]
     | ObjectT     a (Object a)
-    | ArrayCompT  a (Term a) (RuleBody a)
-    | SetCompT    a (Term a) (RuleBody a)
-    | ObjectCompT a (Term a) (Term a) (RuleBody a)
+    | CompT       a (Comprehension a)
     | ValueT      a Value
     | ErrorT      a
     deriving (Functor, Show)
@@ -169,6 +175,7 @@ $(makeLenses ''RuleDefinition)
 $(makeLenses ''RuleElse)
 $(makeLenses ''Literal)
 $(makeLenses ''With)
+$(makePrisms ''Comprehension)
 $(makePrisms ''Term)
 
 --------------------------------------------------------------------------------
@@ -190,6 +197,21 @@ instance PP.Pretty PP.Sem (Statement a) where
     pretty (AssignS _ v x) = PP.pretty v <+> PP.punctuation ":=" <+> PP.pretty x
     pretty (TermS x)       = PP.pretty x
 
+instance PP.Pretty PP.Sem (Comprehension a) where
+    pretty (ArrayComp _ x lits) =
+        PP.punctuation "[" <> PP.pretty x <+> PP.punctuation "|" <+>
+        prettyComprehensionBody lits <>
+        PP.punctuation "]"
+    pretty (SetComp _ x lits) =
+        PP.punctuation "{" <> PP.pretty x <+> PP.punctuation "|" <+>
+        prettyComprehensionBody lits <>
+        PP.punctuation "}"
+    pretty (ObjectComp _ k x lits) =
+        PP.punctuation "{" <> PP.pretty k <> PP.punctuation ":" <+>
+        PP.pretty x <+> PP.punctuation "|" <+>
+        prettyComprehensionBody lits <>
+        PP.punctuation "}"
+
 instance PP.Pretty PP.Sem (Term a) where
     pretty (RefT _ x k) = PP.pretty x <> PP.punctuation "." <> PP.pretty k
     pretty (CallT _ f as)  =
@@ -204,19 +226,7 @@ instance PP.Pretty PP.Sem (Term a) where
     pretty (SetT _ s)        = PP.set s
     pretty (ObjectT _ o)     = PP.object o
 
-    pretty (ArrayCompT _ x lits) =
-        PP.punctuation "[" <> PP.pretty x <+> PP.punctuation "|" <+>
-        prettyComprehensionBody lits <>
-        PP.punctuation "]"
-    pretty (SetCompT _ x lits) =
-        PP.punctuation "{" <> PP.pretty x <+> PP.punctuation "|" <+>
-        prettyComprehensionBody lits <>
-        PP.punctuation "}"
-    pretty (ObjectCompT _ k x lits) =
-        PP.punctuation "{" <> PP.pretty k <> PP.punctuation ":" <+>
-        PP.pretty x <+> PP.punctuation "|" <+>
-        prettyComprehensionBody lits <>
-        PP.punctuation "}"
+    pretty (CompT _ o) = PP.pretty o
 
     pretty (ValueT _ v) = PP.literal $ PP.pretty v
 
