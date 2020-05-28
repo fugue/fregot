@@ -1,5 +1,5 @@
 F u g u e   R E G O   T o o l k i t
-fregot v0.11.0 repl - use :help for usage info
+fregot v0.11.1 repl - use :help for usage info
 Set breakpoint at rewind.crashing_rule
 fregot ([34meval error[0m):
   "rewind.rego" (line 5, column 3):
