@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns               #-}
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
@@ -8,7 +9,8 @@
 {-# LANGUAGE TemplateHaskell            #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}  -- for the MonadUnify instance...
 module Fregot.Eval
-    ( Environment (..), builtins, rules, inputDoc, stack, cache
+    ( Environment (..), builtins, rules, inputDoc, stack, ruleCache
+    , comprehensionCache
     , Context, locals
     , emptyContext
 
@@ -41,6 +43,7 @@ import           Control.Monad.Extended    (forM, zipWithM_)
 import           Control.Monad.Identity    (Identity (..))
 import           Control.Monad.Reader      (ask, local)
 import qualified Control.Monad.Stream      as Stream
+import           Control.Monad.Trans       (liftIO)
 import           Data.Foldable             (for_)
 import qualified Data.HashMap.Strict       as HMS
 import qualified Data.HashSet              as HS
@@ -49,7 +52,6 @@ import qualified Data.List                 as L
 import           Data.Maybe                (catMaybes, fromMaybe)
 import qualified Data.Unification          as Unification
 import qualified Data.Vector.Extended      as V
-import           Debug.Trace
 import           Fregot.Arity
 import           Fregot.Builtins.Internal
 import           Fregot.Compile.Package    (CompiledRule, valueToCompiledRule)
@@ -208,9 +210,24 @@ evalComprehension source = \case
 evalIndexedComprehension
     :: SourceSpan -> IndexedComprehension SourceSpan
     -> EvalM (HMS.HashMap [Value] Mu')
-evalIndexedComprehension source (IndexedComprehension _ keys _ comp) = clearLocals $
-    -- Evaluate the entire thing.
-    case comp of
+evalIndexedComprehension source (IndexedComprehension unique keys _ comp) = do
+    cache <- view comprehensionCache
+    cacheResult <- Cache.read cache unique
+    case cacheResult of
+        Just (Cache.Singleton hms) -> do
+            liftIO $ putStrLn $ "Cached " <> show (PP.object
+                [(PP.array ks, v) | (ks, v) <- HMS.toList hms])
+            pure hms
+        _ -> do
+            -- Evaluate the entire thing.
+            !hms <- evalComp
+            liftIO $ putStrLn $ "Evaluated " <> show unique <> ": " <> show (PP.object
+                [(PP.array ks, v) | (ks, v) <- HMS.toList hms])
+            Cache.writeSingleton cache unique hms
+            pure hms
+  where
+     evalKeys = forM keys (evalVar source >=> ground source)
+     evalComp = clearLocals $ case comp of
         ArrayComp chead cbody -> do
             rows <- unbranch $ evalRuleBody cbody $ do
                 ks <- evalKeys
@@ -233,8 +250,6 @@ evalIndexedComprehension source (IndexedComprehension _ keys _ comp) = clearLoca
                 pure (ks, [kv])
             traverse (fmap muValue . mkObject source) $
                 HMS.fromListWith (<>) rows
-  where
-     evalKeys = forM keys (evalVar source >=> ground source)
 
 evalName :: SourceSpan -> Name -> EvalM Mu'
 evalName source (LocalName var) = evalVar source var
@@ -388,7 +403,7 @@ evalCompiledRule
 evalCompiledRule callerSource crule mbIndex
     -- Cached and uncached complete definitions
     | crule ^. ruleKind == CompleteRule = pushStack $ do
-        c             <- view cache
+        c             <- view ruleCache
         mbCacheResult <- Cache.read c ckey
         case mbCacheResult of
             Just (Cache.Singleton val) -> pure val
@@ -407,7 +422,7 @@ evalCompiledRule callerSource crule mbIndex
     | otherwise = pushStack $ do
         -- Figure n the keys we already know about, and whether or not we
         -- need to do more computation.
-        c             <- view cache
+        c             <- view ruleCache
         mbCacheResult <- Cache.read c ckey
         (tempObj, partial, needCompute) <- case mbCacheResult of
             Just (Cache.Collection p) -> do
@@ -623,9 +638,7 @@ evalLiteral lit next
         next r
   where
     localWiths (w : ws) mx = localWith w $ localWiths ws mx
-    localWiths []       mx = do
-        c <- view cache >>= Cache.bump
-        local (cache .~ c) mx
+    localWiths []       mx = mx
 
     localWith w mx = do
         val      <- evalTerm (w ^. withAs) >>= ground (w ^. withAnn)
@@ -633,14 +646,16 @@ evalLiteral lit next
             InputWithPath path -> do
                 input0 <- view inputDoc
                 input1 <- patchObject (w ^. withAnn) path val input0
-                pure $ local (inputDoc .~ input1)
+                pure $ inputDoc .~ input1
             DataWithPath path -> do
                 tree0 <- view rules
                 tree1 <- patchTree (w ^. withAnn) path val tree0
-                pure $ local (rules .~ tree1)
+                pure $ rules .~ tree1
         -- NOTE(jaspervdj): Should we bump the cache here?  I think multiple
         -- with statements may lead to inconsistencies right now.
-        modifier mx
+        rc <- view ruleCache >>= Cache.bump
+        cc <- view comprehensionCache >>= Cache.bump
+        local ((ruleCache .~ rc) . (comprehensionCache .~ cc) . modifier) mx
 {-# INLINE evalLiteral #-}
 
 
@@ -658,9 +673,7 @@ evalStatement (AssignS source x y) = suspend source $ do
 evalStatement (TermS e) = suspend (e ^. termAnn) (evalTerm e)
 evalStatement (IndexedCompS source comp) = do
     -- Evaluate the entire thing.
-    index <- evalIndexedComprehension source comp
-    traceM $ "Evaluated " <> show (PP.object
-        [(PP.array ks, v) | (ks, v) <- HMS.toList index])
+    !index <- evalIndexedComprehension source comp
     keyVals <- forM (comp ^. indexedKeys) (evalVar source >=> ground source)
     case HMS.lookup keyVals index of
         Nothing -> error "wat"

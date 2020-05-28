@@ -13,10 +13,10 @@ module Fregot.Eval.Monad
     , Row (..), rowContext, rowValue
     , Document
 
-    , EvalCache
+    , RuleCache
 
     , Environment (..), builtins, rules, inputDoc
-    , cache, stack
+    , ruleCache, comprehensionCache, stack
 
     , EvalException (..)
 

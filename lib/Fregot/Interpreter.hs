@@ -82,7 +82,7 @@ import qualified Fregot.Error.Stack              as Stack
 import qualified Fregot.Eval                     as Eval
 import qualified Fregot.Eval.Cache               as Cache
 import qualified Fregot.Eval.Json                as Eval.Json
-import           Fregot.Eval.Monad               (EvalCache)
+import           Fregot.Eval.Monad               (RuleCache)
 import           Fregot.Eval.Value               (emptyObject)
 import           Fregot.Interpreter.Bundle
 import qualified Fregot.Interpreter.Dependencies as Deps
@@ -117,7 +117,7 @@ data Handle = Handle
     , _yamls    :: !(IORef (HMS.HashMap FilePath Prepare.PreparedTree))
     -- | Tree of compiled rules.
     , _ruleTree :: !(IORef (Tree.Tree CompiledRule))
-    , _cache    :: !(IORef EvalCache)
+    , _cache    :: !(IORef RuleCache)
     , _inputDoc :: !(IORef Eval.Value)
     }
 
@@ -409,6 +409,7 @@ newEvalContext h = Eval.EnvContext
         <*> liftIO (IORef.readIORef (h ^. ruleTree))
         <*> liftIO (IORef.readIORef (h ^. inputDoc))
         <*> liftIO (IORef.readIORef (h ^. cache))
+        <*> Cache.new
         <*> pure Stack.empty)
 
 eval
@@ -438,7 +439,8 @@ newResumeStep
     -> InterpreterM (Eval.ResumeStep Eval.Value)
 newResumeStep h pkgname query = do
     -- Disable the cache for evaluating queries in resume steps.
-    envctx   <- over (Eval.ecEnvironment . Eval.cache) Cache.disable <$>
+    -- TODO(jaspervdj): Disable `comprehensionCache`?
+    envctx   <- over (Eval.ecEnvironment . Eval.ruleCache) Cache.disable <$>
                 newEvalContext h
     ctree    <- liftIO $ IORef.readIORef (h ^. ruleTree)
     universe <- universeForRenamer h
