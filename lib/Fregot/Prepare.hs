@@ -276,10 +276,10 @@ prepareTerm = \case
     Sugar.ObjectT source o -> ObjectT source <$> traverse prepareObjectItem o
 
     Sugar.ArrayCompT ann h b -> fmap (CompT ann) $
-        ArrayComp ann <$> prepareTerm h <*> prepareRuleBody b
+        ArrayComp <$> prepareTerm h <*> prepareRuleBody b
     Sugar.SetCompT ann h b -> fmap (CompT ann) $
-        SetComp ann <$> prepareTerm h <*> prepareRuleBody b
-    Sugar.ObjectCompT ann k h b -> fmap (CompT ann) $ ObjectComp ann
+        SetComp <$> prepareTerm h <*> prepareRuleBody b
+    Sugar.ObjectCompT ann k h b -> fmap (CompT ann) $ ObjectComp
         <$> prepareObjectKey k
         <*> prepareTerm h
         <*> prepareRuleBody b

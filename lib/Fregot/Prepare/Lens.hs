@@ -16,6 +16,7 @@ module Fregot.Prepare.Lens
     , termCosmosClosures
     , termRuleBodies
     , termCosmosCalls
+    , termClosures
 
     , valueToScalar
     , termToScalar
@@ -106,6 +107,10 @@ statementTerms f = \case
     AssignS a x y -> AssignS a <$> f x <*> f y
     TermS       x -> TermS <$> f x
 
+    IndexedCompS a (IndexedComprehension u ks v c) ->
+        IndexedCompS a . IndexedComprehension u ks v <$>
+        traverseOf comprehensionTerms f c
+
 literalTerms :: Traversal' (Literal a) (Term a)
 literalTerms f lit = Literal (lit ^. literalAnn) (lit ^. literalNegation)
     <$> statementTerms f (lit ^. literalStatement)
@@ -116,10 +121,9 @@ ruleBodyTerms = traverse . literalTerms
 
 comprehensionTerms :: Traversal' (Comprehension a) (Term a)
 comprehensionTerms f = \case
-    ArrayComp  a h b   -> ArrayComp a <$> f h <*> ruleBodyTerms f b
-    SetComp    a h b   -> SetComp a <$> f h <*> ruleBodyTerms f b
-    ObjectComp a k v b -> ObjectComp a <$>
-                            f k <*> f v <*> ruleBodyTerms f b
+    ArrayComp  h b   -> ArrayComp <$> f h <*> ruleBodyTerms f b
+    SetComp    h b   -> SetComp <$> f h <*> ruleBodyTerms f b
+    ObjectComp k v b -> ObjectComp <$> f k <*> f v <*> ruleBodyTerms f b
 
 instance Plated (Term a) where
     plate f = \case
@@ -166,13 +170,13 @@ termClosures f e = case e of
 comprehensionBody :: Lens' (Comprehension a) (RuleBody a)
 comprehensionBody = lens
     (\case
-        ArrayComp  _ _ b   -> b
-        SetComp    _ _ b   -> b
-        ObjectComp _ _ _ b -> b)
+        ArrayComp  _ b   -> b
+        SetComp    _ b   -> b
+        ObjectComp _ _ b -> b)
    (\comp b -> case comp of
-        ArrayComp  a h   _ -> ArrayComp  a h b
-        SetComp    a h   _ -> SetComp    a h b
-        ObjectComp a k v _ -> ObjectComp a k v b)
+        ArrayComp  h   _ -> ArrayComp  h b
+        SetComp    h   _ -> SetComp    h b
+        ObjectComp k v _ -> ObjectComp k v b)
 
 -- | Fold over the direct closures bodies of a term.
 termRuleBodies :: Traversal' (Term a) (RuleBody a)

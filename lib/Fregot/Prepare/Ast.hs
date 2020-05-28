@@ -30,6 +30,8 @@ module Fregot.Prepare.Ast
     , Statement (..)
     , Comprehension (..)
     , _ArrayComp, _SetComp, _ObjectComp
+    , IndexedComprehension (..), indexedUnique, indexedKeys, indexedAssignee
+    , indexedComprehension
     , Term (..), _RefT, _CallT, _NameT, _ArrayT, _SetT, _ObjectT, _ValueT
     , Object
     , Function (..), _OperatorFunction, _NamedFunction
@@ -52,6 +54,7 @@ import           Control.Lens              (review, (^.))
 import           Control.Lens.TH           (makeLenses, makePrisms)
 import           Data.Hashable             (Hashable)
 import qualified Data.List                 as L
+import           Data.Unique               (Unique)
 import           Fregot.Eval.Value         (Value)
 import           Fregot.Names
 import           Fregot.Names.Imports      (Imports)
@@ -114,14 +117,22 @@ data Statement a
     = UnifyS  a (Term a) (Term a)
     | AssignS a (Term a) (Term a)
     | TermS     (Term a)
-    -- | ComprehensionIndexS a UnqualifiedVar Unique (HS.HashSet Var) (RuleBody a)
+    -- Indexed comprehension statements.  This is an optimization.
+    | IndexedCompS a (IndexedComprehension a)
     deriving (Functor, Show)
 
 data Comprehension a
-    = ArrayComp  a (Term a) (RuleBody a)
-    | SetComp    a (Term a) (RuleBody a)
-    | ObjectComp a (Term a) (Term a) (RuleBody a)
+    = ArrayComp  (Term a) (RuleBody a)
+    | SetComp    (Term a) (RuleBody a)
+    | ObjectComp (Term a) (Term a) (RuleBody a)
     deriving (Functor, Show)
+
+data IndexedComprehension a = IndexedComprehension
+    { _indexedUnique        :: !Unique
+    , _indexedKeys          :: ![Var]
+    , _indexedAssignee      :: !UnqualifiedVar
+    , _indexedComprehension :: !(Comprehension a)
+    } deriving (Functor, Show)
 
 data Term a
     = RefT        a (Term a) (Term a)
@@ -175,6 +186,7 @@ $(makeLenses ''RuleDefinition)
 $(makeLenses ''RuleElse)
 $(makeLenses ''Literal)
 $(makeLenses ''With)
+$(makeLenses ''IndexedComprehension)
 $(makePrisms ''Comprehension)
 $(makePrisms ''Term)
 
@@ -197,16 +209,19 @@ instance PP.Pretty PP.Sem (Statement a) where
     pretty (AssignS _ v x) = PP.pretty v <+> PP.punctuation ":=" <+> PP.pretty x
     pretty (TermS x)       = PP.pretty x
 
+    pretty (IndexedCompS _ (IndexedComprehension _ _ v c)) =
+        PP.pretty v <+> PP.punctuation ":=" <+> PP.pretty c
+
 instance PP.Pretty PP.Sem (Comprehension a) where
-    pretty (ArrayComp _ x lits) =
+    pretty (ArrayComp x lits) =
         PP.punctuation "[" <> PP.pretty x <+> PP.punctuation "|" <+>
         prettyComprehensionBody lits <>
         PP.punctuation "]"
-    pretty (SetComp _ x lits) =
+    pretty (SetComp x lits) =
         PP.punctuation "{" <> PP.pretty x <+> PP.punctuation "|" <+>
         prettyComprehensionBody lits <>
         PP.punctuation "}"
-    pretty (ObjectComp _ k x lits) =
+    pretty (ObjectComp k x lits) =
         PP.punctuation "{" <> PP.pretty k <> PP.punctuation ":" <+>
         PP.pretty x <+> PP.punctuation "|" <+>
         prettyComprehensionBody lits <>

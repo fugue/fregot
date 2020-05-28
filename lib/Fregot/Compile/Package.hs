@@ -37,7 +37,8 @@ import qualified Fregot.Error                      as Error
 import           Fregot.Eval.Value                 (Value)
 import           Fregot.Names
 import           Fregot.Prepare.Ast
-import qualified Fregot.Prepare.ConstantFold  as ConstantFold
+import qualified Fregot.Prepare.ComprehensionIndex as ComprehensionIndex
+import qualified Fregot.Prepare.ConstantFold       as ConstantFold
 import           Fregot.Prepare.Lens
 import           Fregot.Prepare.Package
 import           Fregot.PrettyPrint                ((<$$>), (<+>))
@@ -88,7 +89,8 @@ compileTree builtins ctree0 prep = do
                 (\errs -> if null errs then Nothing else Just errs)
                 (Infer.evalInfer inferEnv $ Infer.inferRule cRule)
                 (\errs -> tellErrors errs $> (rule & ruleInfo .~ ErrorType))
-            let optRule = ConstantFold.rewriteRule tyRule
+            let optRule = ComprehensionIndex.rewriteRule inferEnv $
+                    ConstantFold.rewriteRule tyRule
             return $! inferEnv & Infer.ieTree . at key .~ Just optRule)
         inferEnv0
         ordering

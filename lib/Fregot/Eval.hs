@@ -36,7 +36,7 @@ module Fregot.Eval
 import           Control.Arrow             ((>>>))
 import           Control.Lens              (review, to, use, view, (%=), (.=),
                                             (.~), (^.), (^?))
-import           Control.Monad             (unless, when)
+import           Control.Monad             (unless, when, (>=>))
 import           Control.Monad.Extended    (forM, zipWithM_)
 import           Control.Monad.Identity    (Identity (..))
 import           Control.Monad.Reader      (ask, local)
@@ -49,6 +49,7 @@ import qualified Data.List                 as L
 import           Data.Maybe                (catMaybes, fromMaybe)
 import qualified Data.Unification          as Unification
 import qualified Data.Vector.Extended      as V
+import           Debug.Trace
 import           Fregot.Arity
 import           Fregot.Builtins.Internal
 import           Fregot.Compile.Package    (CompiledRule, valueToCompiledRule)
@@ -180,19 +181,7 @@ evalTerm (ObjectT source o) = do
         return (key, val)
     muValue <$> mkObject source obj
 
-evalTerm (CompT _ (ArrayComp _ chead cbody)) = do
-    rows <- unbranch $ evalRuleBody cbody (evalTerm chead)
-    return $ Mu $ RecM $ ArrayV $ V.fromList rows
-
-evalTerm (CompT _ (SetComp source shead cbody)) = do
-    rows     <- unbranch $ evalRuleBody cbody (evalTerm shead)
-    grounded <- mapM (ground source) rows
-    return $ muValueF $ SetV $ HS.fromList grounded
-
-evalTerm (CompT _ (ObjectComp source khead vhead cbody)) = do
-    rows <- unbranch $ evalRuleBody cbody $
-        (,) <$> evalGroundTerm khead <*> evalGroundTerm vhead
-    muValue <$> mkObject source rows
+evalTerm (CompT source comp) = evalComprehension source comp
 
 evalTerm (ValueT _ v) = pure $ muValue v
 
@@ -200,6 +189,52 @@ evalTerm (ErrorT source) = raise' source "internal error" $
     "An error node was created during compilation so evaluation should" <+>
     "be allowed."
 
+evalComprehension :: SourceSpan -> Comprehension SourceSpan -> EvalM Mu'
+evalComprehension source = \case
+    ArrayComp chead cbody -> do
+        rows <- unbranch $ evalRuleBody cbody (evalTerm chead)
+        return $ Mu $ RecM $ ArrayV $ V.fromList rows
+
+    SetComp shead cbody -> do
+        rows <- unbranch $ evalRuleBody cbody (evalTerm shead >>= ground source)
+        return $ muValueF $ SetV $ HS.fromList rows
+
+    ObjectComp khead vhead cbody -> do
+        rows <- unbranch $ evalRuleBody cbody $
+            (,) <$> evalGroundTerm khead <*> evalGroundTerm vhead
+        muValue <$> mkObject source rows
+
+-- Evaluate a comprehension and shard it by key values.
+evalIndexedComprehension
+    :: SourceSpan -> IndexedComprehension SourceSpan
+    -> EvalM (HMS.HashMap [Value] Mu')
+evalIndexedComprehension source (IndexedComprehension _ keys _ comp) = clearLocals $
+    -- Evaluate the entire thing.
+    case comp of
+        ArrayComp chead cbody -> do
+            rows <- unbranch $ evalRuleBody cbody $ do
+                ks <- evalKeys
+                v  <- evalTerm chead
+                pure (ks, [v])
+            return $ fmap (Mu . RecM . ArrayV . V.fromList) $
+                HMS.fromListWith (flip (++)) rows
+
+        SetComp shead cbody -> do
+            rows <- unbranch $ evalRuleBody cbody $ do
+                ks <- evalKeys
+                v  <- evalTerm shead >>= ground source
+                pure (ks, HS.singleton v)
+            return $ fmap (muValueF . SetV) $ HMS.fromListWith (<>) rows
+
+        ObjectComp khead vhead cbody -> do
+            rows <- unbranch $ evalRuleBody cbody $ do
+                ks <- evalKeys
+                kv <- (,) <$> evalGroundTerm khead <*> evalGroundTerm vhead
+                pure (ks, [kv])
+            traverse (fmap muValue . mkObject source) $
+                HMS.fromListWith (<>) rows
+  where
+     evalKeys = forM keys (evalVar source >=> ground source)
 
 evalName :: SourceSpan -> Name -> EvalM Mu'
 evalName source (LocalName var) = evalVar source var
@@ -621,7 +656,18 @@ evalStatement (AssignS source x y) = suspend source $ do
     _  <- unify xv yv
     return muTrue
 evalStatement (TermS e) = suspend (e ^. termAnn) (evalTerm e)
-
+evalStatement (IndexedCompS source comp) = do
+    -- Evaluate the entire thing.
+    index <- evalIndexedComprehension source comp
+    traceM $ "Evaluated " <> show (PP.object
+        [(PP.array ks, v) | (ks, v) <- HMS.toList index])
+    keyVals <- forM (comp ^. indexedKeys) (evalVar source >=> ground source)
+    case HMS.lookup keyVals index of
+        Nothing -> error "wat"
+        Just mu -> do
+            iv <- toInstVar (comp ^. indexedAssignee)
+            unify (Mu (FreeM iv)) mu
+            return muTrue
 
 unify :: Mu' -> Mu' -> EvalM ()
 unify (Mu WildcardM) _ = return ()
