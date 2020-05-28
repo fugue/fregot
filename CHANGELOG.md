@@ -1,5 +1,10 @@
 # CHANGELOG
 
+ -  0.11.1 (2020-05-28)
+     *  Fix zero `with` statements wiping caches.  This was a serious
+        performance regression introduced in `v0.9.0`.
+     *  Always use lenient decoding for base64 strings.
+
  -  0.11.0 (2020-05-20)
      *  You can now remove a breakpoint again by calling `:break` with the
         same argument that you used to set it.
