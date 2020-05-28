@@ -588,9 +588,7 @@ evalLiteral lit next
         next r
   where
     localWiths (w : ws) mx = localWith w $ localWiths ws mx
-    localWiths []       mx = do
-        c <- view cache >>= Cache.bump
-        local (cache .~ c) mx
+    localWiths []       mx = mx
 
     localWith w mx = do
         val      <- evalTerm (w ^. withAs) >>= ground (w ^. withAnn)
@@ -598,14 +596,13 @@ evalLiteral lit next
             InputWithPath path -> do
                 input0 <- view inputDoc
                 input1 <- patchObject (w ^. withAnn) path val input0
-                pure $ local (inputDoc .~ input1)
+                pure $ inputDoc .~ input1
             DataWithPath path -> do
                 tree0 <- view rules
                 tree1 <- patchTree (w ^. withAnn) path val tree0
-                pure $ local (rules .~ tree1)
-        -- NOTE(jaspervdj): Should we bump the cache here?  I think multiple
-        -- with statements may lead to inconsistencies right now.
-        modifier mx
+                pure $ rules .~ tree1
+        c <- view cache >>= Cache.bump
+        local ((cache .~ c) . modifier) mx
 {-# INLINE evalLiteral #-}
 
 
