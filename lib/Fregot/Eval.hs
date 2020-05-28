@@ -651,8 +651,6 @@ evalLiteral lit next
                 tree0 <- view rules
                 tree1 <- patchTree (w ^. withAnn) path val tree0
                 pure $ rules .~ tree1
-        -- NOTE(jaspervdj): Should we bump the cache here?  I think multiple
-        -- with statements may lead to inconsistencies right now.
         rc <- view ruleCache >>= Cache.bump
         cc <- view comprehensionCache >>= Cache.bump
         local ((ruleCache .~ rc) . (comprehensionCache .~ cc) . modifier) mx
