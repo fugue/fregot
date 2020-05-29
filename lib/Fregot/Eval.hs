@@ -43,7 +43,6 @@ import           Control.Monad.Extended    (forM, zipWithM_)
 import           Control.Monad.Identity    (Identity (..))
 import           Control.Monad.Reader      (ask, local)
 import qualified Control.Monad.Stream      as Stream
-import           Control.Monad.Trans       (liftIO)
 import           Data.Foldable             (for_)
 import qualified Data.HashMap.Strict       as HMS
 import qualified Data.HashSet              as HS
@@ -214,15 +213,10 @@ evalIndexedComprehension source (IndexedComprehension unique keys _ comp) = do
     cache <- view comprehensionCache
     cacheResult <- Cache.read cache unique
     case cacheResult of
-        Just (Cache.Singleton hms) -> do
-            liftIO $ putStrLn $ "Cached " <> show (PP.object
-                [(PP.array ks, v) | (ks, v) <- HMS.toList hms])
-            pure hms
+        Just (Cache.Singleton hms) -> pure hms
         _ -> do
             -- Evaluate the entire thing.
             !hms <- evalComp
-            liftIO $ putStrLn $ "Evaluated " <> show unique <> ": " <> show (PP.object
-                [(PP.array ks, v) | (ks, v) <- HMS.toList hms])
             Cache.writeSingleton cache unique hms
             pure hms
   where
