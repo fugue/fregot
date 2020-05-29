@@ -673,12 +673,15 @@ evalStatement (IndexedCompS source comp) = do
     -- Evaluate the entire thing.
     !index <- evalIndexedComprehension source comp
     keyVals <- forM (comp ^. indexedKeys) (evalVar source >=> ground source)
-    case HMS.lookup keyVals index of
-        Nothing -> cut
-        Just mu -> do
-            iv <- toInstVar (comp ^. indexedAssignee)
-            unify (Mu (FreeM iv)) mu
-            return muTrue
+    let !collection = case HMS.lookup keyVals index of
+            Just mu -> mu
+            Nothing -> muValueF $ case comp ^. indexedComprehension of
+                ArrayComp  _ _   -> ArrayV  V.empty
+                SetComp    _ _   -> SetV    HS.empty
+                ObjectComp _ _ _ -> ObjectV HMS.empty
+    iv <- toInstVar (comp ^. indexedAssignee)
+    unify (Mu (FreeM iv)) collection
+    return muTrue
 
 unify :: Mu' -> Mu' -> EvalM ()
 unify (Mu WildcardM) _ = return ()
