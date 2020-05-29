@@ -674,7 +674,7 @@ evalStatement (IndexedCompS source comp) = do
     !index <- evalIndexedComprehension source comp
     keyVals <- forM (comp ^. indexedKeys) (evalVar source >=> ground source)
     case HMS.lookup keyVals index of
-        Nothing -> error "wat"
+        Nothing -> cut
         Just mu -> do
             iv <- toInstVar (comp ^. indexedAssignee)
             unify (Mu (FreeM iv)) mu

@@ -32,7 +32,8 @@ module Fregot.Prepare.Ast
     , _ArrayComp, _SetComp, _ObjectComp
     , IndexedComprehension (..), indexedUnique, indexedKeys, indexedAssignee
     , indexedComprehension
-    , Term (..), _RefT, _CallT, _NameT, _ArrayT, _SetT, _ObjectT, _ValueT
+    , Term (..), _RefT, _CallT, _NameT, _ArrayT, _SetT, _ObjectT, _CompT
+    , _ValueT
     , Object
     , Function (..), _OperatorFunction, _NamedFunction
     , BinOp (..)

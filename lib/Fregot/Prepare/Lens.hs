@@ -7,6 +7,7 @@ module Fregot.Prepare.Lens
     , ruleDefinitionTerms
 
     , ruleBodyTerms
+    , comprehensionBody
     , comprehensionTerms
     , literalTerms
     , termAnn
@@ -16,14 +17,14 @@ module Fregot.Prepare.Lens
     , termCosmosClosures
     , termRuleBodies
     , termCosmosCalls
-    , termClosures
+    , termToClosure
 
     , valueToScalar
     , termToScalar
     ) where
 
 import           Control.Lens        (Fold, Lens', Prism', Traversal', aside,
-                                      lens, prism', to, traverseOf, (^.))
+                                      lens, prism', to, traverseOf, (^.), _2)
 import           Control.Lens.Plated (Plated (..), cosmos, cosmosOnOf)
 import           Fregot.Eval.Number  as Number
 import           Fregot.Eval.Value   (Value (..), ValueF (..))
@@ -91,15 +92,15 @@ termAnn = lens getAnn setAnn
         ErrorT      a     -> a
 
     setAnn t a = case t of
-        RefT        _ x k   -> RefT        a x k
-        CallT       _ f as  -> CallT       a f as
-        NameT       _ v     -> NameT       a v
-        ArrayT      _ l     -> ArrayT      a l
-        SetT        _ s     -> SetT        a s
-        ObjectT     _ o     -> ObjectT     a o
-        CompT       _ c     -> CompT a c
-        ValueT      _ v     -> ValueT      a v
-        ErrorT      _       -> ErrorT      a
+        RefT        _ x k  -> RefT        a x k
+        CallT       _ f as -> CallT       a f as
+        NameT       _ v    -> NameT       a v
+        ArrayT      _ l    -> ArrayT      a l
+        SetT        _ s    -> SetT        a s
+        ObjectT     _ o    -> ObjectT     a o
+        CompT       _ c    -> CompT a c
+        ValueT      _ v    -> ValueT      a v
+        ErrorT      _      -> ErrorT      a
 
 statementTerms :: Traversal' (Statement a) (Term a)
 statementTerms f = \case
@@ -151,7 +152,7 @@ termCosmosNames = cosmos . termNames
 
 -- | Fold over all closures in a term recursively.
 termCosmosClosures :: Fold (Term a) (Comprehension a)
-termCosmosClosures = cosmos . termClosures
+termCosmosClosures = cosmos . termToClosure . _2
 
 -- | Fold over all terms that DO NOT appear in a closure.
 termCosmosNoClosures :: Fold (Term a) (Term a)
@@ -161,11 +162,9 @@ termCosmosNoClosures = cosmosOnOf noClosure (plate . noClosure)
         CompT _ _ -> pure e
         _         -> f e
 
--- | Fold over the direct subclosures of a term.
-termClosures :: Traversal' (Term a) (Comprehension a)
-termClosures f e = case e of
-    CompT a c -> CompT a <$> f c
-    _         -> pure e
+-- | Selects a term if it is a closure.
+termToClosure :: Prism' (Term a) (a, Comprehension a)
+termToClosure = _CompT
 
 comprehensionBody :: Lens' (Comprehension a) (RuleBody a)
 comprehensionBody = lens
@@ -180,7 +179,7 @@ comprehensionBody = lens
 
 -- | Fold over the direct closures bodies of a term.
 termRuleBodies :: Traversal' (Term a) (RuleBody a)
-termRuleBodies = termClosures . comprehensionBody
+termRuleBodies = termToClosure . _2 . comprehensionBody
 
 -- | Find referenced functions in a term.
 termCosmosCalls :: Fold (Term a) (a, Function)
