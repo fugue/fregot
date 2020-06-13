@@ -48,7 +48,7 @@ import qualified Codec.Compression.GZip          as GZip
 import           Control.Lens                    (forOf_, ix, over, preview,
                                                   review, to, (^.), (^..), _1)
 import           Control.Lens.TH                 (makeLenses)
-import           Control.Monad                   (foldM, guard, unless, void)
+import           Control.Monad                   (foldM, guard, unless)
 import           Control.Monad.Identity          (Identity (..))
 import           Control.Monad.Parachute
 import           Control.Monad.Reader            (runReader)
@@ -290,14 +290,16 @@ loadBundle h path = do
             return $ HMS.keys $ bundle ^. bundleModules
 
 loadFileByExtension
-    :: Handle -> Parser.ParserOptions -> FilePath -> InterpreterM ()
+    :: Handle -> Parser.ParserOptions -> FilePath
+    -> InterpreterM (Maybe PackageName)
 loadFileByExtension h popts path = case listExtensions path of
-    "rego" : _            -> void $ loadModule h popts path
-    "bundle" : "rego" : _ -> void $ loadBundle h path
-    "yaml" : _            -> loadYaml h path
-    "json" : _            -> loadJson h path
+    "rego" : _            -> Just <$> loadModule h popts path
+    "bundle" : "rego" : _ -> Nothing <$ loadBundle h path
+    "yaml" : _            -> Nothing <$ loadYaml h path
+    "yml" : _             -> Nothing <$ loadYaml h path
+    "json" : _            -> Nothing <$ loadJson h path
     _                     -> fatal $ Error.mkErrorNoMeta "interpreter" $
-        "Unknown rego file extension:" <+> PP.pretty path <+>
+        "Unknown rego file extension:" <+> PP.pretty path <>
         ", expected .rego or .bundle.rego"
 
 saveBundle :: Handle -> FilePath -> InterpreterM ()

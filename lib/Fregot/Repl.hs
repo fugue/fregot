@@ -465,11 +465,15 @@ metaCommands =
             IO.hPutStrLn IO.stderr $ "Loading " ++ path ++ "..."
             FileWatch.watch (h ^. fileWatch) path
             void $ runInterpreter h $ \i -> do
-                pkg <- Interpreter.loadModule i Parser.defaultParserOptions path
+                mbPkg <- Interpreter.loadFileByExtension i
+                    Parser.defaultParserOptions path
                 Interpreter.compileRules i
-                liftIO $ IO.hPutStrLn IO.stderr $
-                    "Loaded package " ++ review packageNameFromString pkg
-                liftIO $ IORef.writeIORef (h ^. openPackage) pkg
+                case mbPkg of
+                    Nothing -> liftIO $ IO.hPutStrLn IO.stderr "OK"
+                    Just pkg -> do
+                        liftIO $ IO.hPutStrLn IO.stderr $ "Loaded package " ++
+                            review packageNameFromString pkg
+                        liftIO $ IORef.writeIORef (h ^. openPackage) pkg
             return True
 
         _ -> do
@@ -605,7 +609,7 @@ reload h paths = guarded $ runInterpreter h $ \i -> do
         liftIO $ IO.hPutStrLn IO.stderr $ "Reloaded " ++ input
 
     forM_ regoPaths $ \path ->
-        Interpreter.loadModule i Parser.defaultParserOptions path
+        Interpreter.loadFileByExtension i Parser.defaultParserOptions path
     Interpreter.compileRules i
     liftIO $ case regoPaths of
         []     -> pure ()
