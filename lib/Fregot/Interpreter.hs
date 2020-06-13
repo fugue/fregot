@@ -45,10 +45,11 @@ module Fregot.Interpreter
     ) where
 
 import qualified Codec.Compression.GZip          as GZip
+import           Control.Comonad                 (Comonad (..))
 import           Control.Lens                    (forOf_, ix, over, preview,
                                                   review, to, (^.), (^..), _1)
 import           Control.Lens.TH                 (makeLenses)
-import           Control.Monad                   (foldM, guard, unless)
+import           Control.Monad                   (foldM, guard, unless, when)
 import           Control.Monad.Identity          (Identity (..))
 import           Control.Monad.Parachute
 import           Control.Monad.Reader            (runReader)
@@ -246,15 +247,16 @@ loadModule h popts path = do
     sourcep = Sources.FileInput path
 
 loadData
-    :: Handle -> FilePath
+    :: Handle -> DestinationPrefix FilePath
     -> (forall m. Monad m => SourcePointer -> T.Text -> ParachuteT Error m Prepare.PreparedTree)
     -> InterpreterM ()
-loadData h path mkTree = do
+loadData h (DestinationPrefix _destination path) mkTree = do
     canonical <- catchIO $ liftIO $ canonicalizePath path
     input     <- catchIO $ T.readFile path
     liftIO $ IORef.atomicModifyIORef_ (h ^. sources) $
         Sources.insert sourcep input
 
+    -- TODO(jaspervdj): Qualify/nest tree
     tree <- mkTree sourcep input
     oldRules <- liftIO $ IORef.atomicModifyIORef' (h ^. yamls) $ \ys ->
         case HMS.lookup canonical ys of
@@ -265,13 +267,13 @@ loadData h path mkTree = do
     sourcep = Sources.FileInput path
 
 loadYaml
-    :: Handle -> FilePath -> InterpreterM ()
+    :: Handle -> DestinationPrefix FilePath -> InterpreterM ()
 loadYaml h path = loadData h path $ \sourcep ->
     either fatal pure . Prepare.loadYaml sourcep .
     TL.encodeUtf8 .  TL.fromStrict
 
 loadJson
-    :: Handle -> FilePath -> InterpreterM ()
+    :: Handle -> DestinationPrefix FilePath -> InterpreterM ()
 loadJson h path = loadData h path Prepare.loadJson
 
 loadBundle :: Handle -> FilePath -> InterpreterM [PackageName]
@@ -290,17 +292,24 @@ loadBundle h path = do
             return $ HMS.keys $ bundle ^. bundleModules
 
 loadFileByExtension
-    :: Handle -> Parser.ParserOptions -> FilePath
+    :: Handle -> Parser.ParserOptions -> DestinationPrefix FilePath
     -> InterpreterM (Maybe PackageName)
-loadFileByExtension h popts path = case listExtensions path of
-    "rego" : _            -> Just <$> loadModule h popts path
-    "bundle" : "rego" : _ -> Nothing <$ loadBundle h path
+loadFileByExtension h popts path = case listExtensions (extract path) of
+    "rego" : _            ->
+        assertNoDestinationPrefix >> Just <$> loadModule h popts (extract path)
+    "bundle" : "rego" : _ ->
+        assertNoDestinationPrefix >> Nothing <$ loadBundle h (extract path)
     "yaml" : _            -> Nothing <$ loadYaml h path
     "yml" : _             -> Nothing <$ loadYaml h path
     "json" : _            -> Nothing <$ loadJson h path
     _                     -> fatal $ Error.mkErrorNoMeta "interpreter" $
-        "Unknown rego file extension:" <+> PP.pretty path <>
+        "Unknown rego file extension:" <+> PP.pretty' (extract path) <>
         ", expected .rego or .bundle.rego"
+  where
+    assertNoDestinationPrefix = when (hasDestinationPrefix path) $
+        fatal $ Error.mkErrorNoMeta "interpreter" $
+        "Package name destination prefixes are only supported" <+>
+        "for data files, not rego files or bundles."
 
 saveBundle :: Handle -> FilePath -> InterpreterM ()
 saveBundle h path = liftIO $ do

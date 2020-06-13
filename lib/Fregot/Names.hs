@@ -1,5 +1,8 @@
 -- | Variable- and name-like things.
+{-# LANGUAGE DeriveFoldable             #-}
+{-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE DeriveTraversable          #-}
 {-# LANGUAGE DerivingVia                #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
@@ -37,14 +40,21 @@ module Fregot.Names
     , InstVar (..)
 
     , packageNameFromFilePath
+
+    , DestinationPrefix (..)
+    , parseDestinationPrefix
+    , unparseDestinationPrefix
+    , hasDestinationPrefix
     ) where
 
+import           Control.Comonad       (Comonad (..))
 import           Control.Lens          (preview, review, (^.), (^?))
 import           Control.Lens.Iso      (Iso', iso)
 import           Control.Lens.Prism    (Prism', prism')
 import           Control.Lens.TH       (makePrisms)
 import           Control.Monad         (guard)
 import qualified Data.Aeson            as Aeson
+import           Data.Bifunctor        (second)
 import           Data.Binary           (Binary)
 import qualified Data.Binary           as Binary
 import           Data.Hashable         (Hashable (..))
@@ -298,3 +308,34 @@ packageNameFromFilePath = prism' to from
         packageNameFromPieces $
             fmap (T.pack . dropTrailingPathSeparator) $
             splitPath pieces
+
+-- | When loading data from JSON or YAML files, it is allowed to prefix a file
+-- path with its destination in the data document:
+--
+--     foo.bar.qux:some/file.json
+--
+-- This type holds the prefix and the remainder.
+data DestinationPrefix a = DestinationPrefix PackageName a
+    deriving (Foldable, Functor, Show, Traversable)
+
+instance Comonad DestinationPrefix where
+    extract (DestinationPrefix _ x) = x
+    duplicate (DestinationPrefix pkg x) =
+        DestinationPrefix pkg (DestinationPrefix pkg x)
+
+parseDestinationPrefix :: T.Text -> DestinationPrefix FilePath
+parseDestinationPrefix txt
+    | "file://" `T.isPrefixOf` txt = DestinationPrefix mempty (T.unpack txt)
+    | not (T.null filepart), Just pkg <- preview packageNameFromText pkgpart =
+        DestinationPrefix pkg (T.unpack filepart)
+    | otherwise = DestinationPrefix mempty (T.unpack txt)
+  where
+    (pkgpart, filepart) = second (T.drop 1) $ T.break (== ':') txt
+
+unparseDestinationPrefix :: DestinationPrefix FilePath -> T.Text
+unparseDestinationPrefix (DestinationPrefix pkg fp)
+    | pkg == mempty = T.pack fp
+    | otherwise     = review packageNameFromText pkg <> ":" <> T.pack fp
+
+hasDestinationPrefix :: DestinationPrefix a -> Bool
+hasDestinationPrefix (DestinationPrefix pkg _) = pkg /= mempty

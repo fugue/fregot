@@ -34,7 +34,7 @@ import qualified System.IO                    as IO
 data Options = Options
     { _input      :: !(Maybe FilePath)
     , _expression :: !T.Text
-    , _paths      :: [FilePath]
+    , _paths      :: [DestinationPrefix FilePath]
     } deriving (Show)
 
 $(makeLenses ''Options)
