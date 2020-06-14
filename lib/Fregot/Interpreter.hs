@@ -248,16 +248,17 @@ loadModule h popts path = do
 
 loadData
     :: Handle -> DestinationPrefix FilePath
-    -> (forall m. Monad m => SourcePointer -> T.Text -> ParachuteT Error m Prepare.PreparedTree)
+    -> (forall m. Monad m
+        => PackageName -> SourcePointer -> T.Text
+        -> ParachuteT Error m Prepare.PreparedTree)
     -> InterpreterM ()
-loadData h (DestinationPrefix _destination path) mkTree = do
+loadData h (DestinationPrefix destination path) mkTree = do
     canonical <- catchIO $ liftIO $ canonicalizePath path
     input     <- catchIO $ T.readFile path
     liftIO $ IORef.atomicModifyIORef_ (h ^. sources) $
         Sources.insert sourcep input
 
-    -- TODO(jaspervdj): Qualify/nest tree
-    tree <- mkTree sourcep input
+    tree <- mkTree destination sourcep input
     oldRules <- liftIO $ IORef.atomicModifyIORef' (h ^. yamls) $ \ys ->
         case HMS.lookup canonical ys of
             Nothing -> (HMS.insert canonical tree ys, mempty)
@@ -268,8 +269,8 @@ loadData h (DestinationPrefix _destination path) mkTree = do
 
 loadYaml
     :: Handle -> DestinationPrefix FilePath -> InterpreterM ()
-loadYaml h path = loadData h path $ \sourcep ->
-    either fatal pure . Prepare.loadYaml sourcep .
+loadYaml h path = loadData h path $ \pkgname sourcep ->
+    either fatal pure . Prepare.loadYaml pkgname sourcep .
     TL.encodeUtf8 .  TL.fromStrict
 
 loadJson

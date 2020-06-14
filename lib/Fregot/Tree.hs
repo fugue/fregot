@@ -14,6 +14,7 @@ module Fregot.Tree
     , singleton
     , parent
     , insert
+    , prefix
     , fromList
 
     , null
@@ -50,9 +51,7 @@ empty :: Tree a
 empty = Tree Nothing HMS.empty
 
 singleton :: Key -> a -> Tree a
-singleton (Key key) x = case V.uncons key of
-    Nothing      -> Tree (Just x) HMS.empty
-    Just (k, ks) -> Tree Nothing (HMS.singleton k (singleton (Key ks) x))
+singleton key x = prefix key (Tree (Just x) HMS.empty)
 
 parent :: [(Var, Tree a)] -> Tree a
 parent = Tree Nothing . HMS.fromList
@@ -63,6 +62,12 @@ insert (Key key) x (Tree mbX cs) = case V.uncons key of
     Just (k, ks) -> Tree mbX $ case HMS.lookup k cs of
         Nothing -> HMS.insert k (singleton (Key ks) x) cs
         Just ct -> HMS.insert k (insert (Key ks) x ct) cs
+
+-- | Prefix an entire tree with a key.
+prefix :: Key -> Tree a -> Tree a
+prefix (Key key) t = case V.uncons key of
+    Nothing      -> t
+    Just (k, ks) -> Tree Nothing (HMS.singleton k (prefix (Key ks) t))
 
 fromList :: [(Key, a)] -> Tree a
 fromList = L.foldl' (\acc (k, x) -> insert k x acc) empty

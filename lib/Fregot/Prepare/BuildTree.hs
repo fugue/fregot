@@ -26,7 +26,7 @@ toTree
 toTree pkgname = L.foldl' Tree.union Tree.empty . map toRuleOrTree
   where
     toRuleOrTree (loc, var, BuildSingleton t) = Tree.singleton
-        (review varFromKey var)
+        (review qualifiedVarFromKey (pkgname, var))
         (termToRule loc pkgname var t)
 
     toRuleOrTree (_, var, BuildTree _ t) =
