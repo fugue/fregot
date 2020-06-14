@@ -53,7 +53,7 @@ main :: GlobalOptions -> Options -> IO ExitCode
 main _ opts = do
     sources     <- Sources.newHandle
     itpr        <- Interpreter.newHandle sources
-    regoPaths   <- Find.findRegoFiles (opts ^. paths)
+    regoPaths   <- Find.findPrefixedRegoFiles (opts ^. paths)
 
     replConfig <-
         (\c -> if opts ^. noHistoryFile
@@ -65,8 +65,8 @@ main _ opts = do
         Repl.withHandle replConfig sources fileWatch itpr $ \repl -> do
         (lerrs, mbResult) <- runParachuteT $ do
             forM_ (opts ^. input) $ liftIO . Repl.setInputFile repl
-            forM_ regoPaths $ \path -> do
-                liftIO $ FileWatch.watch fileWatch path
+            forM_ regoPaths $ \path@(DestinationPrefix pkg fp) -> do
+                liftIO $ FileWatch.watch fileWatch fp pkg
                 Interpreter.loadFileByExtension itpr defaultParserOptions path
             Interpreter.compileRules itpr
         sauce <- IORef.readIORef sources
