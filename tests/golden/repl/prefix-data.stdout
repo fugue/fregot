@@ -1,0 +1,5 @@
+repl% repl% [36m=[0m [36m{[0m[31m"foo"[0m[36m:[0m [36m{[0m
+  [31m"qux"[0m[36m:[0m [36m{[0m[31m"name"[0m[36m:[0m [31m"mode-data.yaml"[0m[36m}[0m[36m,[0m
+  [31m"bar"[0m[36m:[0m [36m{[0m[31m"name"[0m[36m:[0m [31m"prefix-data.json"[0m[36m}[0m
+[36m}[0m[36m}[0m
+repl% 

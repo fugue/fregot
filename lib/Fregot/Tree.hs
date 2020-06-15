@@ -1,5 +1,8 @@
 {-# LANGUAGE DeriveFoldable    #-}
 {-# LANGUAGE DeriveFunctor     #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE TypeFamilies      #-}
@@ -43,9 +46,17 @@ import           Data.Maybe           (isJust, maybeToList)
 import qualified Data.Vector.Extended as V
 import           Fregot.Names
 import           Prelude              hiding (lookup, null)
+import qualified Fregot.PrettyPrint as PP
 
 data Tree a = Tree !(Maybe a) !(HMS.HashMap Var (Tree a))
     deriving (Foldable, Functor, Traversable, Show)
+
+instance PP.Pretty ann a => PP.Pretty ann (Tree a) where
+    pretty (Tree mbVal cs) =
+        (maybe mempty (Just . PP.pretty) mbVal) PP.?<$$> PP.vcat
+        [ "@" <> PP.pretty v PP.<$$> PP.indent 2 (PP.pretty t)
+        | (v, t) <- HMS.toList cs
+        ]
 
 empty :: Tree a
 empty = Tree Nothing HMS.empty

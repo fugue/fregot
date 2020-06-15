@@ -178,6 +178,7 @@ universeForRenamer
 universeForRenamer h = do
     modmap <- liftIO $ IORef.readIORef (h ^. modules)
     yamls0 <- liftIO $ IORef.readIORef (h ^. yamls)
+
     let packageTree = Tree.fromList
             [ (review packageNameFromKey key, ())
             | key <- modmap ^.. to HMS.toList . traverse . _1
