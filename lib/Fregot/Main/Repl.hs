@@ -16,6 +16,7 @@ import qualified Fregot.Error              as Error
 import qualified Fregot.Find               as Find
 import qualified Fregot.Interpreter        as Interpreter
 import           Fregot.Main.GlobalOptions
+import           Fregot.Names
 import           Fregot.Parser             (defaultParserOptions)
 import qualified Fregot.Repl               as Repl
 import qualified Fregot.Repl.FileWatch     as FileWatch
@@ -28,7 +29,7 @@ data Options = Options
     { _input         :: Maybe FilePath
     , _watch         :: Bool
     , _noHistoryFile :: Bool
-    , _paths         :: [FilePath]
+    , _paths         :: [DestinationPrefix FilePath]
     } deriving (Show)
 
 $(makeLenses ''Options)
@@ -44,7 +45,7 @@ parseOptions = Options
             OA.long "no-history-file" <>
             OA.hidden <>
             OA.help "Don't save repl history to a file")
-    <*> (OA.many $ OA.strArgument $
+    <*> (OA.many $ fmap parseDestinationPrefix $ OA.strArgument $
             OA.metavar "PATHS" <>
             OA.help    "Rego files or directories to load into repl")
 
@@ -52,7 +53,7 @@ main :: GlobalOptions -> Options -> IO ExitCode
 main _ opts = do
     sources     <- Sources.newHandle
     itpr        <- Interpreter.newHandle sources
-    regoPaths   <- Find.findRegoFiles (opts ^. paths)
+    regoPaths   <- Find.findPrefixedRegoFiles (opts ^. paths)
 
     replConfig <-
         (\c -> if opts ^. noHistoryFile
@@ -64,8 +65,8 @@ main _ opts = do
         Repl.withHandle replConfig sources fileWatch itpr $ \repl -> do
         (lerrs, mbResult) <- runParachuteT $ do
             forM_ (opts ^. input) $ liftIO . Repl.setInputFile repl
-            forM_ regoPaths $ \path -> do
-                liftIO $ FileWatch.watch fileWatch path
+            forM_ regoPaths $ \path@(DestinationPrefix pkg fp) -> do
+                liftIO $ FileWatch.watch fileWatch fp pkg
                 Interpreter.loadFileByExtension itpr defaultParserOptions path
             Interpreter.compileRules itpr
         sauce <- IORef.readIORef sources

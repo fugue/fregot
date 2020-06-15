@@ -24,12 +24,13 @@ import qualified Text.Parsec.Extended      as Parsec
 
 loadJson
     :: Monad m
-    => SourcePointer -> T.Text
+    => PackageName
+    -> SourcePointer -> T.Text
     -> ParachuteT Error.Error m (Tree.Tree PreparedRule)
-loadJson sourcePointer text = do
+loadJson pkgname sourcePointer text = do
     tree <- lexAndParse parseJson sourcePointer text
     case tree of
-        BuildTree _ btree -> pure $ toTree mempty btree
+        BuildTree _ btree -> pure $ toTree pkgname btree
         BuildSingleton term -> fatal $ Error.mkError
             "parse" (term ^. termAnn) "parse failed"
             "expected object at the top level"

@@ -88,7 +88,10 @@ data Config = Config
 data Handle = Handle
     { _config        :: !Config
     , _sources       :: !Sources.Handle
-    , _fileWatch     :: !FileWatch.Handle
+    -- | The 'PackageName' here is the prefix for the files.  This should
+    -- be 'mempty' for most rego files, but may be filled for JSON or YAML
+    -- files.
+    , _fileWatch     :: !(FileWatch.Handle PackageName)
     -- | Stored in an MVar so we have a mutex.
     , _interpreter   :: !(MVar Interpreter.Handle)
     , _replCount     :: !(IORef Int)
@@ -124,7 +127,7 @@ defaultConfig = do
 withHandle
     :: Config
     -> Sources.Handle
-    -> FileWatch.Handle
+    -> FileWatch.Handle PackageName
     -> Interpreter.Handle
     -> (Handle -> IO a)
     -> IO a
@@ -460,16 +463,21 @@ metaCommands =
             _             -> return True
 
     , MetaCommand ":load" "load a rego file, e.g. `:load foo.rego`" $ \h args ->
-        case map T.unpack args of
-        [path] -> do
+        case args of
+        [arg] -> do
+            let ppath@(DestinationPrefix pkg path) = parseDestinationPrefix arg
             IO.hPutStrLn IO.stderr $ "Loading " ++ path ++ "..."
-            FileWatch.watch (h ^. fileWatch) path
+            FileWatch.watch (h ^. fileWatch) path pkg
             void $ runInterpreter h $ \i -> do
-                pkg <- Interpreter.loadModule i Parser.defaultParserOptions path
+                mbPkg <- Interpreter.loadFileByExtension i
+                    Parser.defaultParserOptions ppath
                 Interpreter.compileRules i
-                liftIO $ IO.hPutStrLn IO.stderr $
-                    "Loaded package " ++ review packageNameFromString pkg
-                liftIO $ IORef.writeIORef (h ^. openPackage) pkg
+                case mbPkg of
+                    Nothing -> liftIO $ IO.hPutStrLn IO.stderr "OK"
+                    Just loaded -> do
+                        liftIO $ IO.hPutStrLn IO.stderr $ "Loaded package " ++
+                            review packageNameFromString loaded
+                        liftIO $ IORef.writeIORef (h ^. openPackage) loaded
             return True
 
         _ -> do
@@ -594,23 +602,24 @@ data Reload
     | ReloadRefusedDebug
     deriving (Eq)
 
-reload :: Handle -> [FilePath] -> IO Reload
+reload :: Handle -> [(FilePath, PackageName)] -> IO Reload
 reload h paths = guarded $ runInterpreter h $ \i -> do
     -- Separate input and normal paths.
     mbInput <- liftIO $ IORef.readIORef (h ^. inputPath)
-    let (regoPaths, inputPaths) = L.partition ((/= mbInput) . Just) $ paths
+    let (regoPaths, inputPaths) = L.partition ((/= mbInput) . Just . fst) $ paths
 
     unless (null inputPaths) $ for_ mbInput $ \input -> do
         Interpreter.setInputFile i input
         liftIO $ IO.hPutStrLn IO.stderr $ "Reloaded " ++ input
 
-    forM_ regoPaths $ \path ->
-        Interpreter.loadModule i Parser.defaultParserOptions path
+    let prefixed = [DestinationPrefix pkg path | (path, pkg) <- regoPaths]
+    forM_ prefixed $ \path ->
+        Interpreter.loadFileByExtension i Parser.defaultParserOptions path
     Interpreter.compileRules i
     liftIO $ case regoPaths of
-        []     -> pure ()
-        [path] -> IO.hPutStrLn IO.stderr $ "Reloaded " ++ path
-        _ : _  -> IO.hPutStrLn IO.stderr $
+        [] -> pure ()
+        [(path, _)] -> IO.hPutStrLn IO.stderr $ "Reloaded " ++ path
+        _ : _ -> IO.hPutStrLn IO.stderr $
             "Reloaded " ++ show (length regoPaths) ++ " files"
   where
     guarded reloader =
@@ -627,7 +636,7 @@ setInputFile h path = do
     for_ mbOld $ \old -> FileWatch.unwatch (h ^. fileWatch) old
     void $ runInterpreter h (`Interpreter.setInputFile` path)
     IORef.writeIORef (h ^. inputPath) (Just path)
-    FileWatch.watch (h ^. fileWatch) path
+    FileWatch.watch (h ^. fileWatch) path mempty
 
 completeBuiltins :: Handle -> Hl.CompletionFunc IO
 completeBuiltins h = Hl.completeDictionary completeWhitespace $ do

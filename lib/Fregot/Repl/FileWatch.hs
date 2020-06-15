@@ -66,7 +66,7 @@ data Config = Config
       cEnableListeners :: Bool
     }
 
-data Handle = Handle
+data Handle meta = Handle
     { -- | Configuration.
       hConfig      :: Config
     , -- | The manager for FSNotify.
@@ -76,18 +76,19 @@ data Handle = Handle
       hDirectories :: MVar (HMS.HashMap CanonDir FSNotify.StopListening)
     , -- | All the files we care about.  The key is the canonical path and the
       -- value is the path is the user specified it, so we can use "prettier"
-      -- paths.
-      hFiles       :: IORef (HMS.HashMap CanonFile (CanonDir, FilePath))
+      -- paths.  We also allow the user to store a bit of static metadata as
+      -- well.
+      hFiles       :: IORef (HMS.HashMap CanonFile (CanonDir, FilePath, meta))
     , -- | Set of files that have been modified but not yet consumed.
-      hBuffer      :: IORef (HMS.HashMap CanonFile FilePath)
+      hBuffer      :: IORef (HMS.HashMap CanonFile (FilePath, meta))
     , -- | MVar used as a signal that new changes are available.
       hSignal      :: MVar ()
       -- | Listeners that need to be notified of file changes.  Litteners are
       -- called one after the other.
-    , hListeners   :: IORef [[FilePath] -> IO ()]
+    , hListeners   :: IORef [[(FilePath, meta)] -> IO ()]
     }
 
-withHandle :: Config -> (Handle -> IO a) -> IO a
+withHandle :: Config -> (Handle meta -> IO a) -> IO a
 withHandle hConfig f = FSNotify.withManager $ \hManager -> do
     hDirectories <- MVar.newMVar HMS.empty
     hFiles       <- IORef.newIORef HMS.empty
@@ -98,18 +99,18 @@ withHandle hConfig f = FSNotify.withManager $ \hManager -> do
     let h = Handle {..}
     withListenWorker h (f h)
 
-listenersEnabled :: Handle -> Bool
+listenersEnabled :: Handle meta -> Bool
 listenersEnabled = cEnableListeners . hConfig
 
 -- | Watch a file for changes.  This is idempotent and will not change anything
 -- if the file is already being watched.
-watch :: Handle -> FilePath -> IO ()
-watch h@Handle {..} path = do
+watch :: Handle meta -> FilePath -> meta -> IO ()
+watch h@Handle {..} path meta = do
     -- Make sure we're not dealing with duplicates.
     (dir, file) <- canonicalize path
 
     -- Record that we care about this file in particular.
-    IORef.atomicModifyIORef_ hFiles (HMS.insert file (dir, path))
+    IORef.atomicModifyIORef_ hFiles (HMS.insert file (dir, path, meta))
 
     -- Register a watcher for the directory, if it's not already being watched.
     MVar.modifyMVar_ hDirectories $ \dirs -> case HMS.lookup dir dirs of
@@ -120,14 +121,14 @@ watch h@Handle {..} path = do
             return $ HMS.insert dir sl dirs
 
 -- | Stop watching a file.
-unwatch :: Handle -> FilePath -> IO ()
+unwatch :: Handle meta -> FilePath -> IO ()
 unwatch Handle {..} path = do
     -- Remove the file from the set.  Calculate if other files also refer to
     -- this directory.  If they don't, stop listening.
     (dir, file) <- canonicalize path
     keepDir     <- IORef.atomicModifyIORef' hFiles $ \files0 ->
         let files1  = HMS.delete file files0
-            keepDir = any (\(d, _) -> d == dir) files1 in
+            keepDir = any (\(d, _, _) -> d == dir) files1 in
         (files1, keepDir)
     unless keepDir $ MVar.modifyMVar_ hDirectories $ \dirs ->
         case HMS.lookup dir dirs of
@@ -135,31 +136,31 @@ unwatch Handle {..} path = do
             Just stop -> stop >> pure (HMS.delete dir dirs)
 
 -- | Called whenever a file changes.
-notifyHandler :: Handle -> FSNotify.Event -> IO ()
+notifyHandler :: Handle meta -> FSNotify.Event -> IO ()
 notifyHandler Handle {..} (event@(FSNotify.Modified {})) = do
     -- FSNotify docs claim the path will already be canonical.
     let canon = CanonFile (FSNotify.eventPath event)
     relevant <- HMS.lookup canon <$> IORef.readIORef hFiles
-    for_ relevant $ \(_dir, path) -> do
+    for_ relevant $ \(_dir, path, meta) -> do
         -- Add the file to the buffer, and use 'MVar.tryPutMVar' to signal only
         -- if the signal is not on already.
-        IORef.atomicModifyIORef_ hBuffer $ HMS.insert canon path
+        IORef.atomicModifyIORef_ hBuffer $ HMS.insert canon (path, meta)
         void $ MVar.tryPutMVar hSignal ()
 notifyHandler _ _ = pure ()
 
 -- | Pop all changed files.
-pop :: Handle -> IO [FilePath]
+pop :: Handle meta -> IO [(FilePath, meta)]
 pop Handle {..} = IORef.atomicModifyIORef hBuffer $
     \buff -> (HMS.empty, map snd $ HMS.toList buff)
 
 -- | Add a listener that gets called on (possibly buffered) file changes.
-listen :: Handle -> ([FilePath] -> IO ()) -> IO ()
+listen :: Handle meta -> ([(FilePath, meta)] -> IO ()) -> IO ()
 listen Handle {..} l
     | cEnableListeners hConfig = IORef.atomicModifyIORef_ hListeners (l :)
     | otherwise                = pure ()
 
 -- | Start a worker that watches for signals and calls the listeners.
-withListenWorker :: Handle -> IO a -> IO a
+withListenWorker :: Handle meta -> IO a -> IO a
 withListenWorker h@Handle {..}
     | cEnableListeners hConfig = Async.withAsync worker . const
     | otherwise                = id

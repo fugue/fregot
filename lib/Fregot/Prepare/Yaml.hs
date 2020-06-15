@@ -26,13 +26,14 @@ import           Fregot.Sources.SourceSpan (SourcePointer, SourceSpan (..))
 import qualified Fregot.Tree               as Tree
 
 loadYaml
-    :: SourcePointer
+    :: PackageName
+    -> SourcePointer
     -> BL.ByteString
     -> Either Error.Error (Tree.Tree PreparedRule)
-loadYaml sourcePointer bytestring = first toError $ do
+loadYaml pkgname sourcePointer bytestring = first toError $ do
     node <- first (first mkSourceSpan) $ Yaml.decode1 bytestring
     case buildTree (fmap mkSourceSpan node) of
-        BuildTree _ btree -> Right $ toTree mempty btree
+        BuildTree _ btree -> Right $ toTree pkgname btree
         BuildSingleton term ->
             Left (term ^. termAnn, "expected object at the top level")
   where
