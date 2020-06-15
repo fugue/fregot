@@ -22,6 +22,7 @@ import           Fregot.Eval.Json             as Json
 import qualified Fregot.Find                  as Find
 import qualified Fregot.Interpreter           as Interpreter
 import           Fregot.Main.GlobalOptions
+import           Fregot.Names
 import qualified Fregot.Parser                as Parser
 import qualified Fregot.PrettyPrint           as PP
 import           Fregot.Repl.Parse
@@ -34,7 +35,7 @@ import qualified System.IO                    as IO
 data Options = Options
     { _input      :: !(Maybe FilePath)
     , _expression :: !T.Text
-    , _paths      :: [FilePath]
+    , _paths      :: [DestinationPrefix FilePath]
     } deriving (Show)
 
 $(makeLenses ''Options)
@@ -45,7 +46,7 @@ parseOptions = Options
     <*> (fmap T.pack $ OA.strArgument $
             OA.metavar "EXPRESSION" <>
             OA.help    "Rego expression to evaluate")
-    <*> (OA.many $ OA.strArgument $
+    <*> (OA.many $ fmap parseDestinationPrefix $ OA.strArgument $
             OA.metavar "PATHS" <>
             OA.help    "Rego files or directories to load")
 
@@ -53,7 +54,7 @@ main :: GlobalOptions -> Options -> IO ExitCode
 main gopts opts = do
     sources <- Sources.newHandle
     interpreter <- Interpreter.newHandle sources
-    regoPaths <- Find.findRegoFiles (opts ^. paths)
+    regoPaths <- Find.findPrefixedRegoFiles (opts ^. paths)
     (errors, mbResult) <- Parachute.runParachuteT $ do
         forM_ regoPaths $ Interpreter.loadFileByExtension
             interpreter Parser.defaultParserOptions

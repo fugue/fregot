@@ -18,7 +18,7 @@ import qualified Fregot.Error              as Error
 import qualified Fregot.Find               as Find
 import qualified Fregot.Interpreter        as Interpreter
 import           Fregot.Main.GlobalOptions
-import           Fregot.Names              (unPackageName, unVar)
+import           Fregot.Names
 import qualified Fregot.Parser             as Parser
 import qualified Fregot.Sources            as Sources
 import           Fregot.Test
@@ -27,14 +27,14 @@ import           System.Exit               (ExitCode (..))
 import qualified System.IO                 as IO
 
 data Options = Options
-    { _paths :: [FilePath]
+    { _paths :: [DestinationPrefix FilePath]
     } deriving (Show)
 
 $(makeLenses ''Options)
 
 parseOptions :: OA.Parser Options
 parseOptions = Options
-    <$> (OA.some $ OA.strArgument $
+    <$> (OA.some $ fmap parseDestinationPrefix $ OA.strArgument $
             OA.metavar "PATHS" <>
             OA.help    "Rego files or directories to test")
 
@@ -42,7 +42,7 @@ main :: GlobalOptions -> Options -> IO ExitCode
 main gopts opts = do
     sources <- Sources.newHandle
     interpreter <- Interpreter.newHandle sources
-    regoPaths <- Find.findRegoFiles (opts ^. paths)
+    regoPaths <- Find.findPrefixedRegoFiles (opts ^. paths)
     (errors, mbResult) <- Parachute.runParachuteT $ do
         forM_ regoPaths $ Interpreter.loadFileByExtension
             interpreter Parser.defaultParserOptions

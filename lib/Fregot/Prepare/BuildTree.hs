@@ -23,14 +23,19 @@ data BuildTree
 
 toTree
     :: PackageName -> [(SourceSpan, Var, BuildTree)] -> Tree.Tree PreparedRule
-toTree pkgname = L.foldl' Tree.union Tree.empty . map toRuleOrTree
+toTree pkgname =
+    Tree.prefix (review packageNameFromKey pkgname) . makeTree pkgname
+
+makeTree
+    :: PackageName -> [(SourceSpan, Var, BuildTree)] -> Tree.Tree PreparedRule
+makeTree pkgname = L.foldl' Tree.union Tree.empty . map toRuleOrTree
   where
     toRuleOrTree (loc, var, BuildSingleton t) = Tree.singleton
         (review varFromKey var)
         (termToRule loc pkgname var t)
 
     toRuleOrTree (_, var, BuildTree _ t) =
-        Tree.parent [(var, toTree (pkgname <> mkPackageName [unVar var]) t)]
+        Tree.parent [(var, makeTree (pkgname <> mkPackageName [unVar var]) t)]
 
 -- NOTE(jaspervdj): Should we have this use the new 'ValueT' to only represent
 -- values?

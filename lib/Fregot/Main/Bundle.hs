@@ -44,7 +44,7 @@ main :: GlobalOptions -> Options -> IO ExitCode
 main gopts opts = do
     sources <- Sources.newHandle
     interpreter <- Interpreter.newHandle sources
-    regoPaths <- Find.findRegoFiles (opts ^. paths)
+    regoPaths <- concat <$> traverse Find.findRegoFiles (opts ^. paths)
     (errors, _) <- Parachute.runParachuteT $ do
         forM_ regoPaths $ \path -> Interpreter.loadModule interpreter
             Parser.defaultParserOptions path
