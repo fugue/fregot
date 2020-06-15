@@ -1,11 +1,11 @@
-{-# LANGUAGE DeriveFoldable    #-}
-{-# LANGUAGE DeriveFunctor     #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE DeriveFoldable        #-}
+{-# LANGUAGE DeriveFunctor         #-}
+{-# LANGUAGE DeriveTraversable     #-}
+{-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE DeriveTraversable #-}
-{-# LANGUAGE LambdaCase        #-}
-{-# LANGUAGE TypeFamilies      #-}
+{-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE TypeFamilies          #-}
 module Fregot.Tree
     ( Key
     , qualifiedVarFromKey
@@ -45,8 +45,8 @@ import qualified Data.List            as L
 import           Data.Maybe           (isJust, maybeToList)
 import qualified Data.Vector.Extended as V
 import           Fregot.Names
+import qualified Fregot.PrettyPrint   as PP
 import           Prelude              hiding (lookup, null)
-import qualified Fregot.PrettyPrint as PP
 
 data Tree a = Tree !(Maybe a) !(HMS.HashMap Var (Tree a))
     deriving (Foldable, Functor, Traversable, Show)

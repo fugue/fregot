@@ -5,10 +5,10 @@ module Fregot.Find
     ) where
 
 import           Control.Monad.Extended (ifM)
+import           Fregot.Names
 import qualified System.Directory       as Directory
 import qualified System.Directory.Find  as Find
 import           System.FilePath        ((</>))
-import Fregot.Names
 
 -- | Takes a list of files or directories, and returns a full exhaustive list of
 -- all found files.
