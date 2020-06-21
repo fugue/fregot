@@ -11,7 +11,7 @@ extra-deps:
 - './packages/pcre-simple'
 - './packages/hs-jose'
 - 'HsYAML-0.2.1.0'
-- git: git@github.com:fugue/goldplate.git
+- git: https://github.com/fugue/goldplate.git
   commit: 0ac9d399eb7bcac810a1bf4d97ccc08fe6f39f39
 
 nix:
