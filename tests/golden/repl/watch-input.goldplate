@@ -1,0 +1,9 @@
+{
+    "command": "bash",
+    "arguments": ["${GOLDPLATE_NAME}.sh"],
+    "asserts": [
+        {"exit_code": 0},
+        {"stderr": "${GOLDPLATE_NAME}.stderr"},
+        {"stdout": "${GOLDPLATE_NAME}.stdout"}
+    ]
+}

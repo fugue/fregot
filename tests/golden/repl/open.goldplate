@@ -1,0 +1,20 @@
+{
+    "command": "fregot",
+    "arguments": ["repl", "--no-history-file"],
+    "asserts": [
+        {"exit_code": 0},
+        {"stderr": "${GOLDPLATE_NAME}.stderr"},
+        {"stdout": "${GOLDPLATE_NAME}.stdout"}
+    ],
+    "stdin": [
+        ":open mypkg1",
+        "r = 1",
+        "r",
+        ":open data.mypkg2",
+        "r = 2",
+        "r",
+        ":open data.mypkg1",
+        "r",
+        "data.mypkg2.r"
+    ]
+}
