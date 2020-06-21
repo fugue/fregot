@@ -1,0 +1,14 @@
+{
+    "command": "fregot",
+    "arguments": ["repl", "--no-history-file", "input-doc.rego"],
+    "asserts": [
+        {"exit_code": 0},
+        {"stderr": "${GOLDPLATE_NAME}.stderr"},
+        {"stdout": "${GOLDPLATE_NAME}.stdout"}
+    ],
+    "stdin": [
+        ":input input-doc.json",
+        ":open fregot.tests.repl.input_doc",
+        "security_groups"
+    ]
+}

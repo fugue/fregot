@@ -90,7 +90,7 @@ and [stack] both work well.
 
 #### Using Cabal
 
-1.  Install [stack] for your platform.
+1.  Install [Cabal] for your platform.
 2.  Clone this repository and `cd` into it.
 3.  Run `cabal install`.
 4.  Make sure `$HOME/.cabal/bin` is in your `$PATH`.

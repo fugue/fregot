@@ -1,0 +1,15 @@
+{
+    "input_files": "invalid_*.rego",
+    "command": "fregot",
+    "arguments": ["test", "${GOLDPLATE_INPUT_FILE}"],
+    "asserts": [
+        { "exit_code": 1
+        },
+        {
+            "stderr": "${GOLDPLATE_INPUT_NAME}.stderr"
+        },
+        {
+            "stdout": "${GOLDPLATE_INPUT_NAME}.stdout"
+        }
+    ]
+}
