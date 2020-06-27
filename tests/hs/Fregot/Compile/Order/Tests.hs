@@ -19,6 +19,7 @@ import qualified Test.Tasty.HUnit     as Tasty
 deriving instance Eq a => Eq (Literal a)
 deriving instance Eq a => Eq (Statement a)
 deriving instance Eq a => Eq (Comprehension a)
+deriving instance Eq a => Eq (IndexedComprehension a)
 deriving instance Eq a => Eq (Term a)
 deriving instance Eq a => Eq (With a)
 deriving instance Eq WithPath
@@ -58,9 +59,9 @@ tests_orderForClosures = Tasty.testGroup "orderForClosures"
     [ Tasty.testCase "01" $
         let program =
                 [ lit $ TermS $ CompT source $
-                    ArrayComp source (name "b") [lit $ UnifyS source (name "a") (name "b")]
+                    ArrayComp (name "b") [lit $ UnifyS source (name "a") (name "b")]
                 , lit $ TermS $ CompT source $
-                    ArrayComp source (name "c") [lit $ UnifyS source (name "a") (name "c")]
+                    ArrayComp (name "c") [lit $ UnifyS source (name "a") (name "c")]
                 , lit $ UnifyS source (name "a") (num 1)
                 ] in
         testOrderForClosures program @?=
@@ -83,7 +84,7 @@ tests_orderForSafety = Tasty.testGroup "orderForSafety"
         [program !! 0, program !! 2, program !! 1]
     , Tasty.testCase "02" $ testOrderForSafety
         [ lit $ TermS $ CompT source $
-            ArrayComp source (name "c")
+            ArrayComp (name "c")
                 [ lit $ UnifyS source (name "c") (name "b")
                 , lit $ UnifyS source (name "b") (name "a")
                 ]
@@ -91,7 +92,7 @@ tests_orderForSafety = Tasty.testGroup "orderForSafety"
         ] @?=
         [ lit $ UnifyS source (name "a") (num 1)
         , lit $ TermS $ CompT source $
-            ArrayComp source (name "c")
+            ArrayComp (name "c")
                 [ lit $ UnifyS source (name "b") (name "a")
                 , lit $ UnifyS source (name "c") (name "b")
                 ]
