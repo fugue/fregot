@@ -60,6 +60,7 @@ Table of Contents
 	- [:next](#next)
 	- [:rewind](#rewind)
 	- [:test](#test)
+	- [:type](#type)
 	- [:where](#where)
 	- [:watch](#watch)
 - [Example Use Case](#example-use-case)
@@ -98,7 +99,7 @@ and [stack] both work well.
 Usage
 -----
 
-    fregot v0.4.3
+    fregot v0.11.1
 
     Usage: fregot COMMAND
 
@@ -116,7 +117,8 @@ Usage
 
 ### fregot repl
 
-`fregot repl [PATHS]`: Start a REPL. Optionally, use the `--watch` flag to
+`fregot repl [PATHS] [--input PATH] [--watch]`: Start a REPL. Optionally, use
+the `--input [PATH]` flag to specify input and the `--watch` flag to
 enable [watching files](#watch). See [working with the REPL](#repl) for details
 and examples.
 
@@ -193,7 +195,7 @@ REPL
 ----
 
     F u g u e   R E G O   T o o l k i t
-    fregot v0.4.3 repl - use :help for usage info
+    fregot v0.11.1 repl - use :help for usage info
     repl% :help
     Enter an expression to evaluate it.
     Enter a rule to add it to the current package.
@@ -211,6 +213,7 @@ REPL
       :next      step (over) the next rule in the debugged program
       :rewind    go back to the previous debug suspension
       :test      run tests in the current package
+      :type      print the type of a term
       :where     print your location
       :watch     evaluate input after file changes
 
@@ -230,9 +233,13 @@ There are three ways to interact with the REPL:
 
         repl% numbers[n]; n % 2 == 0; n
         = 4
+        | n = 4
         = 16
+        | n = 16
         = 8
+        | n = 8
         = 42
+        | n = 42
 
  3. There are number of special commands that start with `:`.  Entering `:help`
     shows you the full list of commands.
@@ -248,6 +255,7 @@ this is `repl`, but you can change this using `:open`.  For example, we can add
 a rule to the package `foo` and change back to `repl`:
 
     repl% :open foo
+    Created new package foo
     foo% a = 1
     Rule a added
     foo% :open repl
@@ -267,7 +275,7 @@ all modified Rego files.  If the file includes any rules starting with `test_`,
 you can assess your changes using `:test`:
 
     policy% :reload
-    Reloaded 1 files
+    Reloaded policy.rego
     policy% :test
     passed: 1, failed: 0, errored: 0
 
@@ -286,7 +294,14 @@ Debugging generally follows these steps:
 You can start debugging by setting a breakpoint with `:break` and then
 evaluating something.
 
-To set a breakpoint, use the `:break` command.  You can use the `:break` command
+To set a breakpoint, use the `:break` command. The command below sets a
+breakpoint on the rule `deny` in the currently loaded package,
+`fregot.examples.demo`:
+
+    fregot.examples.demo% :break deny
+    Set breakpoint at fregot.examples.demo.deny
+
+You can use the `:break` command
 with either names, or a position in a file (line number).  For example:
 
     :break foo            # `foo` in the current package
@@ -297,11 +312,14 @@ with either names, or a position in a file (line number).  For example:
 Once at least one breakpoint is set, you can use `:break` without arguments to
 display the list. You'll see output like this:
 
-    examples/break_example/break_example.rego:8
-    fregot.examples.break_example.function_a
-    fregot.examples.break_example.test_step
+    fregot.examples.demo.test_allow
+    examples/demo/demo.rego:9
+    fregot.examples.demo.deny
 
-You can also use `:break` on an existing breakpoint to remove it again.
+You can also use `:break` on an existing breakpoint to remove it again:
+
+    fregot.examples.demo% :break deny
+    Removed breakpoint at fregot.examples.demo.deny
 
 #### Step 2: Activate breakpoint
 
@@ -334,14 +352,12 @@ REPL Usage
 breakpoint at the `allow` rule in the package `fregot.examples.ami_id`:
 
     repl% :break fregot.examples.ami_id.allow
+    Set breakpoint at fregot.examples.ami_id.allow
 
-The command returns no output unless there is an error.  To enter debugging
-mode, activate the breakpoint by entering its full `data.package.rule` name:
+To enter debugging mode, make sure you've loaded the package with `:load`, and
+activate the breakpoint by entering the rule name:
 
-    repl% data.fregot.examples.ami_id.allow
-
-(Tip: If the package is already loaded, you can activate it with just `allow` --
-no need for the full name.)
+    fregot.examples.ami_id% allow
 
 The REPL displays the code at the breakpoint, along with the line number:
 
@@ -398,6 +414,7 @@ However, if you set a breakpoint at `function_a`, activate it, and
 [:step](#step) into it, you can see the value of `a`:
 
     fregot.examples.break_example% :break function_a
+    Set breakpoint at fregot.examples.break_example.function_a
 
     fregot.examples.break_example% function_a
 
@@ -442,20 +459,25 @@ Two things to note:
     absolute path instead; e.g., `/Users/alice/input.json`
 
  -  If you change the input document, make sure to update it by issuing the
-    `:input [PATH]` command again.
+    [:reload](#reload) command. (Or, if you've enabled [--watch](#watch) mode,
+    the REPL will reload the changes automatically!)
+
+You can also set the input when you start the REPL with the `--input PATH` flag:
+
+    fregot repl examples/ami_id/ami_id.rego --input input.json
 
 ### :open
 
 **Shortcut** `:o`
 
 By default, you start in the `repl` package when you run `fregot repl`.  `:open`
-opens a different package.  For example, you can switch to
+creates and opens a different package.  For example, you can switch to
 `fregot.examples.ami_id` like so:
 
     repl% :open fregot.examples.ami_id
+    Created new package fregot.examples.ami_id
 
-The command produces no output, but the REPL prompt changes to the name of the
-package you just loaded:
+The REPL prompt changes to the name of the package you just loaded:
 
     fregot.examples.ami_id%
 
@@ -498,20 +520,27 @@ You'll see output like this:
     = true
 
 _Note: If you change the Rego file after you've loaded it, you'll need to
-[:reload](#reload) it._
+[:reload](#reload) it. However, if you've enabled [--watch](#watch) mode, the
+REPL automatically reloads your changes._
 
 ### :reload
 
 **Shortcut** `:r`
 
 `:reload` checks for modified Rego files and reloads them.  If you make changes
-to a loaded file, you'll need to `:reload` it to update it in the REPL.
+to a loaded file, you can `:reload` it to update it in the REPL.
 
     fregot.examples.ami_id% :reload
 
 You'll see output like this:
 
-    Reloaded 1 files
+    Reloaded input.json
+    Reloaded examples/ami_id/ami_id.rego
+
+For automatic reloading, see [--watch](#watch).
+
+Note that reloading when debugging is not possible as it would modify the code
+currently running.
 
 ### :continue
 
@@ -526,6 +555,7 @@ In the following example, we set a breakpoint at `test_step` (see
 breakpoint, then use the `:continue` command:
 
     fregot.examples.break_example% :break test_step
+    Set breakpoint at fregot.examples.break_example.test_step
     fregot.examples.break_example% test_step
     14|   function_a
           ^^^^^^^^^^
@@ -533,7 +563,11 @@ breakpoint, then use the `:continue` command:
     4|   a = "Welcome to function a!"
          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-If there are no more breakpoints, you'll see the output `(debug) finished`.
+If there are no more breakpoints, the program finishes running and you'll see
+the validation results and `(debug) finished`:
+
+    (debug) = false
+    (debug) finished
 
 ### :step
 
@@ -559,7 +593,11 @@ the next query in `function_a`:
     5|   true
          ^^^^
 
-If there are no more queries, you'll see the output `(debug) finished`.
+If there are no more queries, you'll see the results of the validation and the
+output `(debug) finished`:
+
+    (debug) = true
+    (debug) finished
 
 ### :next
 
@@ -623,6 +661,16 @@ directory and includes the 2 tests in `ami_id.rego` _and_ the 8 tests from
     fregot test examples/ami_id/
     passed: 10, failed: 0, errored: 0
 
+### :type
+
+`:type` prints the type of a term in the loaded package:
+
+    fregot.examples.ami_id% :type allow
+    allow : boolean
+
+    fregot.examples.ami_id% :type approved_amis
+    approved_amis : set{string}
+
 ### :where
 
 `:where` prints your location in debugging mode using a stack trace:
@@ -663,7 +711,6 @@ automatically reloads them:
 
     fregot.examples.ami_id%
     Reloaded examples/ami_id/ami_id.rego
-
     fregot.examples.ami_id%
     Reloaded examples/ami_id/repl_input.json
 
