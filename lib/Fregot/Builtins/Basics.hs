@@ -324,7 +324,7 @@ builtin_to_number = Builtin
 
 builtin_trace :: Monad m => Builtin m
 builtin_trace = Builtin (In Out)
-    Ty.string 🡒 Ty.out Ty.void) $ pure $
+    (Ty.string 🡒 Ty.out Ty.void) $ pure $
     \(Cons txt Nil) -> liftIO (T.hPutStrLn IO.stderr txt) $> Value NullV
 
 builtin_trim :: Monad m => Builtin m
