@@ -177,28 +177,6 @@ Executable fregot
   Ghc-options:       -Wall -rtsopts -threaded -O2
   build-depends:     base, fregot
 
-Executable fspec
-  Hs-source-dirs:    src/fspec
-  Main-is:           Main.hs
-  Default-language:  Haskell2010
-  Ghc-options:       -Wall -rtsopts -threaded -O2
-
-  Build-depends:
-    fregot,
-    aeson                >= 1.4  && < 1.5,
-    aeson-pretty         >= 0.8  && < 0.9,
-    async                >= 2.2  && < 2.3,
-    base                 >= 4.9  && < 5,
-    bytestring           >= 0.10 && < 0.11,
-    Diff                 >= 0.3  && < 0.5,
-    directory            >= 1.3  && < 1.4,
-    filepath             >= 1.4  && < 1.5,
-    optparse-applicative >= 0.14 && < 0.16,
-    pcre-simple          >= 0.1  && < 0.2,
-    process              >= 1.6  && < 1.7,
-    text                 >= 1.2  && < 1.3,
-    time                 >= 1.8  && < 1.10
-
 Test-suite fregot-tests
   Hs-source-dirs:    tests/hs
   Main-is:           Main.hs

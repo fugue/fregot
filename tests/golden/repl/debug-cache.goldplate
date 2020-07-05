@@ -1,0 +1,16 @@
+{
+    "command": "fregot",
+    "arguments": ["repl", "--no-history-file"],
+    "asserts": [
+        {"exit_code": 0},
+        {"stderr": "${GOLDPLATE_NAME}.stderr"},
+        {"stdout": "${GOLDPLATE_NAME}.stdout"}
+    ],
+    "stdin": [
+        ":load debug-cache.rego",
+        "test_allow",
+        ":break test_allow",
+        "test_allow",
+        ":continue"
+    ]
+}

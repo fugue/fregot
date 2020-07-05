@@ -1,0 +1,14 @@
+{
+    "command": "fregot",
+    "arguments": ["repl", "--no-history-file"],
+    "stdin": [
+        ":l granular.rego",
+        ":type people",
+        ":type people[99].address"
+    ],
+    "asserts": [
+        {"stdout": "${GOLDPLATE_NAME}.stdout"},
+        {"stderr": "${GOLDPLATE_NAME}.stderr"},
+        {"exit_code": 0}
+    ]
+}
