@@ -1,0 +1,9 @@
+{
+    "command": "fregot",
+    "arguments": ["test", "${GOLDPLATE_NAME}.rego"],
+    "asserts": [
+        {"exit_code": 0},
+        {"stderr": "${GOLDPLATE_NAME}.stderr"},
+        {"stdout": "${GOLDPLATE_NAME}.stdout"}
+    ]
+}
