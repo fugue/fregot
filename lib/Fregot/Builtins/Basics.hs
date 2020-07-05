@@ -16,12 +16,15 @@ module Fregot.Builtins.Basics
 
 import           Control.Applicative      ((<|>))
 import           Control.Lens             (ifoldMap, review)
+import           Control.Monad.Trans      (liftIO)
 import           Data.Char                (intToDigit, isSpace)
+import           Data.Functor             (($>))
 import qualified Data.HashMap.Strict      as HMS
 import qualified Data.HashSet             as HS
 import qualified Data.List                as L
 import           Data.Maybe               (fromMaybe)
 import qualified Data.Text                as T
+import qualified Data.Text.IO             as T
 import qualified Data.Vector              as V
 import           Fregot.Builtins.Internal
 import           Fregot.Eval.Number       (Number)
@@ -34,6 +37,7 @@ import qualified Fregot.Types.Builtins    as Ty
 import           Fregot.Types.Internal    ((∪))
 import qualified Fregot.Types.Internal    as Ty
 import           Numeric                  (showIntAtBase)
+import qualified System.IO                as IO
 import qualified Text.Printf.Extended     as Printf
 import           Text.Read                (readMaybe)
 
@@ -70,6 +74,7 @@ builtins = HMS.fromList
     , (NamedFunction (BuiltinName "sum"),              builtin_sum)
     , (NamedFunction (BuiltinName "startswith"),       builtin_startswith)
     , (NamedFunction (BuiltinName "to_number"),        builtin_to_number)
+    , (NamedFunction (BuiltinName "trace"),            builtin_trace)
     , (NamedFunction (BuiltinName "trim"),             builtin_trim)
     , (NamedFunction (BuiltinName "trim_left"),        builtin_trim_left)
     , (NamedFunction (BuiltinName "trim_prefix"),      builtin_trim_prefix)
@@ -316,6 +321,11 @@ builtin_to_number = Builtin
                 "to_number: couldn't read " ++ str
             Just (Left i)  -> return $ review Number.int i
             Just (Right d) -> return $ review Number.double d
+
+builtin_trace :: Monad m => Builtin m
+builtin_trace = Builtin (In Out)
+    (Ty.string 🡒 Ty.out Ty.void) $ pure $
+    \(Cons txt Nil) -> liftIO (T.hPutStrLn IO.stderr txt) $> Value NullV
 
 builtin_trim :: Monad m => Builtin m
 builtin_trim = Builtin
