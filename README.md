@@ -520,10 +520,6 @@ You'll see output like this:
 
     = true
 
-_Note: If you change the Rego file after you've loaded it, you'll need to
-[`:reload`](#reload) it. However, if you've enabled [`--watch`](#watch) mode,
-the REPL automatically reloads your changes._
-
 Tip: You can skip the `:load` step by specifying the Rego file paths when you
 start the REPL:
 
@@ -533,6 +529,10 @@ Directories are searched recursively. This command opens all the Rego files in
 the `examples` folder:
 
     fregot repl examples
+
+_Note: If you change the Rego file after you've loaded it, you'll need to
+[`:reload`](#reload) it. However, if you've enabled [`--watch`](#watch) mode,
+the REPL automatically reloads your changes._
 
 ### :reload
 
