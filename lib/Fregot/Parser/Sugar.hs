@@ -161,7 +161,7 @@ ruleStatement :: FregotParser (RuleStatement SourceSpan Var)
 ruleStatement =
     (withSourceSpan $ do
         Tok.symbol Tok.TSome
-        vars <- Parsec.sepBy1 var (Tok.symbol Tok.TPeriod)
+        vars <- Parsec.sepBy1 var (Tok.symbol Tok.TComma)
         return $ \ann -> VarDeclS ann vars) <|>
      (LiteralS <$> literal)
 
