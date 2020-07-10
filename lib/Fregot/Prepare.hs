@@ -46,6 +46,12 @@ prepareRule pkgname imports rule
             "bad default"
             "Default rule should not have a body."
 
+        when (head ^. Sugar.ruleAssign) $ tellError $ Error.mkError
+            "compile"
+            (head ^. Sugar.ruleAnn)
+            "bad default"
+            "Default rules should use `=` rather than `:=`."
+
         -- TODO(jaspervdj): About the default term, they write:
         --
         --     The term may be any scalar, composite, or comprehension value but
@@ -58,6 +64,7 @@ prepareRule pkgname imports rule
             , _ruleKey     = review qualifiedVarFromKey (pkgname, head ^. Sugar.ruleName)
             , _ruleAnn     = head ^. Sugar.ruleAnn
             , _ruleDefault = def
+            , _ruleAssign  = head ^. Sugar.ruleAssign
             , _ruleKind    = CompleteRule
             , _ruleInfo    = ()
             , _ruleDefs    = []
@@ -72,6 +79,12 @@ prepareRule pkgname imports rule
             "Rule should have function arguments, " <>
             "or regular arguments, but not both."
 
+        when (head ^. Sugar.ruleAssign) $ tellError $ Error.mkError
+            "compile"
+            (head ^. Sugar.ruleAnn)
+            "bad assignment"
+            "Functions should use `=` rather than `:=`."
+
         bodies <- traverse prepareRuleBody (rule ^. Sugar.ruleBodies)
         elses  <- traverse prepareRuleElse (rule ^. Sugar.ruleElses)
         args   <- traverse (traverse prepareTerm) (head ^. Sugar.ruleArgs)
@@ -83,6 +96,7 @@ prepareRule pkgname imports rule
             , _ruleKey     = review qualifiedVarFromKey (pkgname, head ^. Sugar.ruleName)
             , _ruleAnn     = head ^. Sugar.ruleAnn
             , _ruleDefault = Nothing
+            , _ruleAssign  = head ^. Sugar.ruleAssign
             , _ruleKind    = FunctionRule (maybe 0 length args)
             , _ruleInfo    = ()
             , _ruleDefs    =
@@ -117,6 +131,7 @@ prepareRule pkgname imports rule
             , _ruleKey     = review qualifiedVarFromKey (pkgname, head ^. Sugar.ruleName)
             , _ruleAnn     = head ^. Sugar.ruleAnn
             , _ruleDefault = Nothing
+            , _ruleAssign  = head ^. Sugar.ruleAssign
             , _ruleKind    = kind
             , _ruleInfo    = ()
             , _ruleDefs    =
@@ -144,6 +159,12 @@ mergeRules x y = do
         "compile" "conflicting default"
         [ (def ^. termAnn, "default defined here")
         | def <- defaults
+        ]
+
+    when (x ^. ruleAssign || y ^. ruleAssign) $ tellError $ Error.mkMultiError
+        "compile" "conflicting `:=` rule"
+        [ (a, "rules declared using `:=` cannot have multiple definitions")
+        | a <- [x ^. ruleAnn, y ^. ruleAnn]
         ]
 
     unless (compatible (x ^. ruleKind) (y ^. ruleKind)) $ tellError $

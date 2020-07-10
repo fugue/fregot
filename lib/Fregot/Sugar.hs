@@ -24,7 +24,7 @@ module Fregot.Sugar
 
     , Rule (..), ruleHead, ruleBodies
     , RuleHead (..), ruleAnn, ruleDefault, ruleName, ruleArgs, ruleIndex
-    , ruleValue, ruleElses
+    , ruleAssign, ruleValue, ruleElses
     , RuleBody, Query
     , RuleElse (..), ruleElseAnn, ruleElseValue, ruleElseBody
     , RuleStatement (..), _VarDeclS, _LiteralS
@@ -102,6 +102,9 @@ instance (Binary a, Binary n) => Binary (Rule a n)
 data RuleHead a n = RuleHead
     { _ruleAnn     :: !a
     , _ruleDefault :: !Bool
+    , -- | If a rule is declared using `:=`, we consider it "assigned", and we
+      -- will only allow a single definition.
+      _ruleAssign  :: !Bool
     , _ruleName    :: !UnqualifiedVar
     , _ruleArgs    :: !(Maybe [Term a n])
     , _ruleIndex   :: !(Maybe (Term a n))
