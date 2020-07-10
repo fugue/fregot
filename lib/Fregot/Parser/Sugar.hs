@@ -107,9 +107,11 @@ parseRuleHead = withSourceSpan $ do
         t <- term
         expectToken Tok.TRBracket
         return t
-    _ruleValue <- Parsec.optionMaybe $ do
-        Tok.symbol Tok.TUnify
-        term
+    (_ruleAssign, _ruleValue) <- Parsec.choice
+        [ Tok.symbol Tok.TAssign >> (,) True . Just <$> term
+        , Tok.symbol Tok.TUnify >> (,) False . Just <$> term
+        , pure (False, Nothing)
+        ]
     return $ \_ruleAnn -> RuleHead {..}
 
 parseRuleBody :: FregotParser (RuleBody SourceSpan Var)

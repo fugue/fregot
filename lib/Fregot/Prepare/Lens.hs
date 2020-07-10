@@ -37,6 +37,7 @@ ruleTerms f rule = Rule
     <*> pure (rule ^. ruleKind)
     <*> pure (rule ^. ruleInfo)
     <*> traverse f (rule ^. ruleDefault)
+    <*> pure (rule ^. ruleAssign)
     <*> traverseOf (traverse . ruleDefinitionTerms) f (rule ^. ruleDefs)
 
 -- | All direct terms of a rule definition, combine with 'cosmos' to traverse
