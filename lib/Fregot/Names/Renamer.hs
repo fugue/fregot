@@ -110,6 +110,7 @@ renameRuleHead :: Rename RuleHead
 renameRuleHead rh = RuleHead
     <$> pure (rh ^. ruleAnn)
     <*> pure (rh ^. ruleDefault)
+    <*> pure (rh ^. ruleAssign)
     <*> pure (rh ^. ruleName)
     <*> traverse (traverse renameTerm) (rh ^. ruleArgs)
     <*> traverse renameTerm (rh ^. ruleIndex)

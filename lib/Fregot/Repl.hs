@@ -449,7 +449,8 @@ metaCommands =
                 pkgs <- runInterpreter h Interpreter.readPackages
                 let exists = maybe False (pkg `elem`) pkgs
                 unless exists $ PP.hPutSemDoc IO.stderr $
-                    "Created new package" <+> PP.code (PP.pretty pkg)
+                    "Warning: package" <+> PP.code (PP.pretty pkg) <+>
+                    "contains no rules"
                 IORef.writeIORef (h ^. openPackage) pkg $> True
             _ -> do
                 IO.hPutStrLn IO.stderr ":open takes a package name as argument"
