@@ -4,17 +4,16 @@ module Fregot.Prepare.ComprehensionIndex
     , rewriteLiteral
     ) where
 
-import           Control.Lens              (over, (&), (.~), (^.), (^?))
-import           Control.Lens.Plated       -- (transformOn, transformOnOf, plate)
-import qualified Data.HashSet              as HS
+import           Control.Lens              (Fold, over, (&), (.~), (^.), (^?),
+                                            _2)
+import           Control.Lens.Plated       (transformOn)
+import qualified Data.HashSet.Extended     as HS
 import           Data.Maybe                (fromMaybe)
 import qualified Data.Unique               as Unique
-import           Debug.Trace
 import           Fregot.Compile.Order      (Safe (..), ovLiteral, ovRuleBody)
-import           Fregot.Names              (Name (..), UnqualifiedVar)
+import           Fregot.Names
 import           Fregot.Prepare.Ast
 import           Fregot.Prepare.Lens
-import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources.SourceSpan (SourceSpan)
 import qualified Fregot.Types.Infer        as Types
 import           System.IO.Unsafe          (unsafePerformIO)
@@ -55,9 +54,10 @@ rewriteLiteral inferEnv safe lit
             -- we can safely run the body on the top level.
             , Just ovs <- ovRuleBody inferEnv mempty (comp ^. comprehensionBody)
             , keys <- unSafe safe `HS.intersection` unSafe ovs
-            , not (HS.null keys) =
-        trace ("Lifted body: " ++ show (PP.pretty' comp)) $
-        trace ("Keys: " ++ show keys) $
+            , not (HS.null keys)
+            -- Make sure keys do not appear as vars in nested closures.
+            , varsInClosures <- HS.toHashSetOf allVarsInClosures comp
+            , HS.null (HS.intersection keys varsInClosures) =
         Just $
         Unique.getGlobalUnique indexUniqueGen $ \unique ->
         lit & literalStatement .~ IndexedCompS source
@@ -69,3 +69,9 @@ rewriteLiteral inferEnv safe lit
         AssignS source (NameT _ (LocalName v)) t -> Just (source, v, t)
         UnifyS  source (NameT _ (LocalName v)) t -> Just (source, v, t)
         _                                        -> Nothing
+
+    allVarsInClosures :: Fold (Comprehension a) Var
+    allVarsInClosures =
+        -- Wow sometimes lens is just really good.
+        comprehensionBody . ruleBodyTerms . termCosmosClosures .
+        comprehensionTerms . termCosmosNames . _2 . _LocalName

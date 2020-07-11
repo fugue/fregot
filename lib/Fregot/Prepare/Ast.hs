@@ -48,8 +48,6 @@ module Fregot.Prepare.Ast
     , literal
     , unRefT
     , termToRule
-
-    , prettyComprehensionBody
     ) where
 
 import           Control.Lens              (review, (^.))
@@ -242,22 +240,24 @@ instance PP.Pretty PP.Sem (Statement a) where
     pretty (AssignS _ v x) = PP.pretty v <+> PP.punctuation ":=" <+> PP.pretty x
     pretty (TermS x)       = PP.pretty x
 
-    pretty (IndexedCompS _ (IndexedComprehension _ _ v c)) =
+    pretty (IndexedCompS _ (IndexedComprehension _ keys v c)) =
+        PP.punctuation "[" <> PP.keyword "index" <+>
+        PP.commaSep (map PP.pretty keys) <> PP.punctuation "]" <+>
         PP.pretty v <+> PP.punctuation ":=" <+> PP.pretty c
 
 instance PP.Pretty PP.Sem (Comprehension a) where
     pretty (ArrayComp x lits) =
-        PP.punctuation "[" <> PP.pretty x <+> PP.punctuation "|" <+>
-        prettyComprehensionBody lits <>
+        PP.punctuation "[" <> PP.pretty x <+> PP.punctuation "|" <$$>
+        PP.ind (PP.vcat $ map PP.pretty lits) <$$>
         PP.punctuation "]"
     pretty (SetComp x lits) =
-        PP.punctuation "{" <> PP.pretty x <+> PP.punctuation "|" <+>
-        prettyComprehensionBody lits <>
+        PP.punctuation "{" <> PP.pretty x <+> PP.punctuation "|" <$$>
+        PP.ind (PP.vcat $ map PP.pretty lits) <$$>
         PP.punctuation "}"
     pretty (ObjectComp k x lits) =
         PP.punctuation "{" <> PP.pretty k <> PP.punctuation ":" <+>
-        PP.pretty x <+> PP.punctuation "|" <+>
-        prettyComprehensionBody lits <>
+        PP.pretty x <+> PP.punctuation "|" <$$>
+        PP.ind (PP.vcat $ map PP.pretty lits) <$$>
         PP.punctuation "}"
 
 instance PP.Pretty PP.Sem (Term a) where
@@ -279,11 +279,6 @@ instance PP.Pretty PP.Sem (Term a) where
     pretty (ValueT _ v) = PP.literal $ PP.pretty v
 
     pretty (ErrorT _) = PP.errorNode
-
-prettyComprehensionBody :: RuleBody a -> PP.SemDoc
-prettyComprehensionBody lits = mconcat $ L.intersperse
-    (PP.punctuation ";" <> PP.space)
-    (map PP.pretty lits)
 
 instance PP.Pretty PP.Sem Function where
     pretty (NamedFunction    v) = PP.pretty v
