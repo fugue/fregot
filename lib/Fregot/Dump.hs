@@ -20,7 +20,7 @@ import qualified Fregot.PrettyPrint      as PP
 import qualified System.IO               as IO
 
 newtype Tag = Tag T.Text deriving (Eq, Hashable, IsString, Show)
-newtype Tags = Tags (HS.HashSet Tag) deriving (Show)
+newtype Tags = Tags (HS.HashSet Tag) deriving (Monoid, Semigroup, Show)
 
 class Monad m => MonadDump m where
     dump :: PP.Pretty PP.Sem a => Tag -> a -> m ()
