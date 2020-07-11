@@ -32,6 +32,7 @@ Library
     Fregot.Compile.Graph
     Fregot.Compile.Order
     Fregot.Compile.Package
+    Fregot.Dump
     Fregot.Error
     Fregot.Error.Stack
     Fregot.Eval

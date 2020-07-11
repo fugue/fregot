@@ -52,7 +52,7 @@ import           Control.Lens.TH                 (makeLenses)
 import           Control.Monad                   (foldM, guard, unless, when)
 import           Control.Monad.Identity          (Identity (..))
 import           Control.Monad.Parachute
-import           Control.Monad.Reader            (runReader)
+import           Control.Monad.Reader            (runReader, runReaderT)
 import           Control.Monad.Trans             (liftIO)
 import qualified Data.Aeson                      as Aeson
 import           Data.Bifunctor.Extended         (first)
@@ -77,6 +77,7 @@ import           Fregot.Builtins                 (Builtin, Builtins,
 import qualified Fregot.Compile.Graph            as Compile
 import           Fregot.Compile.Package          (CompiledRule)
 import qualified Fregot.Compile.Package          as Compile
+import qualified Fregot.Dump                     as Dump
 import           Fregot.Error                    (Error, catchIO)
 import qualified Fregot.Error                    as Error
 import qualified Fregot.Error.Stack              as Stack
@@ -110,7 +111,8 @@ import           System.FilePath.Extended        (listExtensions)
 type InterpreterM a = ParachuteT Error IO a
 
 data Handle = Handle
-    { _builtins :: !(IORef (Builtins Identity))
+    { _dumpTags :: !Dump.Tags
+    , _builtins :: !(IORef (Builtins Identity))
     , _sources  :: !Sources.Handle
     -- | List of modules, and files we loaded them from.  Grouped by package
     -- name.
@@ -125,9 +127,10 @@ data Handle = Handle
 $(makeLenses ''Handle)
 
 newHandle
-    :: Sources.Handle
+    :: Dump.Tags
+    -> Sources.Handle
     -> IO Handle
-newHandle _sources = do
+newHandle _dumpTags _sources = do
     initializedBuiltins <- traverse (htraverse (fmap Identity)) defaultBuiltins
 
     _builtins     <- IORef.newIORef initializedBuiltins
@@ -142,6 +145,7 @@ newHandle _sources = do
 -- clears the cache.
 copyHandle :: Handle -> IO Handle
 copyHandle h = do
+    let _dumpTags = h ^. dumpTags
     _sources  <- copy (h ^. sources)
     _builtins <- copy (h ^. builtins)
     _modules  <- copy (h ^. modules)
@@ -365,7 +369,9 @@ compileRules h = do
         yamlTree wantedPkgs
 
     -- Compile the tree and save it.
-    tree1 <- Compile.compileTree builtin tree0 preparedTree
+    tree1 <- mapParachuteT
+        (`runReaderT` (h ^. dumpTags))
+        (Compile.compileTree builtin tree0 preparedTree)
     dieIfErrors
     liftIO $ IORef.writeIORef (h ^. ruleTree) tree1
 

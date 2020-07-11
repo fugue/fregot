@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
@@ -59,7 +60,7 @@ import           Data.Unique               (Unique)
 import           Fregot.Eval.Value         (Value)
 import           Fregot.Names
 import           Fregot.Names.Imports      (Imports)
-import           Fregot.PrettyPrint        ((<+>), (<+>?), (?<+>))
+import           Fregot.PrettyPrint        ((<$$>), (<+>), (<+>?), (?<+>))
 import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources.SourceSpan (SourceSpan)
 import qualified Fregot.Sugar              as Sugar
@@ -194,7 +195,37 @@ $(makePrisms ''Term)
 
 --------------------------------------------------------------------------------
 -- NOTE(jaspervdj): These instances are pretty much copied from the sugared
--- ones.  Not much we can do about that, though.
+-- ones.  Not much we can do about that, though.  They are mostly used for
+-- debugging (i.e. dump).
+
+instance PP.Pretty PP.Sem (Rule i a) where
+    pretty r = PP.vcat $
+        (case r ^. ruleDefault of Nothing -> []; Just d -> [prettyDefault d]) ++
+        map PP.pretty (r ^. ruleDefs)
+      where
+        prettyDefault d =
+            PP.keyword "default" <+> PP.pretty (r ^. ruleName) <+> "=" <+>
+            PP.pretty d
+
+instance PP.Pretty PP.Sem (RuleDefinition a) where
+    pretty rdef =
+        PP.pretty (rdef ^. ruleDefName) <+>?
+        (fmap (PP.parens . PP.commaSep . map PP.pretty) $ rdef ^. ruleArgs) <+>?
+        (fmap (PP.brackets . PP.pretty) $ rdef ^. ruleIndex) <+>?
+        (fmap (("=" <+>) . PP.pretty) $ rdef ^. ruleValue) <+>?
+        (case rdef ^. ruleBodies of
+            [] -> Nothing
+            bs -> Just $ PP.hcat $ L.intersperse " " $ map prettyBody bs) <+>?
+        (case rdef ^. ruleElses of
+            [] -> Nothing
+            es -> Just $ PP.hcat $ L.intersperse " " $ map prettyElse es)
+      where
+        prettyBody b = PP.punctuation "{" <$$>
+            PP.ind (PP.vcat $ map PP.pretty b) <$$>
+            PP.punctuation "}"
+        prettyElse e =
+            PP.keyword "else" <+>? fmap PP.pretty (e ^. ruleElseValue) <+>
+            prettyBody (e ^. ruleElseBody)
 
 instance PP.Pretty PP.Sem (Literal a) where
     pretty lit =
