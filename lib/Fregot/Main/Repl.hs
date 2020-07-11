@@ -50,9 +50,9 @@ parseOptions = Options
             OA.help    "Rego files or directories to load into repl")
 
 main :: GlobalOptions -> Options -> IO ExitCode
-main _ opts = do
+main gopts opts = do
     sources     <- Sources.newHandle
-    itpr        <- Interpreter.newHandle sources
+    itpr        <- Interpreter.newHandle (gopts ^. dumpTags) sources
     regoPaths   <- Find.findPrefixedRegoFiles (opts ^. paths)
 
     replConfig <-

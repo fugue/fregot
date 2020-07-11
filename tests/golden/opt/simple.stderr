@@ -1,0 +1,4 @@
+[34mdefault[0m allow = [31m[31mfalse[0m[0m
+allow [36m{[0m
+  [36m==[0m[36m([0m[34minput[0m[36m.[0m[31m[31m"root"[0m[0m, [31m[31mtrue[0m[0m[36m)[0m
+[36m}[0m
