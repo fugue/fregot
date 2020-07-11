@@ -31,6 +31,7 @@ import           Data.Traversable.HigherOrder (htraverse)
 import           Fregot.Builtins.Internal     (Builtins)
 import           Fregot.Compile.Graph
 import           Fregot.Compile.Order
+import           Fregot.Dump                  (MonadDump, dump)
 import           Fregot.Error                 (Error)
 import qualified Fregot.Error                 as Error
 import           Fregot.Eval.Value            (Value)
@@ -52,7 +53,7 @@ type CompiledRule = Rule RuleType SourceSpan
 
 -- | Compiles and merges the prepared tree into the compiled tree.
 compileTree
-    :: Monad m
+    :: MonadDump m
     => Builtins (f :: * -> *)
     -> Tree.Tree CompiledRule
     -> Tree.Tree PreparedRule
@@ -88,6 +89,7 @@ compileTree builtins ctree0 prep = do
                 (Infer.evalInfer inferEnv $ Infer.inferRule cRule)
                 (\errs -> tellErrors errs $> (rule & ruleInfo .~ ErrorType))
             let optRule = ConstantFold.rewriteRule tyRule
+            dump "opt" optRule
             return $! inferEnv & Infer.ieTree . at key .~ Just optRule)
         inferEnv0
         ordering
