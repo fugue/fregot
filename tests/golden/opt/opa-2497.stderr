@@ -1,0 +1,19 @@
+english = [31m[36m{[0m
+  [31m"three"[0m[36m:[0m [31m3[0m[36m,[0m
+  [31m"one"[0m[36m:[0m [31m1[0m[36m,[0m
+  [31m"two"[0m[36m:[0m [31m2[0m
+[36m}[0m[0m
+should_be_1 = ret [36m{[0m
+  textual [36m=[0m [31m[31m"one"[0m[0m
+  numeric [36m=[0m [31m[31m1[0m[0m
+  [36m[[0m[34mindex[0m textual[36m][0m ret [36m:=[0m [36m{[0mtotal [36m|[0m
+    [35mbug[0m[36m.[0menglish[36m.[0mk [36m=[0m v
+    k [36m=[0m textual
+    total [36m=[0m [34msum[0m[36m([0m[36m[[0mnumeric [36m|[0m
+      [35mbug[0m[36m.[0menglish[36m.[0m[36m_[0m [36m=[0m numeric
+    [36m][0m[36m)[0m
+  [36m}[0m
+[36m}[0m
+test_should_be_1 [36m{[0m
+  [36m==[0m[36m([0m[35mbug[0m[36m.[0mshould_be_1, [31m[36m{[0m[31m1[0m[36m}[0m[0m[36m)[0m
+[36m}[0m

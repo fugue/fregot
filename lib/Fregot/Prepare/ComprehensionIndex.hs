@@ -55,9 +55,10 @@ rewriteLiteral inferEnv safe lit
             , Just ovs <- ovRuleBody inferEnv mempty (comp ^. comprehensionBody)
             , keys <- unSafe safe `HS.intersection` unSafe ovs
             , not (HS.null keys)
-            -- Make sure keys do not appear as vars in nested closures.
+            -- Make sure candidate keys do not appear as vars in nested
+            -- closures.
             , varsInClosures <- HS.toHashSetOf allVarsInClosures comp
-            , HS.null (HS.intersection keys varsInClosures) =
+            , HS.null (HS.intersection (unSafe safe) varsInClosures) =
         Just $
         Unique.getGlobalUnique indexUniqueGen $ \unique ->
         lit & literalStatement .~ IndexedCompS source
