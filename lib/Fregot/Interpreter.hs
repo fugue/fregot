@@ -458,9 +458,10 @@ newResumeStep
     -> InterpreterM (Eval.ResumeStep Eval.Value)
 newResumeStep h pkgname query = do
     -- Disable the cache for evaluating queries in resume steps.
-    -- TODO(jaspervdj): Disable `comprehensionCache`?
-    envctx   <- over (Eval.ecEnvironment . Eval.ruleCache) Cache.disable <$>
-                newEvalContext h
+    envctx <-
+        over (Eval.ecEnvironment . Eval.ruleCache) Cache.disable .
+        over (Eval.ecEnvironment . Eval.comprehensionCache) Cache.disable <$>
+        newEvalContext h
     ctree    <- liftIO $ IORef.readIORef (h ^. ruleTree)
     universe <- universeForRenamer h
 
