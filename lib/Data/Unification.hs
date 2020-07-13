@@ -22,12 +22,12 @@ import qualified Data.HashSet        as HS
 import qualified Fregot.PrettyPrint  as PP
 import           Prelude             hiding (lookup)
 
-class Monad m => MonadUnify v t m | m -> v, m -> t where
+class Monad m => MonadUnify s v t m | m -> s, m -> v, m -> t where
     -- Actual unification that traverses terms.
     --
     -- TODO(jaspervdj): This should return a new `t`, so we can e.g. accumulate
     -- type origins.
-    unify :: t -> t -> m ()
+    unify :: s -> t -> t -> m ()
 
     -- State management.  Doing this through requiring MonadState and just
     -- having a Lens would be a bit nicer.
@@ -35,13 +35,13 @@ class Monad m => MonadUnify v t m | m -> v, m -> t where
     putUnification    :: Unification v t -> m ()
     modifyUnification :: (Unification v t -> Unification v t) -> m ()
 
-lookup :: (Eq v, Hashable v, MonadUnify v t m) => v -> m (Maybe t)
+lookup :: (Eq v, Hashable v, MonadUnify s v t m) => v -> m (Maybe t)
 lookup v = do
     uni0 <- getUnification
     return $ snd $ root v uni0
 
-bindVar :: (Eq v, Hashable v, MonadUnify v t m) => v -> v -> m ()
-bindVar x y = do
+bindVar :: (Eq v, Hashable v, MonadUnify s v t m) => s -> v -> v -> m ()
+bindVar source x y = do
     uni0 <- getUnification
     let (xr, mxv) = root x uni0
         (yr, myv) = root y uni0
@@ -52,20 +52,20 @@ bindVar x y = do
                 (Nothing, Nothing) -> return Nothing
                 (Just xv, Nothing) -> return (Just xv)
                 (Nothing, Just yv) -> return (Just yv)
-                (Just xv, Just yv) -> unify xv yv >> return (Just xv)
+                (Just xv, Just yv) -> unify source xv yv >> return (Just xv)
 
             modifyUnification $ \(Unification m) ->
                 Unification $ HMS.insert xr (Ref yr) $ case mv of
                     Nothing -> m
                     Just v  -> HMS.insert yr (Root v) m
 
-bindTerm :: (Eq v, Hashable v, MonadUnify v t m) => v -> t -> m ()
-bindTerm v term = do
+bindTerm :: (Eq v, Hashable v, MonadUnify s v t m) => s -> v -> t -> m ()
+bindTerm source v term = do
     -- TODO: Occurs check?
     uni0 <- getUnification
     case root v uni0 of
         (r, Nothing) -> modifyUnification $ unsafeInsert r term
-        (_, Just t)  -> unify term t
+        (_, Just t)  -> unify source term t
 
 data Node k a = Ref !k | Root !a deriving (Functor, Show)
 
