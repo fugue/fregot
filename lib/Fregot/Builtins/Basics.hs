@@ -46,6 +46,7 @@ builtins = HMS.fromList
     [ (NamedFunction (BuiltinName "all"),              builtin_all)
     , (NamedFunction (BuiltinName "any"),              builtin_any)
     , (NamedFunction (QualifiedName "array.concat"),   builtin_array_concat)
+    , (NamedFunction (QualifiedName "array.slice"),    builtin_array_slice)
     , (NamedFunction (BuiltinName "and"),              builtin_bin_and)
     , (NamedFunction (BuiltinName "concat"),           builtin_concat)
     , (NamedFunction (BuiltinName "contains"),         builtin_contains)
@@ -121,6 +122,17 @@ builtin_array_concat = Builtin
     -- TODO(jaspervdj): We want `∀a b. array<a> -> array<b> -> array<a|b>`.
     (Ty.arrayOf Ty.any 🡒 Ty.arrayOf Ty.any 🡒 Ty.out Ty.unknown) $ pure $
     \(Cons l (Cons r Nil)) -> return (l <> r :: V.Vector Value)
+
+builtin_array_slice :: Monad m => Builtin m
+builtin_array_slice = Builtin
+    (In (In (In Out)))
+    (Ty.arrayOf Ty.any 🡒  Ty.number 🡒  Ty.number 🡒 Ty.out (Ty.arrayOf Ty.unknown)) $ pure $
+    \(Cons arr (Cons a (Cons b Nil))) -> return $! let
+        start = max a 0
+        end   = min b (V.length arr)
+        in case (end-start) of
+        n | n > 0 -> V.slice start n arr
+        _         -> [] :: V.Vector Value
 
 builtin_concat :: Monad m => Builtin m
 builtin_concat = Builtin
