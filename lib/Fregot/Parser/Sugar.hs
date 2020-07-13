@@ -192,7 +192,7 @@ expr = Parsec.buildExpressionParser
     , [ binary Tok.TBinAnd BinAndO Parsec.AssocLeft ]
     , [ binary Tok.TPipe   BinOrO  Parsec.AssocLeft ]
 
-    , [ binary Tok.TEqual    EqualO    Parsec.AssocLeft
+    , [ binary Tok.TEqual    UnifyO    Parsec.AssocLeft
       , binary Tok.TNotEqual NotEqualO Parsec.AssocLeft
       ]
 

@@ -6,5 +6,5 @@ double(x) = y {
 
 test_double {
   double(x, y)
-  y == 2
+  y != 2
 }

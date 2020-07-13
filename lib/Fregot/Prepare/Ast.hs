@@ -157,8 +157,7 @@ instance Hashable Function
 type Object a = [(Term a, Term a)]
 
 data BinOp
-    = EqualO
-    | NotEqualO
+    = NotEqualO
     | LessThanO
     | LessThanOrEqualO
     | GreaterThanO
@@ -286,7 +285,6 @@ instance PP.Pretty PP.Sem Function where
 
 instance PP.Pretty PP.Sem BinOp where
     pretty = PP.punctuation . \case
-        EqualO              -> "=="
         NotEqualO           -> "!="
         LessThanO           -> "<"
         LessThanOrEqualO    -> "<="

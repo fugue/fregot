@@ -342,7 +342,6 @@ prepareBinOp
     -> Sugar.BinOp
     -> ParachuteT Error m BinOp
 prepareBinOp source = \case
-    Sugar.EqualO              -> pure EqualO
     Sugar.NotEqualO           -> pure NotEqualO
     Sugar.LessThanO           -> pure LessThanO
     Sugar.LessThanOrEqualO    -> pure LessThanOrEqualO
@@ -356,17 +355,15 @@ prepareBinOp source = \case
     Sugar.BinAndO             -> pure BinAndO
     Sugar.BinOrO              -> pure BinOrO
     Sugar.UnifyO              -> do
-        tellError $ Error.mkError "compile" source
+        fatal $ Error.mkError "compile" source
             "invalid unification" $
             "The `=` operator should not appear in this context, perhaps" <+>
             "you meant to write `==`?"
-        pure EqualO
     Sugar.AssignO             -> do
-        tellError $ Error.mkError "compile" source
+        fatal $ Error.mkError "compile" source
             "invalid unification" $
             "The `:=` operator should not appear in this context, perhaps" <+>
             "you meant to write `==`?"
-        pure EqualO
 
 prepareWith
     :: Monad m

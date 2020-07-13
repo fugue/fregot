@@ -201,7 +201,6 @@ instance (Binary a, Binary n) => Binary (ObjectKey a n)
 data BinOp
     = UnifyO
     | AssignO
-    | EqualO
     | NotEqualO
     | LessThanO
     | LessThanOrEqualO
@@ -384,7 +383,6 @@ instance PP.Pretty PP.Sem BinOp where
     pretty = PP.punctuation . \case
         UnifyO              -> "="
         AssignO             -> ":="
-        EqualO              -> "=="
         NotEqualO           -> "!="
         LessThanO           -> "<"
         LessThanOrEqualO    -> "<="

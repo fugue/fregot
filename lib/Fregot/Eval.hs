@@ -309,7 +309,7 @@ evalBuiltin source builtin@(Builtin sig _ (Identity impl)) args0 = do
     case mbFinalArg of
         Nothing -> return result
         Just fa -> do
-            unify (Mu (GroundedM result)) fa
+            unify source (Mu (GroundedM result)) fa
             return true
 
 
@@ -327,10 +327,10 @@ evalRefArg _ (Mu (TreeM e p tree)) (Mu WildcardM)
     | (v, t) <- Tree.children tree
     ]
 
-evalRefArg _ (Mu (TreeM e p tree)) (Mu (FreeM unbound))
+evalRefArg source (Mu (TreeM e p tree)) (Mu (FreeM unbound))
         | Nothing <- Tree.root tree = branch
     [ do
-        Unification.bindTerm unbound (muValueF $ StringV $ unVar v)
+        Unification.bindTerm source unbound (muValueF $ StringV $ unVar v)
         pure $! Mu $ TreeM e (p <> review varFromKey v) t
     | (v, t) <- Tree.children tree
     ]
@@ -347,15 +347,17 @@ evalRefArg source indexee (Mu (FreeM unbound)) = do
     gindexee <- ground source indexee
     case unValue gindexee of
         ArrayV a -> branch
-            [ Unification.bindTerm unbound (muValueF $ NumberV $ review Number.int i) >> return (muValue val)
+            [ Unification.bindTerm source unbound
+                (muValueF $ NumberV $ review Number.int i) >>
+                return (muValue val)
             | (i, val) <- zip [0 :: Int64 ..] (V.toList a)
             ]
         SetV s -> branch
-            [ Unification.bindTerm unbound (muValue val) >> return (muValue val)
+            [ Unification.bindTerm source unbound (muValue val) >> return (muValue val)
             | val <- HS.toList s
             ]
         ObjectV o -> branch
-            [ Unification.bindTerm unbound (muValue key) >> return (muValue val)
+            [ Unification.bindTerm source unbound (muValue key) >> return (muValue val)
             | (key, val) <- HMS.toList o
             ]
         _ -> cut
@@ -473,8 +475,8 @@ evalCompiledRule callerSource crule mbIndex
                     (do
                         (k, v) <- HMS.toList partial
                         pure $ case rkind of
-                            GenSetRule -> unify idx (muValue k) >> return k
-                            _          -> unify idx (muValue k) >> return v) ++
+                            GenSetRule -> unify callerSource idx (muValue k) >> return k
+                            _          -> unify callerSource idx (muValue k) >> return v) ++
                     -- Then unknown ones.
                     map (fmap snd) more
 
@@ -522,7 +524,7 @@ evalRuleDefinition callerSource rule mbIndex =
         (Nothing, Nothing) -> return Nothing
         (Just arg, Just tpl) -> do
             tplv <- evalTerm tpl
-            _    <- unify arg tplv
+            _    <- unify callerSource arg tplv
             return $ Just tplv
         (Just _, Nothing) -> raise' callerSource "arity problem" $
             "An argument was given for rule" <+>
@@ -580,7 +582,7 @@ evalUserFunction callerSource crule callerArgs =
         clearLocals $ do
         -- TODO(jaspervdj): Check arity.
         calleeArgs <- mapM evalTerm $ fromMaybe [] (def ^. ruleArgs)
-        zipWithM_ unify callerArgs calleeArgs
+        zipWithM_ (unify callerSource) callerArgs calleeArgs
         case def ^. ruleBodies of
             -- If there is not a single body, we may have something like
             --
@@ -655,12 +657,12 @@ evalStatement :: Statement SourceSpan -> EvalM Mu'
 evalStatement (UnifyS source x y) = suspend source $ do
     xv <- evalTerm x
     yv <- evalTerm y
-    _  <- unify xv yv
+    _  <- unify source xv yv
     return muTrue
 evalStatement (AssignS source x y) = suspend source $ do
     xv <- evalTerm x
     yv <- evalTerm y
-    _  <- unify xv yv
+    _  <- unify source xv yv
     return muTrue
 evalStatement (TermS e) = suspend (e ^. termAnn) (evalTerm e)
 evalStatement (IndexedCompS source comp) = do
@@ -674,34 +676,48 @@ evalStatement (IndexedCompS source comp) = do
                 SetComp    _ _   -> SetV    HS.empty
                 ObjectComp _ _ _ -> ObjectV HMS.empty
     iv <- toInstVar (comp ^. indexedAssignee)
-    unify (Mu (FreeM iv)) collection
+    unify source (Mu (FreeM iv)) collection
     return muTrue
 
-unify :: Mu' -> Mu' -> EvalM ()
-unify (Mu WildcardM) _ = return ()
-unify _ (Mu WildcardM) = return ()
-unify (Mu (FreeM alpha)) (Mu (FreeM beta)) =
-    Unification.bindVar alpha beta
-unify (Mu (FreeM alpha)) v = Unification.bindTerm alpha v
-unify v (Mu (FreeM alpha)) = Unification.bindTerm alpha v
-unify (Mu (RecM (ArrayV larr))) (Mu (RecM (ArrayV rarr))) = do
+unify :: SourceSpan -> Mu' -> Mu' -> EvalM ()
+unify _source (Mu WildcardM) _ = return ()
+unify _source _ (Mu WildcardM) = return ()
+unify source (Mu (FreeM alpha)) (Mu (FreeM beta)) =
+    Unification.bindVar source alpha beta
+unify source (Mu (FreeM alpha)) v = Unification.bindTerm source alpha v
+unify source v (Mu (FreeM alpha)) = Unification.bindTerm source alpha v
+unify source (Mu (RecM (ArrayV larr))) (Mu (RecM (ArrayV rarr))) = do
     unifyArrayLength larr rarr
-    V.zipWithM_ unify larr rarr
-unify (Mu (GroundedM (Value (ArrayV larr)))) (Mu (RecM (ArrayV rarr))) = do
+    V.zipWithM_ (unify source) larr rarr
+unify source (Mu (GroundedM (Value (ArrayV larr)))) (Mu (RecM (ArrayV rarr))) = do
     unifyArrayLength larr rarr
-    V.zipWithM_ unify (fmap muValue larr) rarr
-unify (Mu (RecM (ArrayV larr))) (Mu (GroundedM (Value (ArrayV rarr)))) = do
+    V.zipWithM_ (unify source) (fmap muValue larr) rarr
+unify source (Mu (RecM (ArrayV larr))) (Mu (GroundedM (Value (ArrayV rarr)))) = do
     unifyArrayLength larr rarr
-    V.zipWithM_ unify larr (fmap muValue rarr)
-unify (Mu (GroundedM x)) (Mu (GroundedM y)) = unless (x == y) cut
-unify _ _ = cut  -- TODO(jaspervdj): Unify RecM/RecM through ground?
+    V.zipWithM_ (unify source) larr (fmap muValue rarr)
+unify _source (Mu (GroundedM x)) (Mu (GroundedM y)) = unless (x == y) cut
+unify source (Mu (RecM x)) y = do
+    -- This code is currently a bit stricter than it needs to be; it evaluates
+    -- the entire tree in `x` while it would be good enough to "peel off one
+    -- layer" (~ evaluate to whnf) and then try again.
+    gx <- traverse (ground source) x
+    unify source (muValue (Value gx)) y
+unify source x (Mu (RecM y)) = do
+    gy <- traverse (ground source) y
+    unify source x (muValue (Value gy))
+unify source (Mu (TreeM _ _ tree)) y = do
+    gx <- maybe cut pure =<< groundTree source tree
+    unify source (muValue gx) y
+unify source x (Mu (TreeM _ _ tree)) = do
+    gy <- maybe cut pure =<< groundTree source tree
+    unify source x (muValue gy)
 
 
 unifyArrayLength :: V.Vector a -> V.Vector b -> EvalM ()
 unifyArrayLength larr rarr = when (V.length larr /= V.length rarr) cut
 
 
-instance Unification.MonadUnify InstVar (Mu Environment) EvalM where
+instance Unification.MonadUnify SourceSpan InstVar (Mu Environment) EvalM where
     unify = unify
 
     getUnification      = use unification

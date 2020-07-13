@@ -15,5 +15,5 @@ should_be_1 = ret [36m{[0m
   [36m}[0m
 [36m}[0m
 test_should_be_1 [36m{[0m
-  [36m==[0m[36m([0m[35mbug[0m[36m.[0mshould_be_1, [31m[36m{[0m[31m1[0m[36m}[0m[0m[36m)[0m
+  [35mbug[0m[36m.[0mshould_be_1 [36m=[0m [31m[36m{[0m[31m1[0m[36m}[0m[0m
 [36m}[0m

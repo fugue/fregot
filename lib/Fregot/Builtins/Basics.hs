@@ -85,7 +85,6 @@ builtins = HMS.fromList
     , (NamedFunction (BuiltinName "union"),            builtin_union)
     , (NamedFunction (BuiltinName "walk"),             builtin_walk)
     , (OperatorFunction BinAndO,             builtin_bin_and)
-    , (OperatorFunction EqualO,              builtin_equal)
     , (OperatorFunction NotEqualO,           builtin_not_equal)
     , (OperatorFunction LessThanO,           builtin_less_than)
     , (OperatorFunction LessThanOrEqualO,    builtin_less_than_or_equal)
@@ -397,19 +396,6 @@ builtin_walk = Builtin
             SetV   s  -> foldMap (\v -> walk (path <> [v]) v) s
             ObjectV o -> ifoldMap (\k -> walk (path <> [toVal k])) o
             _         -> mempty)
-
-builtin_equal :: Monad m => Builtin m
-builtin_equal = Builtin
-  (In (In Out))
-  (\c (Ty.Cons x (Ty.Cons y Ty.Nil)) -> Ty.bcUnify c x y >> pure Ty.boolean)
-  $ pure $
-  -- TODO(jaspervdj): These don't currently work:
-  --
-  --     0 == 1.2 - 1.2
-  --
-  -- Because we'll end up comparing an IntV on the left with a DoubleV on the
-  -- right.
-  \(Cons x (Cons y Nil)) -> return $! Value $ BoolV $! x == (y :: Value)
 
 builtin_not_equal :: Monad m => Builtin m
 builtin_not_equal = Builtin
