@@ -6,6 +6,16 @@ test_array_concat {
   array.concat(["hey"], [1]) == ["hey", 1]
 }
 
+test_array_slice {
+  array.slice([], 0, 1) == []
+  array.slice(["hey"], 2, 1) == []
+  array.slice(["hey"], 0, 1) == ["hey"]
+  array.slice(["hey"], -1, 2) == ["hey"]
+  array.slice(["hey", "ho"], 1, 2) == ["ho"]
+  array.slice(["hey", "ho"], 1, 10) == ["ho"]
+  array.slice(["hey", "ho", "let's", "go"], 1, 3) == ["ho", "let's"]
+}
+
 test_format_int {
   format_int(100, 2) == "1100100"
 }
