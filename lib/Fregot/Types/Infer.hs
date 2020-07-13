@@ -331,6 +331,9 @@ inferStatement = \case
         rt <- inferNonVoidTerm source r
         unifyTermType source l rt
     UnifyS source l r -> unifyTermTerm source l r
+    IndexedCompS source (IndexedComprehension _ _ v c) -> do
+        rt <- inferComprehension source c
+        Unify.bindTerm source v rt
 
 inferNonVoidTerm :: SourceSpan -> Term SourceSpan -> InferM SourceType
 inferNonVoidTerm use term = do
@@ -429,36 +432,11 @@ inferTerm (ObjectT source obj) = do
         , NonEmpty.singleton source
         )
 
-inferTerm (ArrayCompT source headTerm body) = do
+inferTerm (CompT source comp) = do
     inferClosures <- view ieInferClosures
-    if not inferClosures
-        then pure (Types.unknown, NonEmpty.singleton source)
-        else do
-            headTy <- isolateUnification $ do
-                inferRuleBody body
-                inferTerm headTerm
-            pure (Types.arrayOf (fst headTy), NonEmpty.singleton source)
-
-inferTerm (SetCompT source headTerm body) = do
-    inferClosures <- view ieInferClosures
-    if not inferClosures
-        then pure (Types.unknown, NonEmpty.singleton source)
-        else do
-            headTy <- isolateUnification $ do
-                inferRuleBody body
-                inferTerm headTerm
-            pure (Types.setOf (fst headTy), NonEmpty.singleton source)
-
-inferTerm (ObjectCompT source keyTerm valueTerm body) = do
-    inferClosures <- view ieInferClosures
-    if not inferClosures
-        then pure (Types.unknown, NonEmpty.singleton source)
-        else do
-            (keyTy, valueTy) <- isolateUnification $ do
-                inferRuleBody body
-                (,) <$> inferTerm keyTerm <*> inferTerm valueTerm
-            let objTy = Types.objectOf (fst keyTy) (fst valueTy)
-            pure (objTy, NonEmpty.singleton source)
+    if inferClosures
+        then inferComprehension source comp
+        else pure (Types.unknown, NonEmpty.singleton source)
 
 inferTerm (RefT source lhs rhs) = do
     lhsTy <- inferTerm lhs
@@ -532,6 +510,26 @@ inferTerm (ValueT source value) =
 
 inferTerm (ErrorT source) =
     pure (Types.unknown, NonEmpty.singleton source)
+
+inferComprehension
+    :: SourceSpan -> Comprehension SourceSpan -> InferM SourceType
+inferComprehension source = \case
+    ArrayComp headTerm body -> do
+        headTy <- isolateUnification $ do
+            inferRuleBody body
+            inferTerm headTerm
+        pure (Types.arrayOf (fst headTy), NonEmpty.singleton source)
+    SetComp headTerm body -> do
+        headTy <- isolateUnification $ do
+            inferRuleBody body
+            inferTerm headTerm
+        pure (Types.setOf (fst headTy), NonEmpty.singleton source)
+    ObjectComp keyTerm valueTerm body -> do
+        (keyTy, valueTy) <- isolateUnification $ do
+            inferRuleBody body
+            (,) <$> inferTerm keyTerm <*> inferTerm valueTerm
+        let objTy = Types.objectOf (fst keyTy) (fst valueTy)
+        pure (objTy, NonEmpty.singleton source)
 
 unifyTermTerm
     :: SourceSpan -> Term SourceSpan -> Term SourceSpan -> InferM ()

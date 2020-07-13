@@ -18,6 +18,8 @@ import qualified Test.Tasty.HUnit     as Tasty
 -- These instances are only used in this file.
 deriving instance Eq a => Eq (Literal a)
 deriving instance Eq a => Eq (Statement a)
+deriving instance Eq a => Eq (Comprehension a)
+deriving instance Eq a => Eq (IndexedComprehension a)
 deriving instance Eq a => Eq (Term a)
 deriving instance Eq a => Eq (With a)
 deriving instance Eq WithPath
@@ -56,10 +58,10 @@ tests_orderForClosures :: Tasty.TestTree
 tests_orderForClosures = Tasty.testGroup "orderForClosures"
     [ Tasty.testCase "01" $
         let program =
-                [ lit $ TermS $
-                    ArrayCompT source (name "b") [lit $ UnifyS source (name "a") (name "b")]
-                , lit $ TermS $
-                    ArrayCompT source (name "c") [lit $ UnifyS source (name "a") (name "c")]
+                [ lit $ TermS $ CompT source $
+                    ArrayComp (name "b") [lit $ UnifyS source (name "a") (name "b")]
+                , lit $ TermS $ CompT source $
+                    ArrayComp (name "c") [lit $ UnifyS source (name "a") (name "c")]
                 , lit $ UnifyS source (name "a") (num 1)
                 ] in
         testOrderForClosures program @?=
@@ -81,16 +83,16 @@ tests_orderForSafety = Tasty.testGroup "orderForSafety"
         testOrderForSafety program @?=
         [program !! 0, program !! 2, program !! 1]
     , Tasty.testCase "02" $ testOrderForSafety
-        [ lit $ TermS $
-            ArrayCompT source (name "c")
+        [ lit $ TermS $ CompT source $
+            ArrayComp (name "c")
                 [ lit $ UnifyS source (name "c") (name "b")
                 , lit $ UnifyS source (name "b") (name "a")
                 ]
         , lit $ UnifyS source (name "a") (num 1)
         ] @?=
         [ lit $ UnifyS source (name "a") (num 1)
-        , lit $ TermS $
-            ArrayCompT source (name "c")
+        , lit $ TermS $ CompT source $
+            ArrayComp (name "c")
                 [ lit $ UnifyS source (name "b") (name "a")
                 , lit $ UnifyS source (name "c") (name "b")
                 ]

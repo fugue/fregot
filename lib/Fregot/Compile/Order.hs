@@ -12,6 +12,9 @@ module Fregot.Compile.Order
     , orderForClosures
     , orderForSafety
     , orderTermForSafety
+
+    , ovLiteral
+    , ovRuleBody
     ) where
 
 import           Control.Lens                (traverseOf, view, (^.))
@@ -102,7 +105,8 @@ orderForClosures inferEnv safe body =
     step () reordered lit =
         -- Variables appearing in closures in this statement.
         let inClosureVars = HS.toHashSetOf
-                (literalTerms . termCosmosClosures . termCosmosNames . traverse . _LocalName)
+                (literalTerms . termCosmosClosures . comprehensionTerms .
+                    termCosmosNames . traverse . _LocalName)
                 lit
 
             -- Variabels that are both in the body as well as in the closures
@@ -112,7 +116,8 @@ orderForClosures inferEnv safe body =
                 unSafe safe
 
             -- The current output variables.
-            Safe currentOutVars = ovRuleBody inferEnv safe reordered
+            currentOutVars = maybe HS.empty unSafe $
+                ovRuleBody inferEnv safe reordered
 
             -- Missing output variables.
             missing = needOutVars `HS.difference` currentOutVars
@@ -150,7 +155,7 @@ orderForSafety inferEnv safe0 body0
             ((_, body3), unsafes3) = runWriter $ mapAccumM
                 (\safe lit -> do
                     lit' <- recurse safe lit
-                    return (safe <> ovLiteral inferEnv safe lit', lit'))
+                    return (safe <> fromMaybe mempty (ovLiteral inferEnv safe lit'), lit'))
                 safe0
                 (map snd body2) in
 
@@ -171,7 +176,7 @@ orderForSafety inferEnv safe0 body0
         | HMS.null stillUnsafe = OrderOk (nowSafe, Map.delete idx unsafes)
         | otherwise            = OrderError (Unsafe stillUnsafe)
       where
-        nowSafe     = safe <> ovLiteral inferEnv safe lit
+        nowSafe     = safe <> fromMaybe mempty (ovLiteral inferEnv safe lit)
         prevUnsafes = fromMaybe mempty (Map.lookup idx unsafes)
         stillUnsafe =
             const (NonEmpty.singleton (lit ^. literalAnn)) <$>
@@ -193,24 +198,26 @@ orderTermForSafety inferEnv safe =
 
 inferOutVars
     :: Types.InferEnv -> Safe Var -> Maybe SourceSpan -> Types.InferM a
-    -> Safe Var
+    -> Maybe (Safe Var)
 inferOutVars inferEnv safe mbSource infer =
     case maybeInferred of
-        Nothing       -> Safe $ HS.empty
-        Just (_, env) -> Safe $ Unification.keys env
+        Nothing       -> Nothing
+        Just (_, env) -> Just . Safe $ Unification.keys env
   where
     maybeInferred =
         snd $ runIdentity $ runParachuteT $
         Types.runInfer inferEnv {Types._ieInferClosures = False} $ do
-            for_ mbSource $ \source -> Types.setInferContext source $
-                HS.toMap (unSafe safe) $> Types.unknown
-            infer
+        for_ mbSource $ \source -> Types.setInferContext source $
+            HS.toMap (unSafe safe) $> Types.unknown
+        infer
 
-ovRuleBody :: Types.InferEnv -> Safe Var -> RuleBody SourceSpan -> Safe Var
+ovRuleBody
+    :: Types.InferEnv -> Safe Var -> RuleBody SourceSpan -> Maybe (Safe Var)
 ovRuleBody inferEnv safe body =
     inferOutVars inferEnv safe (view literalAnn <$> listToMaybe body) (Types.inferRuleBody body)
 
-ovLiteral :: Types.InferEnv -> Safe Var -> Literal SourceSpan -> Safe Var
+ovLiteral
+    :: Types.InferEnv -> Safe Var -> Literal SourceSpan -> Maybe (Safe Var)
 ovLiteral inferEnv safe lit =
     inferOutVars inferEnv safe
     (Just $ lit ^. literalAnn) (Types.inferLiteral lit)

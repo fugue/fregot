@@ -29,8 +29,12 @@ module Fregot.Prepare.Ast
     , RuleBody, Query
     , Literal (..), literalAnn, literalNegation, literalStatement, literalWith
     , Statement (..)
-    , Term (..), _RefT, _CallT, _NameT, _ArrayT, _SetT, _ObjectT, _ArrayCompT
-    , _SetCompT, _ObjectCompT, _ValueT
+    , Comprehension (..)
+    , _ArrayComp, _SetComp, _ObjectComp
+    , IndexedComprehension (..), indexedUnique, indexedKeys, indexedAssignee
+    , indexedComprehension
+    , Term (..), _RefT, _CallT, _NameT, _ArrayT, _SetT, _ObjectT, _CompT
+    , _ValueT
     , Object
     , Function (..), _OperatorFunction, _NamedFunction
     , BinOp (..)
@@ -44,14 +48,13 @@ module Fregot.Prepare.Ast
     , literal
     , unRefT
     , termToRule
-
-    , prettyComprehensionBody
     ) where
 
 import           Control.Lens              (review, (^.))
 import           Control.Lens.TH           (makeLenses, makePrisms)
 import           Data.Hashable             (Hashable)
 import qualified Data.List                 as L
+import           Data.Unique               (Unique)
 import           Fregot.Eval.Value         (Value)
 import           Fregot.Names
 import           Fregot.Names.Imports      (Imports)
@@ -115,7 +118,22 @@ data Statement a
     = UnifyS  a (Term a) (Term a)
     | AssignS a (Term a) (Term a)
     | TermS     (Term a)
+    -- Indexed comprehension statements.  This is an optimization.
+    | IndexedCompS a (IndexedComprehension a)
     deriving (Functor, Show)
+
+data Comprehension a
+    = ArrayComp  (Term a) (RuleBody a)
+    | SetComp    (Term a) (RuleBody a)
+    | ObjectComp (Term a) (Term a) (RuleBody a)
+    deriving (Functor, Show)
+
+data IndexedComprehension a = IndexedComprehension
+    { _indexedUnique        :: !Unique
+    , _indexedKeys          :: ![Var]
+    , _indexedAssignee      :: !UnqualifiedVar
+    , _indexedComprehension :: !(Comprehension a)
+    } deriving (Functor, Show)
 
 data Term a
     = RefT        a (Term a) (Term a)
@@ -124,9 +142,7 @@ data Term a
     | ArrayT      a [Term a]
     | SetT        a [Term a]
     | ObjectT     a (Object a)
-    | ArrayCompT  a (Term a) (RuleBody a)
-    | SetCompT    a (Term a) (RuleBody a)
-    | ObjectCompT a (Term a) (Term a) (RuleBody a)
+    | CompT       a (Comprehension a)
     | ValueT      a Value
     | ErrorT      a
     deriving (Functor, Show)
@@ -170,6 +186,8 @@ $(makeLenses ''RuleDefinition)
 $(makeLenses ''RuleElse)
 $(makeLenses ''Literal)
 $(makeLenses ''With)
+$(makeLenses ''IndexedComprehension)
+$(makePrisms ''Comprehension)
 $(makePrisms ''Term)
 
 --------------------------------------------------------------------------------
@@ -221,6 +239,26 @@ instance PP.Pretty PP.Sem (Statement a) where
     pretty (AssignS _ v x) = PP.pretty v <+> PP.punctuation ":=" <+> PP.pretty x
     pretty (TermS x)       = PP.pretty x
 
+    pretty (IndexedCompS _ (IndexedComprehension _ keys v c)) =
+        PP.punctuation "[" <> PP.keyword "index" <+>
+        PP.commaSep (map PP.pretty keys) <> PP.punctuation "]" <+>
+        PP.pretty v <+> PP.punctuation ":=" <+> PP.pretty c
+
+instance PP.Pretty PP.Sem (Comprehension a) where
+    pretty (ArrayComp x lits) =
+        PP.punctuation "[" <> PP.pretty x <+> PP.punctuation "|" <$$>
+        PP.ind (PP.vcat $ map PP.pretty lits) <$$>
+        PP.punctuation "]"
+    pretty (SetComp x lits) =
+        PP.punctuation "{" <> PP.pretty x <+> PP.punctuation "|" <$$>
+        PP.ind (PP.vcat $ map PP.pretty lits) <$$>
+        PP.punctuation "}"
+    pretty (ObjectComp k x lits) =
+        PP.punctuation "{" <> PP.pretty k <> PP.punctuation ":" <+>
+        PP.pretty x <+> PP.punctuation "|" <$$>
+        PP.ind (PP.vcat $ map PP.pretty lits) <$$>
+        PP.punctuation "}"
+
 instance PP.Pretty PP.Sem (Term a) where
     pretty (RefT _ x k) = PP.pretty x <> PP.punctuation "." <> PP.pretty k
     pretty (CallT _ f as)  =
@@ -235,28 +273,11 @@ instance PP.Pretty PP.Sem (Term a) where
     pretty (SetT _ s)        = PP.set s
     pretty (ObjectT _ o)     = PP.object o
 
-    pretty (ArrayCompT _ x lits) =
-        PP.punctuation "[" <> PP.pretty x <+> PP.punctuation "|" <+>
-        prettyComprehensionBody lits <>
-        PP.punctuation "]"
-    pretty (SetCompT _ x lits) =
-        PP.punctuation "{" <> PP.pretty x <+> PP.punctuation "|" <+>
-        prettyComprehensionBody lits <>
-        PP.punctuation "}"
-    pretty (ObjectCompT _ k x lits) =
-        PP.punctuation "{" <> PP.pretty k <> PP.punctuation ":" <+>
-        PP.pretty x <+> PP.punctuation "|" <+>
-        prettyComprehensionBody lits <>
-        PP.punctuation "}"
+    pretty (CompT _ o) = PP.pretty o
 
     pretty (ValueT _ v) = PP.literal $ PP.pretty v
 
     pretty (ErrorT _) = PP.errorNode
-
-prettyComprehensionBody :: RuleBody a -> PP.SemDoc
-prettyComprehensionBody lits = mconcat $ L.intersperse
-    (PP.punctuation ";" <> PP.space)
-    (map PP.pretty lits)
 
 instance PP.Pretty PP.Sem Function where
     pretty (NamedFunction    v) = PP.pretty v

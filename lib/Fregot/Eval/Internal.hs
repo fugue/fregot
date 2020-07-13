@@ -12,9 +12,11 @@ module Fregot.Eval.Internal
     , Document
     , prettyRowWithContext
 
-    , EvalCache
+    , RuleCache
+    , ComprehensionCache
 
-    , Environment (..), builtins, rules, inputDoc, cache, stack
+    , Environment (..), builtins, rules, inputDoc, ruleCache, comprehensionCache
+    , stack
     ) where
 
 import           Control.Lens.TH           (makeLenses)
@@ -22,6 +24,7 @@ import qualified Data.HashMap.Strict       as HMS
 import           Data.Maybe                (maybeToList)
 import           Data.Unification          (Unification)
 import qualified Data.Unification          as Unification
+import           Data.Unique               (Unique)
 import qualified Data.Unique               as Unique
 import           Fregot.Builtins.Internal  (ReadyBuiltin)
 import qualified Fregot.Error.Stack        as Stack
@@ -61,7 +64,9 @@ instance PP.Pretty PP.Sem a => PP.Pretty PP.Sem (Row a) where
 
 type Document a = [Row a]
 
-type EvalCache = Cache (PackageName, Var) Value
+type RuleCache = Cache (PackageName, Var) Value
+
+type ComprehensionCache = Cache Unique (HMS.HashMap [Value] Mu')
 
 prettyRowWithContext:: PP.Pretty PP.Sem a => Row a -> PP.SemDoc
 prettyRowWithContext (Row context value) = PP.vcat $
@@ -75,11 +80,12 @@ prettyRowWithContext (Row context value) = PP.vcat $
 --------------------------------------------------------------------------------
 
 data Environment = Environment
-    { _builtins :: !(HMS.HashMap Function ReadyBuiltin)
-    , _rules    :: !(Tree.Tree (Rule RuleType SourceSpan))
-    , _inputDoc :: !Value
-    , _cache    :: !EvalCache
-    , _stack    :: !Stack.StackTrace
+    { _builtins           :: !(HMS.HashMap Function ReadyBuiltin)
+    , _rules              :: !(Tree.Tree (Rule RuleType SourceSpan))
+    , _inputDoc           :: !Value
+    , _ruleCache          :: !RuleCache
+    , _comprehensionCache :: !ComprehensionCache
+    , _stack              :: !Stack.StackTrace
     }
 
 $(makeLenses ''Context)
