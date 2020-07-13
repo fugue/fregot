@@ -101,8 +101,8 @@ type InferM = ParachuteT TypeError (ReaderT InferEnv (State InferState))
 $(makePrisms ''TypeError)
 $(makeLenses ''InferEnv)
 
-instance Unify.MonadUnify UnqualifiedVar SourceType InferM where
-    unify             = unifyTypeType
+instance Unify.MonadUnify SourceSpan UnqualifiedVar SourceType InferM where
+    unify _           = unifyTypeType
     getUnification    = get
     putUnification    = put
     modifyUnification = modify
@@ -195,7 +195,7 @@ evalInfer env = fmap fst . runInfer env
 
 setInferContext :: SourceSpan -> Types.TypeContext -> InferM ()
 setInferContext source ctx = for_ (HMS.toList ctx) $ \(var, ty) ->
-    Unify.bindTerm var (ty, NonEmpty.singleton source)
+    Unify.bindTerm source var (ty, NonEmpty.singleton source)
 
 inferRule :: Rule' -> InferM (Rule Types.RuleType SourceSpan)
 inferRule rule = case rule ^. ruleKind of
@@ -539,8 +539,8 @@ unifyTermTerm source (NameT _ WildcardName)  r                       =
     void (inferNonVoidTerm source r)  -- This might bind variables!
 unifyTermTerm source l                       (NameT _ WildcardName)  =
     void (inferNonVoidTerm source l)
-unifyTermTerm _ (NameT _ (LocalName α)) (NameT _ (LocalName β)) =
-    Unify.bindVar α β
+unifyTermTerm source (NameT _ (LocalName α)) (NameT _ (LocalName β)) =
+    Unify.bindVar source α β
 
 unifyTermTerm source lhs rhs = catching
     (\errs -> listToMaybe [() | UnboundVars _ <- errs])
@@ -557,7 +557,7 @@ unifyTermType
 
 unifyTermType _source (NameT _ WildcardName) _ = return ()
 
-unifyTermType _source (NameT _ (LocalName α)) σ = Unify.bindTerm α σ
+unifyTermType source (NameT _ (LocalName α)) σ = Unify.bindTerm source α σ
 
 unifyTermType source (ArrayT _ arr) (τ, s)
         | Just σ <- τ ^? Types.singleton . Types._Array =
