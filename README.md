@@ -255,7 +255,7 @@ this is `repl`, but you can change this using [`:open`](#open).  For example,
 we can add a rule to the package `foo` and change back to `repl`:
 
     repl% :open foo
-    Created new package foo
+    Warning: package foo contains no rules
     foo% a = 1
     Rule a added
     foo% :open repl
