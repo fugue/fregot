@@ -1,5 +1,17 @@
 # CHANGELOG
 
+ -  0.12.0 (2020-07-15)
+     *  Add comprehension index optimization.
+     *  Add `array.slice` builtin.
+     *  Rewrite `==` as just `=`.
+     *  Add a `--dump` flag to get specific debug info.
+     *  Fix: Some uses `,` not `.` for multiple declarations.
+     *  Add support for declaring rules using `:=`.
+     *  Improve warning about new packages.
+     *  Add `trace` builtin.
+     *  Allow prefixing data into packages.
+     *  Allow :load-ing JSON and YAML files from the REPL.
+
  -  0.11.1 (2020-05-28)
      *  Fix zero `with` statements wiping caches.  This was a serious
         performance regression introduced in `v0.9.0`.
