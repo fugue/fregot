@@ -101,11 +101,19 @@ instance ToVal a => ToVal [a] where
 instance ToVal a => ToVal (HS.HashSet a) where
     toVal = Value . SetV . HS.map toVal
 
+instance ToVal a => ToVal (HMS.HashMap Value a) where
+    toVal = Value . ObjectV . HMS.map toVal
+
 class FromVal a where
     fromVal :: Value -> Either String a
 
 instance FromVal Value where
     fromVal = Right
+
+instance FromVal (HMS.HashMap Value Value) where
+    fromVal (Value (ObjectV o)) = Right o
+    fromVal v                   = Left $
+        "Expected object but got " ++ describeValue v
 
 instance FromVal T.Text where
     fromVal (Value (StringV t)) = Right t
