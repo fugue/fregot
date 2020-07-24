@@ -38,12 +38,13 @@ module Fregot.Eval
 import           Control.Arrow             ((>>>))
 import           Control.Lens              (review, to, use, view, (%=), (.=),
                                             (.~), (^.), (^?))
-import           Control.Monad             (unless, when, (>=>))
+import           Control.Monad             (when, (>=>))
 import           Control.Monad.Extended    (forM, zipWithM_)
 import           Control.Monad.Identity    (Identity (..))
 import           Control.Monad.Reader      (ask, local)
 import qualified Control.Monad.Stream      as Stream
 import           Data.Foldable             (for_)
+import           Data.Functor              (($>))
 import qualified Data.HashMap.Strict       as HMS
 import qualified Data.HashSet              as HS
 import           Data.Int                  (Int64)
@@ -309,7 +310,7 @@ evalBuiltin source builtin@(Builtin sig _ (Identity impl)) args0 = do
     case mbFinalArg of
         Nothing -> return result
         Just fa -> do
-            unify source (Mu (GroundedM result)) fa
+            _ <- unify source (Mu (GroundedM result)) fa
             return true
 
 
@@ -330,7 +331,7 @@ evalRefArg _ (Mu (TreeM e p tree)) (Mu WildcardM)
 evalRefArg source (Mu (TreeM e p tree)) (Mu (FreeM unbound))
         | Nothing <- Tree.root tree = branch
     [ do
-        Unification.bindTerm source unbound (muValueF $ StringV $ unVar v)
+        _ <- Unification.bindTerm source unbound (muValueF $ StringV $ unVar v)
         pure $! Mu $ TreeM e (p <> review varFromKey v) t
     | (v, t) <- Tree.children tree
     ]
@@ -676,26 +677,30 @@ evalStatement (IndexedCompS source comp) = do
                 SetComp    _ _   -> SetV    HS.empty
                 ObjectComp _ _ _ -> ObjectV HMS.empty
     iv <- toInstVar (comp ^. indexedAssignee)
-    unify source (Mu (FreeM iv)) collection
+    _  <- unify source (Mu (FreeM iv)) collection
     return muTrue
 
-unify :: SourceSpan -> Mu' -> Mu' -> EvalM ()
-unify _source (Mu WildcardM) _ = return ()
-unify _source _ (Mu WildcardM) = return ()
-unify source (Mu (FreeM alpha)) (Mu (FreeM beta)) =
-    Unification.bindVar source alpha beta
+unify :: SourceSpan -> Mu' -> Mu' -> EvalM Mu'
+unify _source (Mu WildcardM) y = return y
+unify _source x (Mu WildcardM) = return x
+unify source x@(Mu (FreeM alpha)) (Mu (FreeM beta)) =
+    Unification.bindVar source alpha beta $> x
 unify source (Mu (FreeM alpha)) v = Unification.bindTerm source alpha v
 unify source v (Mu (FreeM alpha)) = Unification.bindTerm source alpha v
-unify source (Mu (RecM (ArrayV larr))) (Mu (RecM (ArrayV rarr))) = do
+unify source mu@(Mu (RecM (ArrayV larr))) (Mu (RecM (ArrayV rarr))) = do
     unifyArrayLength larr rarr
     V.zipWithM_ (unify source) larr rarr
-unify source (Mu (GroundedM (Value (ArrayV larr)))) (Mu (RecM (ArrayV rarr))) = do
+    pure mu
+unify source mu@(Mu (GroundedM (Value (ArrayV larr)))) (Mu (RecM (ArrayV rarr))) = do
     unifyArrayLength larr rarr
     V.zipWithM_ (unify source) (fmap muValue larr) rarr
-unify source (Mu (RecM (ArrayV larr))) (Mu (GroundedM (Value (ArrayV rarr)))) = do
+    pure mu
+unify source mu@(Mu (RecM (ArrayV larr))) (Mu (GroundedM (Value (ArrayV rarr)))) = do
     unifyArrayLength larr rarr
     V.zipWithM_ (unify source) larr (fmap muValue rarr)
-unify _source (Mu (GroundedM x)) (Mu (GroundedM y)) = unless (x == y) cut
+    pure mu
+unify _source mu@(Mu (GroundedM x)) (Mu (GroundedM y)) =
+    if (x == y) then pure mu else cut
 unify source (Mu (RecM x)) y = do
     -- This code is currently a bit stricter than it needs to be; it evaluates
     -- the entire tree in `x` while it would be good enough to "peel off one

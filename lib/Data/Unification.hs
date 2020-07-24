@@ -16,6 +16,7 @@ module Data.Unification
     , keys
     ) where
 
+import           Data.Functor        (($>))
 import           Data.Hashable       (Hashable (..))
 import qualified Data.HashMap.Strict as HMS
 import qualified Data.HashSet        as HS
@@ -26,8 +27,8 @@ class Monad m => MonadUnify s v t m | m -> s, m -> v, m -> t where
     -- Actual unification that traverses terms.
     --
     -- TODO(jaspervdj): This should return a new `t`, so we can e.g. accumulate
-    -- type origins.
-    unify :: s -> t -> t -> m ()
+    -- type origins and make a type "smaller".
+    unify :: s -> t -> t -> m t
 
     -- State management.  Doing this through requiring MonadState and just
     -- having a Lens would be a bit nicer.
@@ -52,19 +53,19 @@ bindVar source x y = do
                 (Nothing, Nothing) -> return Nothing
                 (Just xv, Nothing) -> return (Just xv)
                 (Nothing, Just yv) -> return (Just yv)
-                (Just xv, Just yv) -> unify source xv yv >> return (Just xv)
+                (Just xv, Just yv) -> Just <$> unify source xv yv
 
             modifyUnification $ \(Unification m) ->
                 Unification $ HMS.insert xr (Ref yr) $ case mv of
                     Nothing -> m
                     Just v  -> HMS.insert yr (Root v) m
 
-bindTerm :: (Eq v, Hashable v, MonadUnify s v t m) => s -> v -> t -> m ()
+bindTerm :: (Eq v, Hashable v, MonadUnify s v t m) => s -> v -> t -> m t
 bindTerm source v term = do
     -- TODO: Occurs check?
     uni0 <- getUnification
     case root v uni0 of
-        (r, Nothing) -> modifyUnification $ unsafeInsert r term
+        (r, Nothing) -> modifyUnification (unsafeInsert r term) $> term
         (_, Just t)  -> unify source term t
 
 data Node k a = Ref !k | Root !a deriving (Functor, Show)
