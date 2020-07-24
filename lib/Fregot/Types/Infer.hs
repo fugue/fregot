@@ -582,12 +582,14 @@ unifyTypeType (τ, l)              (Types.Universe, r) = return (τ, l <> r)
 
 unifyTypeType (τ, l) (σ, r)
     | Just τ' <- τ ^? Types.singleton . Types._Array
-    , Just σ' <- σ ^? Types.singleton . Types._Array =
-        unifyTypeType (τ', l) (σ', r)
+    , Just σ' <- σ ^? Types.singleton . Types._Array = do
+        (υ, lr) <- unifyTypeType (τ', l) (σ', r)
+        pure (Types.arrayOf υ, lr)
 
     | Just τ' <- τ ^? Types.singleton . Types._Set
-    , Just σ' <- σ ^? Types.singleton . Types._Set =
-        unifyTypeType (τ', l) (σ', r)
+    , Just σ' <- σ ^? Types.singleton . Types._Set = do
+        (υ, lr) <- unifyTypeType (τ', l) (σ', r)
+        pure (Types.setOf υ, lr)
 
 unifyTypeType (τ, l) (σ, r)
     | τ == σ                      = pure (τ, l <> r)
