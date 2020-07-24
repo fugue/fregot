@@ -15,7 +15,7 @@ module Fregot.Builtins.Basics
     ) where
 
 import           Control.Applicative      ((<|>))
-import           Control.Lens             (ifoldMap, review)
+import           Control.Lens             (ifoldMap, review, (^?))
 import           Control.Monad.Trans      (liftIO)
 import           Data.Char                (intToDigit, isSpace)
 import           Data.Functor             (($>))
@@ -120,7 +120,15 @@ builtin_array_concat :: Monad m => Builtin m
 builtin_array_concat = Builtin
     (In (In Out))
     -- TODO(jaspervdj): We want `∀a b. array<a> -> array<b> -> array<a|b>`.
-    (Ty.arrayOf Ty.any 🡒 Ty.arrayOf Ty.any 🡒 Ty.out Ty.unknown) $ pure $
+    (\tc (Ty.Cons l (Ty.Cons r Ty.Nil)) -> do
+        la <- Ty.bcUnify tc l (Ty.arrayOf Ty.any)
+        ra <- Ty.bcUnify tc r (Ty.arrayOf Ty.any)
+        case () of
+            ()  | Just x <- la ^? Ty.singleton . Ty._Array
+                , Just y <- ra ^? Ty.singleton . Ty._Array ->
+                    pure . Ty.arrayOf $! x ∪ y
+            _ -> pure $ Ty.arrayOf Ty.unknown) $ pure $
+    -- Ty.arrayOf Ty.any 🡒 Ty.arrayOf Ty.any 🡒 Ty.out Ty.unknown) $ pure $
     \(Cons l (Cons r Nil)) -> return (l <> r :: V.Vector Value)
 
 builtin_array_slice :: Monad m => Builtin m
