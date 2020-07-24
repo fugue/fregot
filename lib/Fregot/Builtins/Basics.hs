@@ -119,22 +119,24 @@ builtin_any = Builtin
 builtin_array_concat :: Monad m => Builtin m
 builtin_array_concat = Builtin
     (In (In Out))
-    -- TODO(jaspervdj): We want `∀a b. array<a> -> array<b> -> array<a|b>`.
     (\tc (Ty.Cons l (Ty.Cons r Ty.Nil)) -> do
         la <- Ty.bcUnify tc l (Ty.arrayOf Ty.any)
         ra <- Ty.bcUnify tc r (Ty.arrayOf Ty.any)
-        case () of
-            ()  | Just x <- la ^? Ty.singleton . Ty._Array
-                , Just y <- ra ^? Ty.singleton . Ty._Array ->
-                    pure . Ty.arrayOf $! x ∪ y
-            _ -> pure $ Ty.arrayOf Ty.unknown) $ pure $
-    -- Ty.arrayOf Ty.any 🡒 Ty.arrayOf Ty.any 🡒 Ty.out Ty.unknown) $ pure $
+        pure $ fromMaybe (Ty.arrayOf Ty.unknown) $ do
+            x <- la ^? Ty.singleton . Ty._Array
+            y <- ra ^? Ty.singleton . Ty._Array
+            pure . Ty.arrayOf $! x ∪ y) $ pure $
     \(Cons l (Cons r Nil)) -> return (l <> r :: V.Vector Value)
 
 builtin_array_slice :: Monad m => Builtin m
 builtin_array_slice = Builtin
     (In (In (In Out)))
-    (Ty.arrayOf Ty.any 🡒  Ty.number 🡒  Ty.number 🡒 Ty.out (Ty.arrayOf Ty.unknown)) $ pure $
+    (\tc (Ty.Cons arr (Ty.Cons a (Ty.Cons b Ty.Nil))) -> do
+        tarr <- Ty.bcUnify tc arr (Ty.arrayOf Ty.any)
+        Ty.bcSubsetOf tc a Ty.number
+        Ty.bcSubsetOf tc b Ty.number
+        pure . Ty.arrayOf . fromMaybe Ty.unknown $
+            tarr ^? Ty.singleton . Ty._Array) $ pure $
     \(Cons arr (Cons a (Cons b Nil))) -> return $! let
         start = max a 0
         end   = min b (V.length arr)

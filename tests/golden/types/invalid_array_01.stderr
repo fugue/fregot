@@ -6,3 +6,12 @@ fregot ([34mtypecheck error[0m):
          [31m^^^^^^^^^^^^^^^^[0m
 
   Cannot use type [33m[34mstring[0m[0m as [33m[34mnumber[0m[0m
+
+fregot ([34mtypecheck error[0m):
+  "invalid_array_01.rego" (line 13, column 3):
+  Subtype error:
+
+    13|   array_small[_] > 0
+          [31m^^^^^^^^^^^^^^^^^^[0m
+
+  Cannot use type [33m[34mstring[0m[0m as [33m[34mnumber[0m[0m
