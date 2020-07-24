@@ -64,6 +64,7 @@ builtins = HMS.fromList
     , (NamedFunction (BuiltinName "lower"),            builtin_lower)
     , (NamedFunction (BuiltinName "max"),              builtin_max)
     , (NamedFunction (BuiltinName "min"),              builtin_min)
+    , (NamedFunction (QualifiedName "object.filter"),  builtin_object_filter)
     , (NamedFunction (QualifiedName "object.remove"),  builtin_object_remove)
     , (NamedFunction (BuiltinName "or"),               builtin_bin_or)
     , (NamedFunction (BuiltinName "product"),          builtin_product)
@@ -260,20 +261,23 @@ builtin_min = Builtin
         [] -> Value NullV  -- TODO(jaspervdj): Should be undefined.
         _  -> minimum (vals :: [Value])
 
+builtin_object_filter :: Monad m => Builtin m
+builtin_object_filter = Builtin
+    (In (In Out))
+    (Ty.objectOf Ty.any Ty.any 🡒
+     Ty.arrayOf Ty.any ∪ Ty.setOf Ty.any ∪ Ty.objectOf Ty.any Ty.any 🡒
+     Ty.out (Ty.objectOf Ty.any Ty.any)) $ pure $
+    \(Cons obj (Cons (Keys keys) Nil)) ->
+     return $! HMS.intersection (obj :: HMS.HashMap Value Value) $ HS.toMap $ HS.fromList keys
+
 builtin_object_remove :: Monad m => Builtin m
 builtin_object_remove = Builtin
     (In (In Out))
     (Ty.objectOf Ty.any Ty.any 🡒
      Ty.arrayOf Ty.any ∪ Ty.setOf Ty.any ∪ Ty.objectOf Ty.any Ty.any 🡒
      Ty.out (Ty.objectOf Ty.any Ty.any)) $ pure $
-    \(Cons obj (Cons k Nil)) ->
-      -- NOTE(sr): We cannot use `Collection`, since it would take the values, not the keys of an object
-      let keys = (case unValue k of
-                    ObjectV o -> HMS.keys o
-                    ArrayV a  -> V.toList a
-                    SetV s    -> HS.toList s
-                    _          -> []) -- type checker will not let this happen
-      in return $! foldr HMS.delete (obj :: HMS.HashMap Value Value) (keys :: [Value])
+    \(Cons obj (Cons (Keys keys) Nil)) ->
+      return $! foldr HMS.delete (obj :: HMS.HashMap Value Value) keys
 
 builtin_product :: Monad m => Builtin m
 builtin_product = Builtin

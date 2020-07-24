@@ -18,6 +18,7 @@ module Fregot.Builtins.Internal
 
     -- `ToVal` / `FromVal` helper newtypes.
     , Collection (..)
+    , Keys (..)
     , (:|:) (..)
     , Json (..)
 
@@ -159,11 +160,22 @@ instance (Eq a, FromVal a, Hashable a) => FromVal (HS.HashSet a)  where
 -- sort of collection.
 newtype Collection a = Collection [a]
 
+-- | Like `Collection`, but collects an object's keys, not values.
+newtype Keys a = Keys [a]
+
 instance FromVal a => FromVal (Collection a) where
     fromVal = unValue >>> \case
         ArrayV  c -> Collection <$> traverse fromVal (V.toList c)
         SetV    c -> Collection <$> traverse fromVal (HS.toList c)
         ObjectV c -> Collection <$> traverse (fromVal . snd) (HMS.toList c)
+        v         -> Left $
+            "Expected collection but got " ++ describeValue (Value v)
+
+instance FromVal a => FromVal (Keys a) where
+    fromVal = unValue >>> \case
+        ArrayV  c -> Keys <$> traverse fromVal (V.toList c)
+        SetV    c -> Keys <$> traverse fromVal (HS.toList c)
+        ObjectV c -> Keys <$> traverse (fromVal . fst) (HMS.toList c)
         v         -> Left $
             "Expected collection but got " ++ describeValue (Value v)
 
