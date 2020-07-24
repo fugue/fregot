@@ -333,7 +333,7 @@ inferStatement = \case
     UnifyS source l r -> unifyTermTerm source l r
     IndexedCompS source (IndexedComprehension _ _ v c) -> do
         rt <- inferComprehension source c
-        Unify.bindTerm source v rt
+        void $ Unify.bindTerm source v rt
 
 inferNonVoidTerm :: SourceSpan -> Term SourceSpan -> InferM SourceType
 inferNonVoidTerm use term = do
@@ -555,7 +555,8 @@ unifyTermType
 
 unifyTermType _source (NameT _ WildcardName) _ = return ()
 
-unifyTermType source (NameT _ (LocalName α)) σ = Unify.bindTerm source α σ
+unifyTermType source (NameT _ (LocalName α)) σ = void $
+    Unify.bindTerm source α σ
 
 unifyTermType source (ArrayT _ arr) (τ, s)
         | Just σ <- τ ^? Types.singleton . Types._Array =
@@ -570,29 +571,32 @@ unifyTermType source (SetT _ set) (τ, s)
 
 unifyTermType _source term σ = do
     τ <- inferTerm term
-    unifyTypeType τ σ
+    void $ unifyTypeType τ σ
 
 
 -- TODO(jaspervdj): we should return a refined type here.
-unifyTypeType :: SourceType -> SourceType -> InferM ()
+unifyTypeType :: SourceType -> SourceType -> InferM SourceType
 
-unifyTypeType (Types.Universe, _) (_, _)              = return ()
-unifyTypeType (_, _)              (Types.Universe, _) = return ()
+unifyTypeType (Types.Universe, l) (σ, r)              = return (σ, l <> r)
+unifyTypeType (τ, l)              (Types.Universe, r) = return (τ, l <> r)
 
 unifyTypeType (τ, l) (σ, r)
     | Just τ' <- τ ^? Types.singleton . Types._Array
-    , Just σ' <- σ ^? Types.singleton . Types._Array =
-        unifyTypeType (τ', l) (σ', r)
+    , Just σ' <- σ ^? Types.singleton . Types._Array = do
+        (υ, lr) <- unifyTypeType (τ', l) (σ', r)
+        pure (Types.arrayOf υ, lr)
 
     | Just τ' <- τ ^? Types.singleton . Types._Set
-    , Just σ' <- σ ^? Types.singleton . Types._Set =
-        unifyTypeType (τ', l) (σ', r)
+    , Just σ' <- σ ^? Types.singleton . Types._Set = do
+        (υ, lr) <- unifyTypeType (τ', l) (σ', r)
+        pure (Types.setOf υ, lr)
 
 unifyTypeType (τ, l) (σ, r)
-    | τ == σ                      = return ()
-    | ρ <- τ ∩ σ, ρ /= Types.void = return ()
-    | otherwise                   =
+    | τ == σ                      = pure (τ, l <> r)
+    | ρ <- τ ∩ σ, ρ /= Types.void = pure (ρ, l <> r)
+    | otherwise                   = do
         tellError $ NoUnify Nothing (τ, l) (σ, r)
+        pure (Types.unknown, l <> r)
 
 inferBuiltin
     :: SourceSpan
@@ -612,10 +616,8 @@ inferBuiltin source name builtin@(Builtin.Builtin sig ty _) args =
     arity = Builtin.arity builtin
 
     checker = B.BuiltinChecker
-        { B.bcUnify = \x y -> do
-            unifyTypeType
-                (x, NonEmpty.singleton source) (y, NonEmpty.singleton source)
-            return x
+        { B.bcUnify = \x y -> fmap fst $ unifyTypeType
+            (x, NonEmpty.singleton source) (y, NonEmpty.singleton source)
         , B.bcSubsetOf = \σ τ ->
             -- NOTE(jaspervdj): We map 'K.Unknown' to 'True' here.
             unless (K.fromTernary True $ σ ⊆ τ) $
