@@ -192,11 +192,14 @@ builtin_indexof = Builtin
 builtin_intersection :: Monad m => Builtin m
 builtin_intersection = Builtin
     (In Out)
-    -- TODO(jaspervdj): Maybe this should be `∀a. set<set<a>> -> set<a>`.
-    (Ty.setOf (Ty.setOf Ty.any) 🡒 Ty.out (Ty.setOf Ty.unknown)) $ pure $
-    \(Cons set Nil) -> return $! case HS.toList (set :: (HS.HashSet (HS.HashSet Value))) of
-      []   -> HS.empty
-      sets -> foldr1 HS.intersection sets
+    (\tc (Ty.Cons sets Ty.Nil) -> do
+        tsets <- Ty.bcUnify tc sets (Ty.setOf (Ty.setOf Ty.any))
+        pure . Ty.setOf . fromMaybe Ty.unknown $
+            tsets ^? Ty.singleton . Ty._Set . Ty.singleton . Ty._Set) $ pure $
+    \(Cons set Nil) -> return $!
+        case HS.toList (set :: (HS.HashSet (HS.HashSet Value))) of
+        []   -> HS.empty
+        sets -> foldr1 HS.intersection sets
 
 builtin_is_array :: Monad m => Builtin m
 builtin_is_array = Builtin
