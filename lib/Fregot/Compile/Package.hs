@@ -27,7 +27,6 @@ import qualified Data.Graph                        as Graph
 import qualified Data.HashMap.Strict.Extended      as HMS
 import qualified Data.HashSet.Extended             as HS
 import           Data.List                         (sortOn)
-import qualified Data.List.NonEmpty                as NonEmpty
 import           Data.List.NonEmpty.Extended       (NonEmpty (..))
 import           Data.Proxy                        (Proxy (..))
 import           Data.Traversable.HigherOrder      (htraverse)
