@@ -187,6 +187,8 @@ resolveRef source var refArgs = do
 
     case var of
 
+        "_"     | null refArgs -> pure $ Just (WildcardName, [])
+
         "data"  | Just (pkg, rname, remainder) <-
                     resolveData thispkg universe refArgs ->
             checkExists pkg rname $ do
@@ -217,8 +219,8 @@ resolveRef source var refArgs = do
             refArgs' <- traverse renameRefArg refArgs
             let name
                     | specialBuiltinVar var  = BuiltinName var
-                    | HS.member var rules    = mkQualifiedName thispkg var
                     | var `HS.member` locals = LocalName var
+                    | HS.member var rules    = mkQualifiedName thispkg var
                     | otherwise              = LocalName var
             return $ Just (name, refArgs')
 
@@ -249,6 +251,13 @@ renameTerm = \case
         case mbResolved of
             Just (name, [])       -> pure $ VarT source name
             Just (name, refArgs') -> pure $ RefT source varSource name refArgs'
+            Nothing               -> pure $ ErrorT source
+
+    VarT source v -> do
+        mbResolved <- resolveRef source v []
+        case mbResolved of
+            Just (name, [])       -> pure $ VarT source name
+            Just (name, refArgs') -> pure $ RefT source source name refArgs'
             Nothing               -> pure $ ErrorT source
 
     CallT source ns args -> do
@@ -298,21 +307,6 @@ renameTerm = \case
             _ -> fatal $ Error.mkError "renamer" source "unknown call" $
                 -- NOTE(jaspervdj): We can use ErrorT here.
                 "Unknown call to" <+> PP.pretty (Nested ns)
-
-    -- Find out of the variable is a rule in this package.  If so, it's a
-    -- QualifiedName, if not it's a LocalName.  WildcardName and BuiltinName are
-    -- special cases.
-    VarT a "_" -> pure $ VarT a WildcardName
-    VarT a v | specialBuiltinVar v ->
-        pure $ VarT a (BuiltinName v)
-    VarT a v -> do
-        locals <- view reLocalVars
-        pkg    <- view rePackage
-        rules  <- view rePackageRules
-        case v `HS.member` rules of
-            _ | v `HS.member` locals -> pure (VarT a (LocalName v))
-            True                     -> pure (VarT a (mkQualifiedName pkg v))
-            False                    -> pure (VarT a (LocalName v))
 
     ScalarT a s -> pure (ScalarT a s)
 
