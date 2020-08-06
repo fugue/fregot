@@ -17,7 +17,7 @@ module Fregot.Builtins.Internal
     , FromVal (..)
 
     -- `ToVal` / `FromVal` helper newtypes.
-    , Collection (..)
+    , Values (..)
     , Keys (..)
     , (:|:) (..)
     , Json (..)
@@ -158,18 +158,18 @@ instance (Eq a, FromVal a, Hashable a) => FromVal (HS.HashSet a)  where
 
 -- | Sometimes builtins (e.g. `count`) do not take a specific type, but any
 -- sort of collection.
-newtype Collection a = Collection [a]
+newtype Values a = Values [a]
 
--- | Like `Collection`, but collects an object's keys, not values.
+-- | Like `Values`, but collects an object's keys, not values.
 newtype Keys a = Keys [a]
 
-instance FromVal a => FromVal (Collection a) where
+instance FromVal a => FromVal (Values a) where
     fromVal = unValue >>> \case
-        ArrayV  c -> Collection <$> traverse fromVal (V.toList c)
-        SetV    c -> Collection <$> traverse fromVal (HS.toList c)
-        ObjectV c -> Collection <$> traverse (fromVal . snd) (HMS.toList c)
+        ArrayV  c -> Values <$> traverse fromVal (V.toList c)
+        SetV    c -> Values <$> traverse fromVal (HS.toList c)
+        ObjectV c -> Values <$> traverse (fromVal . snd) (HMS.toList c)
         v         -> Left $
-            "Expected collection but got " ++ describeValue (Value v)
+            "Expected values but got " ++ describeValue (Value v)
 
 instance FromVal a => FromVal (Keys a) where
     fromVal = unValue >>> \case
@@ -177,7 +177,7 @@ instance FromVal a => FromVal (Keys a) where
         SetV    c -> Keys <$> traverse fromVal (HS.toList c)
         ObjectV c -> Keys <$> traverse (fromVal . fst) (HMS.toList c)
         v         -> Left $
-            "Expected collection but got " ++ describeValue (Value v)
+            "Expected keys but got " ++ describeValue (Value v)
 
 -- | Either-like type for when we have weird ad-hoc polymorphism.
 data a :|: b = InL a | InR b

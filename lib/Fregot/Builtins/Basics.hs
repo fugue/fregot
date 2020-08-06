@@ -139,7 +139,7 @@ builtin_concat :: Monad m => Builtin m
 builtin_concat = Builtin
     (In (In Out))
     (Ty.string 🡒 Ty.collectionOf Ty.string 🡒 Ty.out Ty.string) $ pure $
-    \(Cons delim (Cons (Collection texts) Nil)) ->
+    \(Cons delim (Cons (Values texts) Nil)) ->
     return $! T.intercalate delim texts
 
 builtin_contains :: Monad m => Builtin m
@@ -153,7 +153,7 @@ builtin_count = Builtin
     (In Out)
     (Ty.collectionOf Ty.any ∪ Ty.string 🡒 Ty.out Ty.number) $ pure $
     \(Cons countee Nil) -> case countee of
-        InL (Collection c) -> return $! length (c :: [Value])
+        InL (Values c) -> return $! length (c :: [Value])
         InR txt            -> return $! T.length txt
 
 builtin_endswith :: Monad m => Builtin m
@@ -248,7 +248,7 @@ builtin_max = Builtin
     (In Out)
     -- TODO(jaspervdj): More like `∀a. collection<a> -> a`.
     (Ty.collectionOf Ty.any 🡒 Ty.out Ty.unknown) $ pure $
-    \(Cons (Collection vals) Nil) -> return $! case vals of
+    \(Cons (Values vals) Nil) -> return $! case vals of
         [] -> Value NullV  -- TODO(jaspervdj): Should be undefined.
         _  -> maximum (vals :: [Value])
 
@@ -257,7 +257,7 @@ builtin_min = Builtin
     (In Out)
     -- TODO(jaspervdj): More like `∀a. collection<a> -> a`.
     (Ty.collectionOf Ty.any 🡒 Ty.out Ty.unknown) $ pure $
-    \(Cons (Collection vals) Nil) -> return $! case vals of
+    \(Cons (Values vals) Nil) -> return $! case vals of
         [] -> Value NullV  -- TODO(jaspervdj): Should be undefined.
         _  -> minimum (vals :: [Value])
 
@@ -283,7 +283,7 @@ builtin_product :: Monad m => Builtin m
 builtin_product = Builtin
     (In Out)
     (Ty.collectionOf Ty.number 🡒 Ty.out Ty.number) $ pure $
-    \(Cons (Collection vals) Nil) -> return $! num $ product vals
+    \(Cons (Values vals) Nil) -> return $! num $ product vals
 
 builtin_replace :: Monad m => Builtin m
 builtin_replace = Builtin
@@ -325,14 +325,14 @@ builtin_sum :: Monad m => Builtin m
 builtin_sum = Builtin
     (In Out)
     (Ty.collectionOf Ty.number 🡒 Ty.out Ty.number) $ pure $
-    \(Cons (Collection vals) Nil) -> return $! num $ sum vals
+    \(Cons (Values vals) Nil) -> return $! num $ sum vals
 
 builtin_sort :: Monad m => Builtin m
 builtin_sort = Builtin
     (In Out)
     -- TODO(jaspervdj): Something more akin to `∀a. collection<a> -> array<a>`.
     (Ty.collectionOf Ty.any 🡒 Ty.out (Ty.arrayOf Ty.unknown)) $ pure $
-    \(Cons (Collection vals) Nil) -> return $! L.sort (vals :: [Value])
+    \(Cons (Values vals) Nil) -> return $! L.sort (vals :: [Value])
 
 builtin_startswith :: Monad m => Builtin m
 builtin_startswith = Builtin
