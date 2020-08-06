@@ -38,7 +38,7 @@ module Fregot.Eval
 import           Control.Arrow             ((>>>))
 import           Control.Lens              (review, to, use, view, (%=), (.=),
                                             (.~), (^.), (^?))
-import           Control.Monad             (when, (>=>))
+import           Control.Monad             (void, when, (>=>))
 import           Control.Monad.Extended    (forM, zipWithM_)
 import           Control.Monad.Identity    (Identity (..))
 import           Control.Monad.Reader      (ask, local)
@@ -405,14 +405,13 @@ evalCompiledRule callerSource crule mbIndex
         case mbCacheResult of
             Just (Cache.Singleton val) -> pure val
             _                          -> do
-                val <- requireComplete (crule ^. ruleAnn) $ do
-                    val <- case crule ^. ruleDefault of
+                val <- requireComplete (crule ^. ruleAnn) $
+                    case crule ^. ruleDefault of
                         -- If there is a default, then we fill it in if the rule
                         -- yields no rows.
                         Nothing  -> snd <$> branch branches
-                        Just def -> withDefault (evalTerm def) $
+                        Just def -> withDefault (evalGroundTerm def) $
                                     snd <$> branch branches
-                    ground callerSource val
                 Cache.writeSingleton c ckey val
                 pure val
 
@@ -443,17 +442,16 @@ evalCompiledRule callerSource crule mbIndex
                     compute <- branches
                     pure $ do
                         (idxVal, val) <- compute
-                        gval          <- ground callerSource val
                         let (k, v) = case crule ^. ruleKind of
-                                GenSetRule -> (fromMaybe gval idxVal, true)
-                                _          -> (fromMaybe gval idxVal, gval)
+                                GenSetRule -> (fromMaybe val idxVal, true)
+                                _          -> (fromMaybe val idxVal, val)
                         write <- TempObject.write tempObj k v
                         case write of
                             TempObject.Ok              -> pure ()
                             TempObject.Duplicate       -> cut
                             TempObject.Inconsistent v' ->
                                 raiseInconsistentObject callerSource k v v'
-                        return (idxVal, gval)) ++ (pure $ do
+                        return (idxVal, val)) ++ (pure $ do
                     -- After all branches have executed, indicate that the
                     -- collection is finished.
                     --
@@ -502,7 +500,7 @@ evalCompiledRule callerSource crule mbIndex
   where
     -- Standard branching evaluation of rule definitions; used for all
     -- evaluations.
-    branches :: [EvalM (Maybe Value, Mu')]
+    branches :: [EvalM (Maybe Value, Value)]
     branches = do
         def <- crule ^. ruleDefs
         pure $ evalRuleDefinition callerSource def mbIndex
@@ -517,32 +515,29 @@ evalCompiledRule callerSource crule mbIndex
 
 evalRuleDefinition
     :: SourceSpan -> RuleDefinition SourceSpan -> Maybe Mu'
-    -> EvalM (Maybe Value, Mu')
+    -> EvalM (Maybe Value, Value)
 evalRuleDefinition callerSource rule mbIndex =
     clearLocals $ do
 
+    -- If the index of the rule is just a variable, we can assign it now which
+    -- may allow us to index directly into rules.
     mbIdxVal <- case (mbIndex, rule ^. ruleIndex) of
-        (Nothing, Nothing) -> return Nothing
-        (Just arg, Just tpl) -> do
+        (Just arg, Just tpl@(NameT _ _)) -> do
             tplv <- evalTerm tpl
-            _    <- unify callerSource arg tplv
-            return $ Just tplv
-        (Just _, Nothing) -> raise' callerSource "arity problem" $
-            "An argument was given for rule" <+>
-            PP.pretty (rule ^. ruleDefName) <+>
-            "but it does not expect one"
-        (Nothing, Just tpl) -> do
-            tplv <- evalTerm tpl
-            return $ Just tplv
+            void $ unify callerSource arg tplv
+            pure $ Just tplv
+        _ -> pure Nothing
 
-    let ret mbRet = case mbRet of
-            Nothing -> do
-                i <- traverse (ground (rule ^. ruleDefAnn)) mbIdxVal
-                return (Nothing, Mu (GroundedM (fromMaybe true i)))
-            Just term -> do
-                i <- traverse (ground (rule ^. ruleDefAnn)) mbIdxVal
-                v <- evalTerm term
-                return (i, v)
+    let ret mbRet = do
+            i <- case mbIdxVal of
+                Just val -> Just <$> ground (rule ^. ruleDefAnn) val
+                Nothing  -> case rule ^. ruleIndex of
+                    Nothing  -> pure Nothing
+                    Just idx -> Just <$> evalGroundTerm idx
+            v <- case mbRet of
+                Nothing   -> pure $ fromMaybe true i
+                Just term -> evalGroundTerm term
+            return (i, v)
 
     case rule ^. ruleBodies of
         -- If there is not a single body, we probably have something like
