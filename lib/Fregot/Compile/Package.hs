@@ -15,17 +15,19 @@ module Fregot.Compile.Package
     , valueToCompiledRule
     ) where
 
-import           Control.Lens                      (at, iforM_, review,
-                                                    traverseOf, view, (&), (.~),
-                                                    (^.))
+import           Control.Lens                      (at, review, traverseOf,
+                                                    view, (&), (.~), (^.))
 import           Control.Monad                     (foldM, forM)
 import           Control.Monad.Identity            (runIdentity)
 import           Control.Monad.Parachute           (ParachuteT, catching,
                                                     tellError, tellErrors)
+import           Data.Foldable                     (for_)
 import           Data.Functor                      (($>))
 import qualified Data.Graph                        as Graph
 import qualified Data.HashMap.Strict.Extended      as HMS
 import qualified Data.HashSet.Extended             as HS
+import           Data.List                         (sortOn)
+import qualified Data.List.NonEmpty                as NonEmpty
 import           Data.List.NonEmpty.Extended       (NonEmpty (..))
 import           Data.Proxy                        (Proxy (..))
 import           Data.Traversable.HigherOrder      (htraverse)
@@ -185,7 +187,8 @@ runOrder
     :: (Monad m, PP.Pretty PP.Sem v)
     => (a, Unsafe v SourceSpan) -> ParachuteT Error m a
 runOrder (x, Unsafe unsafe) = do
-    iforM_ unsafe $ \var (source :| _) -> tellError $ Error.mkError
+    for_ (sortOn (NonEmpty.head . snd) $ HMS.toList unsafe) $
+        \(var, source :| _) -> tellError $ Error.mkError
         "compile" source "unknown variable" $
         "Undefined variable:" <+> PP.pretty var
     return x
