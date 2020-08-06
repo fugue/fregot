@@ -183,14 +183,12 @@ compileTerm builtins ctree typeContext term0 = do
     safe0 = Safe (HMS.keysSet typeContext)
 
 -- | Designed to match the return type of `orderTermForSafety`.
-runOrder
-    :: (Monad m, PP.Pretty PP.Sem v)
-    => (a, Unsafe v SourceSpan) -> ParachuteT Error m a
+runOrder :: Monad m => (a, Unsafe Var SourceSpan) -> ParachuteT Error m a
 runOrder (x, Unsafe unsafe) = do
-    for_ (sortOn (NonEmpty.head . snd) $ HMS.toList unsafe) $
-        \(var, source :| _) -> tellError $ Error.mkError
-        "compile" source "unknown variable" $
-        "Undefined variable:" <+> PP.pretty var
+    for_ (sortOn (\(v, src :| _) -> (src, unVar v)) $ HMS.toList unsafe) $
+        \(v, src :| _) -> tellError $ Error.mkError
+        "compile" src "unknown variable" $
+        "Undefined variable:" <+> PP.pretty v
     return x
 
 recursionError :: [Rule ty a] -> Error
