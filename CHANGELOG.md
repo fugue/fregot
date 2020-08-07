@@ -1,5 +1,8 @@
 # CHANGELOG
 
+ -  0.12.2 (2020-08-07)
+     *  Support using data imports as variables directly
+
  -  0.12.1 (2020-08-06)
      *  Add `object.remove`
      *  Add `object.filter`
