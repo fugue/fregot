@@ -152,13 +152,24 @@ specialBuiltinVar "input" = True
 specialBuiltinVar _       = False
 
 -- | Resolves a reference as far as possible.  Returns the new name, and
--- bits that were not resolved yet.
+-- bits that were not resolved yet.  You can generally think of as the
+-- left part of the tuple as the "statically known" part, and the right
+-- part is of the tuple is the "dynamic" part.
 --
 -- For example, `foo` is a package, and `foo.bar` is a rule in that package
 -- that evaluates to `foo.bar = {"value": 1}`.
 --
 -- We resolve the `foo.bar` part in `foo.bar.value` and keep the `.value`
 -- part unresolved, then "attach it back on".
+--
+-- Why does this code have so many cases?  Well, there's a tradeoff going on
+-- here.  We could significantly reduce the number of checks here, which would
+-- make the code much simpler.  However, we also want to be able to catch all
+-- "this thing is not defined" errors here if possible.
+--
+-- Catching all errors like that is not possible in general (because of the
+-- dynamic part), but we want to at least deal with all the common cases to
+-- help policy authors.
 resolveRef
     :: SourceSpan
     -> Var -> [RefArg SourceSpan Var]
@@ -187,20 +198,37 @@ resolveRef source var refArgs = do
 
     case var of
 
+        -- A simple wildcard variable.
         "_"     | null refArgs -> pure $ Just (WildcardName, [])
 
+        -- A fully qualified path, e.g. `data.foo.bar`.  Resolve as far
+        -- as possible using `resolveData`.
         "data"  | Just (pkg, rname, remainder) <-
                     resolveData thispkg universe refArgs ->
             checkExists pkg rname $ do
                 remainder' <- traverse renameRefArg remainder
                 pure $ Just (mkQualifiedName pkg rname, remainder')
 
+        -- Using an import, e.g. `foo.bar` where we also have `import data.foo`
+        -- or `import data.qux as foo`.  Think of this as "importing a package".
         _       | Just (_, ImportData pkg) <- HMS.lookup var imports
                 , (ra1 : ras)              <- refArgs
                 , Just rname               <- refArgToVar ra1 ->
             checkExists pkg rname $ do
             ras' <- traverse renameRefArg ras
             pure $ Just (mkQualifiedName pkg rname, ras')
+
+        -- Using an import as a variable, e.g. `bar` where we have
+        -- `import data.foo.bar`.
+        _       | Just (_, ImportData pkg0) <- HMS.lookup var imports
+                , null refArgs
+                , pieces@(_ : _) <- unPackageName pkg0 ->
+            -- The package name starts out incorrect here, we need to move it
+            -- one level up.
+            let pkg1 = mkPackageName (init pieces)
+                var1 = mkVar (last pieces) in
+            checkExists pkg1 var1 $
+            pure $ Just (mkQualifiedName pkg1 var1, [])
 
         -- For input imports, it's relatively simple.  If we have something like
         --
@@ -214,7 +242,7 @@ resolveRef source var refArgs = do
             refArgs' <- traverse renameRefArg refArgs
             pure $ Just (BuiltinName "input", importRefs ++ refArgs')
 
-        -- Nothing was found.  We will assume it is a local var.
+        -- Nothing was found: probably a local variable, possibly fresh.
         _ -> do
             refArgs' <- traverse renameRefArg refArgs
             let name
