@@ -14,8 +14,8 @@ import           Fregot.Types.Internal
 data RuleType
     = CompleteRuleType Type
     | GenSetRuleType Type
-    | GenObjectRuleType (Object Ast.Scalar Type)
-    | FunctionType  Int
+    | GenObjectRuleType (StaticDynamic Ast.Scalar Type)
+    | FunctionType Int
     | ErrorType
     deriving (Show)
 

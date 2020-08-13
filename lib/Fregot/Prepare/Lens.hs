@@ -21,13 +21,15 @@ module Fregot.Prepare.Lens
 
     , valueToScalar
     , termToScalar
+    , scalarToInt
     ) where
 
 import           Control.Lens        (Fold, Lens', Prism', Traversal', aside,
-                                      lens, prism', to, traverseOf, (^.), _2)
+                                      lens, prism', to, traverseOf, (^.), _2, preview, _Right)
 import           Control.Lens.Plated (Plated (..), cosmos, cosmosOnOf)
 import           Fregot.Eval.Number  as Number
 import           Fregot.Eval.Value   (Value (..), ValueF (..))
+import Data.Scientific (Scientific, floatingOrInteger)
 import           Fregot.Names
 import           Fregot.Prepare.Ast
 
@@ -204,3 +206,10 @@ valueToScalar = prism' fromScalar toScalar
 
 termToScalar :: Prism' (Term a) (a, Scalar)
 termToScalar = _ValueT . aside valueToScalar
+
+scalarToInt :: Prism' Scalar Int
+scalarToInt = prism' fromInt toInt
+  where
+    toInt = preview (_Number . to foi . _Right)
+    fromInt = Number . fromIntegral
+    foi = floatingOrInteger :: Scientific -> Either Double Int

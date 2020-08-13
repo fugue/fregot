@@ -29,8 +29,8 @@ module Fregot.Types.Infer
     , inferTerm
     ) where
 
-import           Control.Lens                (forOf_, review, view, (&), (.~),
-                                              (^.), (^?), _2)
+import           Control.Lens                (forOf_, ifor, ifor_, review, view, (&),
+                                              (.~), (^.), (^?), _2)
 import           Control.Lens.Extras         (is)
 import           Control.Lens.TH             (makeLenses, makePrisms)
 import           Control.Monad               (forM, join, unless, void,
@@ -232,7 +232,7 @@ inferRule rule = case rule ^. ruleKind of
         (ixs, vals) <- unzip <$> forM (rule ^. ruleDefs) inferRuleDefinition
         let idxType = Types.unions $ map fst $ catMaybes ixs
             valType = Types.unions $ map fst vals
-            objType = Types.Obj HMS.empty $ case ixs of
+            objType = Types.StaticDynamic HMS.empty $ case ixs of
                 [] -> Nothing
                 _  -> Just (idxType, valType)
         pure $ rule & ruleInfo .~ Types.GenObjectRuleType objType
@@ -392,14 +392,19 @@ inferTerm (NameT source (QualifiedName key)) = do
                     [ (String (unVar v), Types.unknown)
                     | (v, _) <- Tree.children d
                     ] in
-            pure (Types.object (Types.Obj stat Nothing), NonEmpty.singleton source)
+            pure
+                ( Types.object (Types.StaticDynamic stat Nothing)
+                , NonEmpty.singleton source
+                )
 
+inferTerm (ArrayT source []) =
+    pure (Types.arrayOf Types.unknown, NonEmpty.singleton source)
 inferTerm (ArrayT source items) = do
-    tys <- traverse (inferNonVoidTerm source) items
-    pure $ maybe
-        (Types.arrayOf Types.unknown, NonEmpty.singleton source)
-        (first Types.arrayOf . mergeSourceTypes)
-        (NonEmpty.fromList tys)
+    tys <- ifor items $ \i t -> (,) i . fst <$> inferNonVoidTerm source t
+    pure
+        ( Types.array $ Types.StaticDynamic (HMS.fromList tys) Nothing
+        , NonEmpty.singleton source
+        )
 
 inferTerm (SetT source items) = do
     tys <- traverse (inferNonVoidTerm source) items
@@ -420,9 +425,9 @@ inferTerm (ObjectT source obj) = do
         (scalars, dynamics) = partitionEithers scalarsOrDynamics
 
     return
-        ( review Types.singleton $ Types.Object Types.Obj
-            { Types.objStatic  = HMS.fromList $ second fst <$> scalars
-            , Types.objDynamic = case dynamics of
+        ( Types.object Types.StaticDynamic
+            { Types.sdStatic  = HMS.fromList $ second fst <$> scalars
+            , Types.sdDynamic = case dynamics of
                 []  -> Nothing
                 _   -> Just
                     ( Types.unions $ fst . fst <$> dynamics
@@ -463,32 +468,30 @@ inferTerm (RefT source lhs rhs) = do
         -> Types.Elem Type  -- ^ Actual LHS
         -> InferM (SourceType, SourceType)  -- ^ Key type, value type
 
-    inferElemRef _lhsTy (Types.Array itemTy) = return $ (,)
-            (Types.number, NonEmpty.singleton source)
-            (itemTy, NonEmpty.singleton source)
+    inferElemRef lhsTy Types.String     = fatal $ CannotRef source lhsTy
+    inferElemRef lhsTy Types.Number     = fatal $ CannotRef source lhsTy
+    inferElemRef lhsTy Types.Boolean    = fatal $ CannotRef source lhsTy
+    inferElemRef lhsTy Types.Null       = fatal $ CannotRef source lhsTy
+    inferElemRef lhsTy (Types.Scalar _) = fatal $ CannotRef source lhsTy
 
-    inferElemRef _lhsTy (Types.Set elemTy) = return $ (,)
-            (elemTy, NonEmpty.singleton source)
-            (elemTy, NonEmpty.singleton source)
-
-    inferElemRef lhsTy (Types.Object objTy) = case rhs of
+    inferElemRef lhsTy rhsTy = case rhs of
         -- In case the index is a scalar, and it's present in the object
         -- type, we can return a very granular type.
         _ | Just (ss, s) <- rhs ^? termToScalar
-          , Just ty <- HMS.lookup s (Types.objStatic objTy) ->
+          , Just ty <- lookupStatic s ->
             return $ (,)
                 (Types.scalarType s, NonEmpty.singleton ss)
                 (ty, NonEmpty.singleton source)
 
         -- Otherwise we need to look at the dynamic part.
-        _ | Just (dynk, dynv) <- Types.objDynamic objTy -> return $ (,)
+        _ | Just (dynk, dynv) <- mbDynamic -> return $ (,)
             (dynk, NonEmpty.singleton source)
             (dynv, NonEmpty.singleton source)
 
         -- If there is no dynamic part, we need to unify the rhs against
         -- all the different static keys.
-        _ | not (HMS.null (Types.objStatic objTy)) ->
-            let (ks, vs) = unzip $ HMS.toList (Types.objStatic objTy)
+        _ | not (null static) ->
+            let (ks, vs) = unzip static
                 kty      = Types.unions $ map Types.scalarType ks
                 vty      = Types.unions vs in
             return $ (,)
@@ -498,12 +501,24 @@ inferTerm (RefT source lhs rhs) = do
         -- There is no static or dynamic part that matches, this is
         -- either an internal error or a known empty object.
         _ -> fatal $ CannotRef source lhsTy
-
-    inferElemRef lhsTy Types.String     = fatal $ CannotRef source lhsTy
-    inferElemRef lhsTy Types.Number     = fatal $ CannotRef source lhsTy
-    inferElemRef lhsTy Types.Boolean    = fatal $ CannotRef source lhsTy
-    inferElemRef lhsTy Types.Null       = fatal $ CannotRef source lhsTy
-    inferElemRef lhsTy (Types.Scalar _) = fatal $ CannotRef source lhsTy
+      where
+        -- We want to match arrays as well as objects.  The following functions
+        -- unpack things in the right way.
+        lookupStatic k = case rhsTy of
+            Types.Object objTy -> HMS.lookup k (Types.sdStatic objTy)
+            Types.Array arrTy | Just k' <- k ^? scalarToInt ->
+                HMS.lookup k' (Types.sdStatic arrTy)
+            _ -> Nothing
+        static = case rhsTy of
+            Types.Object objTy -> HMS.toList $ Types.sdStatic objTy
+            Types.Array arrTy -> map (first $ review scalarToInt) . HMS.toList $
+                Types.sdStatic arrTy
+            _ -> []
+        mbDynamic = case rhsTy of
+            Types.Object objTy -> Types.sdDynamic objTy
+            Types.Array arrTy  -> Types.sdDynamic arrTy
+            Types.Set setTy    -> Just (setTy, setTy)
+            _                  -> Nothing
 
 inferTerm (ValueT source value) =
     pure (Types.inferValue value, NonEmpty.singleton source)
@@ -559,8 +574,11 @@ unifyTermType source (NameT _ (LocalName α)) σ = void $
     Unify.bindTerm source α σ
 
 unifyTermType source (ArrayT _ arr) (τ, s)
-        | Just σ <- τ ^? Types.singleton . Types._Array =
-    for_ arr $ \t -> unifyTermType source t (σ, s)
+        | Just sd <- τ ^? Types.singleton . Types._Array =
+    ifor_ arr $ \i t ->
+        let σ = fromMaybe Types.unknown $ Types.sdLookup i sd in
+        unifyTermType source t (σ, s)
+
 unifyTermType source (ArrayT _ arr) (τ, s)
         | τ == Types.unknown =
     for_ arr $ \t -> unifyTermType source t (τ, s)
@@ -574,17 +592,18 @@ unifyTermType _source term σ = do
     void $ unifyTypeType τ σ
 
 
--- TODO(jaspervdj): we should return a refined type here.
 unifyTypeType :: SourceType -> SourceType -> InferM SourceType
 
 unifyTypeType (Types.Universe, l) (σ, r)              = return (σ, l <> r)
 unifyTypeType (τ, l)              (Types.Universe, r) = return (τ, l <> r)
 
 unifyTypeType (τ, l) (σ, r)
+    {-
     | Just τ' <- τ ^? Types.singleton . Types._Array
     , Just σ' <- σ ^? Types.singleton . Types._Array = do
         (υ, lr) <- unifyTypeType (τ', l) (σ', r)
         pure (Types.arrayOf υ, lr)
+    -}
 
     | Just τ' <- τ ^? Types.singleton . Types._Set
     , Just σ' <- σ ^? Types.singleton . Types._Set = do

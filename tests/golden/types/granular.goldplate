@@ -4,7 +4,8 @@
     "stdin": [
         ":l granular.rego",
         ":type people",
-        ":type people[99].address"
+        ":type people[99].address",
+        ":type [\"Hello\", 1, true]"
     ],
     "asserts": [
         {"stdout": "${GOLDPLATE_NAME}.stdout"},

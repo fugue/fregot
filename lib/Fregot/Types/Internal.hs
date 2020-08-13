@@ -7,7 +7,9 @@
 {-# LANGUAGE RecordWildCards       #-}
 {-# LANGUAGE TemplateHaskell       #-}
 module Fregot.Types.Internal
-    ( Object (..)
+    ( StaticDynamic (..)
+    , sdLookup
+
     , Elem (..), _String, _Number, _Boolean, _Null, _Scalar, _Object, _Array
     , _Set
     , Type (..)
@@ -30,11 +32,13 @@ module Fregot.Types.Internal
     , object
     , objectOf
     , setOf
+    , array
     , arrayOf
     , collectionOf
     , scalarType
     ) where
 
+import           Control.Applicative ((<|>))
 import           Control.Lens        (Prism', prism', review)
 import           Control.Lens.TH     (makePrisms)
 import           Control.Monad       (forM)
@@ -51,12 +55,17 @@ import           GHC.Generics        (Generic)
 import           Prelude             hiding (any, null)
 import qualified Prelude             as Prelude
 
-data Object k ty = Obj
-    { objStatic  :: HMS.HashMap k ty
-    , objDynamic :: Maybe (ty, ty)
+-- | A structure that is partially statically typed, and partially dynamically
+-- typed.  Used for objects and arrays.
+data StaticDynamic k ty = StaticDynamic
+    { sdStatic  :: HMS.HashMap k ty
+    , sdDynamic :: Maybe (ty, ty)
     } deriving (Eq, Generic, Show)
 
-instance (Hashable k, Hashable ty) => Hashable (Object k ty)
+instance (Hashable k, Hashable ty) => Hashable (StaticDynamic k ty)
+
+sdLookup :: (Eq k, Hashable k) => k -> StaticDynamic k ty -> Maybe ty
+sdLookup k sd = HMS.lookup k (sdStatic sd) <|> fmap snd (sdDynamic sd)
 
 data Elem ty
     = String
@@ -64,9 +73,8 @@ data Elem ty
     | Boolean
     | Null
     | Scalar Ast.Scalar
-    | Object (Object Ast.Scalar ty)
-    -- | Array  (Object Int ty)
-    | Array  ty
+    | Object (StaticDynamic Ast.Scalar ty)
+    | Array  (StaticDynamic Int ty)
     | Set    ty
     deriving (Eq, Generic, Show)
 
@@ -87,11 +95,11 @@ $(makePrisms ''Elem)
 -- Pretty printing.
 
 instance (PP.Pretty PP.Sem k, PP.Pretty PP.Sem ty) =>
-        PP.Pretty PP.Sem (Object k ty) where
-    pretty Obj {..} = PP.object $
-        [(PP.pretty' k, v) | (k, v) <- HMS.toList objStatic] ++
+        PP.Pretty PP.Sem (StaticDynamic k ty) where
+    pretty StaticDynamic {..} = PP.object $
+        [(PP.pretty' k, v) | (k, v) <- HMS.toList sdStatic] ++
         [ (PP.pretty dynKey, dynVal)
-        | (dynKey, dynVal) <- maybeToList objDynamic
+        | (dynKey, dynVal) <- maybeToList sdDynamic
         ]
 
 instance PP.Pretty PP.Sem ty => PP.Pretty PP.Sem (Elem ty) where
@@ -102,10 +110,7 @@ instance PP.Pretty PP.Sem ty => PP.Pretty PP.Sem (Elem ty) where
         Null          -> PP.keyword "null"
         Scalar s      -> PP.pretty s
         Object x      -> PP.keyword "object" <> PP.pretty x
-        -- Array  x      -> PP.keyword "array" <> PP.pretty x
-        Array  x      -> PP.keyword "array" <>
-                            PP.punctuation "{" <> PP.pretty x <>
-                            PP.punctuation "}"
+        Array  x      -> PP.keyword "array" <> PP.pretty x
         Set    x      -> PP.keyword "set" <>
                             PP.punctuation "{" <> PP.pretty x <>
                             PP.punctuation "}"
@@ -130,23 +135,23 @@ scalarElem Ast.Null        = Null
 
 objectSubsetOf
     :: (Eq k, Hashable k)
-    => (k -> ty) -> (ty -> ty -> K.Ternary) -> Object k ty -> Object k ty
-    -> K.Ternary
+    => (k -> ty) -> (ty -> ty -> K.Ternary)
+    -> StaticDynamic k ty -> StaticDynamic k ty -> K.Ternary
 objectSubsetOf keyTy sub l r =
     -- 1. All static keys in `r` must be present in the static keys of `l`.
-    (K.fromBool $ Prelude.null $ objStatic r `HMS.difference` objStatic l) K.&&
+    (K.fromBool $ Prelude.null $ sdStatic r `HMS.difference` sdStatic l) K.&&
     -- 2. All static keys in `l` must be either be subsets of static keys in
     -- `r`, or be a subset of the dynamic part of `r`.
     (K.all
-        (\(k, lv) -> case HMS.lookup k (objStatic r) of
+        (\(k, lv) -> case HMS.lookup k (sdStatic r) of
             Just rv -> lv `sub` rv
-            Nothing -> case objDynamic r of
+            Nothing -> case sdDynamic r of
                 Nothing         -> K.False
                 Just (rdk, rdv) -> keyTy k `sub` rdk K.&& lv `sub` rdv)
-        (HMS.toList (objStatic l))) K.&&
+        (HMS.toList (sdStatic l))) K.&&
     -- 3. If `l` has a dynamic part, it must be a subset of `r`s dynamic part.
     -- If it does not have a dynamic part, `r` should not have one either.
-    (case (objDynamic l, objDynamic r) of
+    (case (sdDynamic l, sdDynamic r) of
         (Nothing,       Nothing)       -> K.True
         (Nothing,       Just _)        -> K.True
         (Just _,        Nothing)       -> K.False
@@ -160,8 +165,7 @@ elemSubsetOf (Scalar s) y
 elemSubsetOf (Object x) (Object y) =
     objectSubsetOf scalarType (⊆) x y
 elemSubsetOf (Array x) (Array y) =
-    -- objectSubsetOf (const number) subsetOf x y
-    subsetOf x y
+    objectSubsetOf (const number) (⊆) x y
 elemSubsetOf (Set x) (Set y) =
     subsetOf x y
 elemSubsetOf _ _ = K.False
@@ -200,28 +204,30 @@ unions = foldl' union void
 
 objectIntersection
     :: (Eq k, Hashable k)
-    => (k -> Type) -> Object k Type -> Object k Type -> Maybe (Object k Type)
+    => (k -> Type)
+    -> StaticDynamic k Type -> StaticDynamic k Type
+    -> Maybe (StaticDynamic k Type)
 objectIntersection keyTy l r = do
     static <- mbStatic
-    pure $ Obj static dynamic
+    pure $ StaticDynamic static dynamic
   where
-    keys = HS.union (HMS.keysSet (objStatic l)) (HMS.keysSet (objStatic r))
+    keys = HS.union (HMS.keysSet (sdStatic l)) (HMS.keysSet (sdStatic r))
     mbStatic = fmap HMS.fromList $ forM (HS.toList keys) $ \k ->
-        case (HMS.lookup k (objStatic l), HMS.lookup k (objStatic r)) of
+        case (HMS.lookup k (sdStatic l), HMS.lookup k (sdStatic r)) of
             (Nothing, Nothing) -> Nothing
-            (Just v,  Nothing) -> case objDynamic r of
+            (Just v,  Nothing) -> case sdDynamic r of
                 Nothing           -> Nothing
                 Just (kdyn, wdyn) -> (,)
                     <$> (intersectionMaybe (keyTy k) kdyn $> k)
                     <*> intersectionMaybe v wdyn
-            (Nothing, Just w)  -> case objDynamic l of
+            (Nothing, Just w)  -> case sdDynamic l of
                 Nothing           -> Nothing
                 Just (kdyn, vdyn) -> (,)
                     <$> (intersectionMaybe (keyTy k) kdyn $> k)
                     <*> intersectionMaybe w vdyn
             (Just v,  Just w)  -> (,) k <$> intersectionMaybe v w
 
-    dynamic = case (objDynamic l, objDynamic r) of
+    dynamic = case (sdDynamic l, sdDynamic r) of
         (Nothing,       Nothing)       -> Nothing
         (Nothing,       Just _)        -> Nothing
         (Just _,        Nothing)       -> Nothing
@@ -234,7 +240,7 @@ elemIntersection (Scalar s) y          | scalarElem s == y = Just (Scalar s)
 elemIntersection x (Scalar s)          | scalarElem s == x = Just (Scalar s)
 elemIntersection (Object x) (Object y) = Object <$> objectIntersection scalarType x y
 elemIntersection (Set x) (Set y)       = Set <$> intersectionMaybe x y
-elemIntersection (Array x) (Array y)   = Array <$> intersectionMaybe x y
+elemIntersection (Array x) (Array y)   = Array <$> objectIntersection (const number) x y
 elemIntersection _ _                   = Nothing
 
 intersectionMaybe :: Type -> Type -> Maybe Type
@@ -292,15 +298,17 @@ string = review singleton String
 null :: Type
 null = review singleton Null
 
-object :: Object Ast.Scalar Type -> Type
+object :: StaticDynamic Ast.Scalar Type -> Type
 object = review singleton . Object
 
 objectOf :: Type -> Type -> Type
-objectOf k v = object $ Obj HMS.empty (Just (k, v))
+objectOf k v = object . StaticDynamic HMS.empty $ Just (k, v)
+
+array :: StaticDynamic Int Type -> Type
+array = review singleton . Array
 
 arrayOf :: Type -> Type
--- arrayOf ty = review singleton $ Array $ Obj HMS.empty (Just (any, ty))
-arrayOf = review singleton . Array
+arrayOf ty = array . StaticDynamic HMS.empty $ Just (number, ty)
 
 setOf :: Type -> Type
 setOf = review singleton . Set
