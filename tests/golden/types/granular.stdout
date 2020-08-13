@@ -10,4 +10,13 @@ granular% people[36m[[0m[31m99[0m[36m][0m[36m.[0maddress [36m:[0m [34
   [31m"number"[0m[36m:[0m [34mnumber[0m[36m,[0m
   [31m"street"[0m[36m:[0m [34mstring[0m
 [36m}[0m
+granular% [36m[[0m
+  [31m"Hello"[0m[36m,[0m
+  [31m1[0m[36m,[0m
+  [31mtrue[0m
+[36m][0m [36m:[0m [34marray[0m[36m{[0m
+  0[36m:[0m [34mstring[0m[36m,[0m
+  1[36m:[0m [34mnumber[0m[36m,[0m
+  2[36m:[0m [34mboolean[0m
+[36m}[0m
 granular% 
