@@ -8,7 +8,7 @@ module Fregot.Types.Value
     ) where
 
 import           Control.Arrow         ((>>>))
-import           Control.Lens          (review, (^.))
+import           Control.Lens          ((^.))
 import           Data.Either           (partitionEithers)
 import qualified Data.HashMap.Strict   as HMS
 import qualified Data.HashSet          as HS
@@ -50,7 +50,9 @@ inferValueF = \case
     V.NumberV _   -> number
     V.BoolV _     -> boolean
     V.NullV       -> null
-    V.ArrayV arr  -> arrayOf $ unions $ V.toList arr
+    V.ArrayV arr  ->
+        let static = HMS.fromList . zip [0 ..] $ V.toList arr in
+        array $ StaticDynamic static Nothing
     V.SetV set    -> setOf $ unions $ map inferValue $ HS.toList set
     V.ObjectV obj ->
         let (static, dynamic) = partitionEithers $ do
@@ -58,11 +60,9 @@ inferValueF = \case
                 pure $ case valueToScalar k of
                     Just s  -> Left (s, v)
                     Nothing -> Right (inferValue k, v) in
-        review singleton $ Object $ Obj
-            (HMS.fromList static)
-            (case dynamic of
-                []    -> Nothing
-                _ : _ -> Just (unions (map fst dynamic), unions (map snd dynamic)))
+        object . StaticDynamic (HMS.fromList static) $ case dynamic of
+            []    -> Nothing
+            _ : _ -> Just (unions (map fst dynamic), unions (map snd dynamic))
 
 valueToScalar :: V.Value -> Maybe Ast.Scalar
 valueToScalar = V.unValue >>> \case

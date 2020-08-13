@@ -42,7 +42,7 @@ module Fregot.Prepare.Ast
     , Sugar.WithPath (..)
     , With (..), withAnn, withPath, withAs
 
-    , Sugar.Scalar (..)
+    , Sugar.Scalar (..), Sugar._String, Sugar._Number, Sugar._Bool, Sugar._Null
 
       -- * Constructors and destructors
     , literal
