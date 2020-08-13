@@ -29,7 +29,7 @@ module Fregot.Types.Infer
     , inferTerm
     ) where
 
-import           Control.Lens                (forOf_, ifor_, review, view, (&),
+import           Control.Lens                (forOf_, ifor, ifor_, review, view, (&),
                                               (.~), (^.), (^?), _2)
 import           Control.Lens.Extras         (is)
 import           Control.Lens.TH             (makeLenses, makePrisms)
@@ -397,12 +397,14 @@ inferTerm (NameT source (QualifiedName key)) = do
                 , NonEmpty.singleton source
                 )
 
+inferTerm (ArrayT source []) =
+    pure (Types.arrayOf Types.unknown, NonEmpty.singleton source)
 inferTerm (ArrayT source items) = do
-    tys <- traverse (inferNonVoidTerm source) items
-    pure $ maybe
-        (Types.arrayOf Types.unknown, NonEmpty.singleton source)
-        (first Types.arrayOf . mergeSourceTypes)
-        (NonEmpty.fromList tys)
+    tys <- ifor items $ \i t -> (,) i . fst <$> inferNonVoidTerm source t
+    pure
+        ( Types.array $ Types.StaticDynamic (HMS.fromList tys) Nothing
+        , NonEmpty.singleton source
+        )
 
 inferTerm (SetT source items) = do
     tys <- traverse (inferNonVoidTerm source) items

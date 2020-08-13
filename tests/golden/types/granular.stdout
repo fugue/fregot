@@ -1,4 +1,4 @@
-repl% granular% people [36m:[0m [34marray[0m[36m{[0m[34mnumber[0m[36m:[0m [34mobject[0m[36m{[0m
+repl% granular% people [36m:[0m [34marray[0m[36m{[0m0[36m:[0m [34mobject[0m[36m{[0m
   [31m"name"[0m[36m:[0m [34mstring[0m[36m,[0m
   [31m"age"[0m[36m:[0m [34mnumber[0m[36m,[0m
   [31m"address"[0m[36m:[0m [34mobject[0m[36m{[0m
