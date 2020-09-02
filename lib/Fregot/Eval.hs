@@ -516,24 +516,37 @@ evalCompiledRule callerSource crule mbIndex
 evalRuleDefinition
     :: SourceSpan -> RuleDefinition SourceSpan -> Maybe Mu'
     -> EvalM (Maybe Value, Value)
-evalRuleDefinition callerSource rule mbIndex =
+evalRuleDefinition callerSource rule mbArg =
     clearLocals $ do
 
-    -- If the index of the rule is just a variable, we can assign it now which
-    -- may allow us to index directly into rules.
-    mbIdxVal <- case (mbIndex, rule ^. ruleIndex) of
-        (Just arg, Just tpl@(NameT _ _)) -> do
+        -- Optimization: If the index of the rule is just a variable or a
+        -- literal, we can assign it now which may allow us to index directly
+        -- into rules.  Not that not all terms are safe to evaluate, for some
+        -- e.g. `foo.bar` we need to wait until after the evaluation of the
+        -- body.
+    let safeToEval (NameT _ _)  = True
+        -- safeToEval (ValueT _ _) = True
+        safeToEval _            = False
+    mbArgVal <- case (mbArg, rule ^. ruleIndex) of
+        (Just arg, Just tpl) | safeToEval tpl -> do
             tplv <- evalTerm tpl
             void $ unify callerSource arg tplv
             pure $ Just tplv
         _ -> pure Nothing
 
     let ret mbRet = do
-            i <- case mbIdxVal of
-                Just val -> Just <$> ground (rule ^. ruleDefAnn) val
-                Nothing  -> case rule ^. ruleIndex of
-                    Nothing  -> pure Nothing
-                    Just idx -> Just <$> evalGroundTerm idx
+            i <- case rule ^. ruleIndex of
+                Nothing  -> pure Nothing
+                Just idx -> do
+                    case mbArg of
+                        Nothing -> Just <$> evalGroundTerm idx
+                        Just arg -> do
+                            -- Make sure to finally unify the given index (arg)
+                            -- against the computed index (idx).
+                            let argv = fromMaybe arg mbArgVal
+                            iv <- evalTerm idx
+                            void $ unify callerSource argv iv
+                            Just <$> ground (rule ^. ruleDefAnn) iv
             v <- case mbRet of
                 Nothing   -> pure $ fromMaybe true i
                 Just term -> evalGroundTerm term
