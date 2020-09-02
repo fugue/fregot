@@ -525,7 +525,7 @@ evalRuleDefinition callerSource rule mbArg =
         -- e.g. `foo.bar` we need to wait until after the evaluation of the
         -- body.
     let safeToEval (NameT _ _)  = True
-        -- safeToEval (ValueT _ _) = True
+        safeToEval (ValueT _ _) = True
         safeToEval _            = False
     mbArgVal <- case (mbArg, rule ^. ruleIndex) of
         (Just arg, Just tpl) | safeToEval tpl -> do
