@@ -1,5 +1,10 @@
 # CHANGELOG
 
+ -  0.12.3 (2020-09-02)
+     *  Fix a bug in indexing set rules using literal values.
+     *  Improve typing for arrays.  We allow more granular, per-index types
+        which is especially helpful when using arrays as tuples.
+
  -  0.12.2 (2020-08-07)
      *  Support using data imports as variables directly
 
