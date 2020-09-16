@@ -19,9 +19,6 @@ packages:
   original:
     hackage: jose-0.8.3
 - completed:
-    cabal-file:
-      size: 1314
-      sha256: fca4cbcd0681c9089225b2f1f2b338e88686c1ea53082c62f5c62062e9400f83
     name: goldplate
     version: 0.1.0
     git: https://github.com/fugue/goldplate.git
@@ -34,7 +31,7 @@ packages:
     commit: 0ac9d399eb7bcac810a1bf4d97ccc08fe6f39f39
 snapshots:
 - completed:
-    size: 491387
-    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/15/6.yaml
-    sha256: 8d81505a6de861e167a58534ab62330afb75bfa108735c7db1204f7ef2a39d79
-  original: lts-15.6
+    size: 532380
+    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/16/9.yaml
+    sha256: 14a7cec114424e4286adde73364438927a553ed248cc50f069a30a67e3ee1e69
+  original: lts-16.9

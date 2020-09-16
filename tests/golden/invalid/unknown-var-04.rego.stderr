@@ -1,8 +1,8 @@
-fregot ([34mrenamer error[0m):
+fregot (renamer error):
   "unknown-var-04.rego" (line 4, column 3):
   unknown function:
 
     4|   double(1, 2)
-         [31m^^^^^^^^^^^^[0m
+         ^^^^^^^^^^^^
 
   Function double is not defined.

@@ -1,15 +1,15 @@
 F u g u e   R E G O   T o o l k i t
 fregot v0.12.3 repl - use :help for usage info
 Set breakpoint at rewind.crashing_rule
-fregot ([34meval error[0m):
+fregot (eval error):
   "rewind.rego" (line 5, column 3):
   builtin type error:
 
     5|   x + input.msg with input as {"msg": "crash"}
-         [31m^^^^^^^^^^^^^[0m
+         ^^^^^^^^^^^^^
 
   Expected number but got string
 
   Stack trace:
-    rule [33m[35mrewind[0m[36m.[0mcrashing_rule[0m at data.rewind.crashing_rule:1:1
+    rule rewind.crashing_rule at data.rewind.crashing_rule:1:1
 Set breakpoint at rewind.failing_rule

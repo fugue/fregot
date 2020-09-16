@@ -1,33 +1,33 @@
-fregot ([34mrecursion check error[0m):
+fregot (recursion check error):
   "recursive-03.rego" (line 3, column 1):
   rules are recursive:
 
     3| foo {
-       [31m^^^[0m
+       ^^^
 
   These rules are mutually recursive:
-    [33mfoo[0m
-    [33mbar[0m
-    [33mqux[0m
+    foo
+    bar
+    qux
 
   "recursive-03.rego" (line 7, column 1):
   rules are recursive:
 
     7| bar {
-       [31m^^^[0m
+       ^^^
 
   These rules are mutually recursive:
-    [33mfoo[0m
-    [33mbar[0m
-    [33mqux[0m
+    foo
+    bar
+    qux
 
   "recursive-03.rego" (line 11, column 1):
   rules are recursive:
 
     11| qux {
-        [31m^^^[0m
+        ^^^
 
   These rules are mutually recursive:
-    [33mfoo[0m
-    [33mbar[0m
-    [33mqux[0m
+    foo
+    bar
+    qux

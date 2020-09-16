@@ -1,8 +1,8 @@
-fregot ([34mfatal parse error[0m):
+fregot (fatal parse error):
   "bad-import.rego" (line 3, column 8):
   parse failed:
 
     3| import wat.foo
-              [31m^[0m
+              ^
 
   unexpected wat.foo (imports should start with `data.` or `input.`)

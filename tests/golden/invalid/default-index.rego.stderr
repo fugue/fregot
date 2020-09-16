@@ -1,9 +1,9 @@
-fregot ([34mcompile error[0m):
+fregot (compile error):
   "default-index.rego" (line 5, column 1):
   complete definition mismatch:
 
     5| power_level[character] = level {
-       [31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
   generates an object
 
@@ -11,15 +11,15 @@ fregot ([34mcompile error[0m):
   complete definition mismatch:
 
     3| default power_level = 9001
-       [31m^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
   is a complete rule
 
-fregot ([34mtypecheck error[0m):
+fregot (typecheck error):
   "default-index.rego" (line 5, column 26):
   Unbound variables:
 
     5| power_level[character] = level {
-                                [31m^^^^^[0m
+                                ^^^^^
 
-  The variable [33mlevel[0m is referenced, but it is never assigned a value
+  The variable level is referenced, but it is never assigned a value
