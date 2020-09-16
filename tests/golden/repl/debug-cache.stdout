@@ -1,6 +1,6 @@
-repl% fregot.tests.repl.debug_cache% [36m=[0m [31mtrue[0m
+repl% fregot.tests.repl.debug_cache% = true
 fregot.tests.repl.debug_cache% fregot.tests.repl.debug_cache% 10|     allow with input as {"user": "bob"}
-        [32m^^^^^[0m
-fregot.tests.repl.debug_cache(debug)% [32m(debug)[0m [36m=[0m [31mtrue[0m
-[32m(debug)[0m finished
+        ^^^^^
+fregot.tests.repl.debug_cache(debug)% (debug) = true
+(debug) finished
 fregot.tests.repl.debug_cache% 

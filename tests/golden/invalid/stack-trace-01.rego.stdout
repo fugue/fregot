@@ -1,16 +1,16 @@
 passed: 0, failed: 0, errored: 1
 fregot.tests.invalid.stack_trace_01.test_stack_trace:
-fregot ([34meval error[0m):
+fregot (eval error):
   "stack-trace-01.rego" (line 5, column 3):
   builtin type error:
 
     5|   x + input.msg with input as {"msg": "crash"}
-         [31m^^^^^^^^^^^^^[0m
+         ^^^^^^^^^^^^^
 
   Expected number but got string
 
   Stack trace:
-    rule [33m[35mfregot[0m[36m.[0m[35mtests[0m[36m.[0m[35minvalid[0m[36m.[0m[35mstack_trace_01[0m[36m.[0mrule1[0m at stack-trace-01.rego:9:3
-    rule [33m[35mfregot[0m[36m.[0m[35mtests[0m[36m.[0m[35minvalid[0m[36m.[0m[35mstack_trace_01[0m[36m.[0mrule2[0m at stack-trace-01.rego:13:3
-    rule [33m[35mfregot[0m[36m.[0m[35mtests[0m[36m.[0m[35minvalid[0m[36m.[0m[35mstack_trace_01[0m[36m.[0mrule3[0m at stack-trace-01.rego:17:3
-    rule [33m[35mfregot[0m[36m.[0m[35mtests[0m[36m.[0m[35minvalid[0m[36m.[0m[35mstack_trace_01[0m[36m.[0mtest_stack_trace[0m at tests:1:1
+    rule fregot.tests.invalid.stack_trace_01.rule1 at stack-trace-01.rego:9:3
+    rule fregot.tests.invalid.stack_trace_01.rule2 at stack-trace-01.rego:13:3
+    rule fregot.tests.invalid.stack_trace_01.rule3 at stack-trace-01.rego:17:3
+    rule fregot.tests.invalid.stack_trace_01.test_stack_trace at tests:1:1

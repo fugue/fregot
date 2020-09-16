@@ -1,19 +1,19 @@
 passed: 0, failed: 0, errored: 1
 fregot.tests.invalid.obj_01.test_inconsistency:
-fregot ([34meval error[0m):
+fregot (eval error):
   "obj-01.rego" (line 7, column 3):
   inconsistent object:
 
     7|   inconsistent == {"hi": 1}
-         [31m^^^^^^^^^^^^[0m
+         ^^^^^^^^^^^^
 
   Object key-value pairs must be consistent, but got:
-    [31m1[0m
+    1
   And:
-    [31m2[0m
+    2
   For key:
-    [31m"hi"[0m
+    "hi"
 
   Stack trace:
-    rule [33m[35mfregot[0m[36m.[0m[35mtests[0m[36m.[0m[35minvalid[0m[36m.[0m[35mobj_01[0m[36m.[0minconsistent[0m at obj-01.rego:7:3
-    rule [33m[35mfregot[0m[36m.[0m[35mtests[0m[36m.[0m[35minvalid[0m[36m.[0m[35mobj_01[0m[36m.[0mtest_inconsistency[0m at tests:1:1
+    rule fregot.tests.invalid.obj_01.inconsistent at obj-01.rego:7:3
+    rule fregot.tests.invalid.obj_01.test_inconsistency at tests:1:1

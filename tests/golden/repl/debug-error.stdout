@@ -1,8 +1,8 @@
 repl% repl% 4|   x = 1
-     [32m^^^^^[0m
+     ^^^^^
 debug_error(debug)% 5|   x + input.msg with input as {"msg": "crash"}
-     [32m^^^^^^^^^^^^^[0m
-debug_error(debug)% [32m(debug)[0m error
-debug_error(error)% debug_error(error)% [36m=[0m [31m1[0m
-[36m|[0m x [36m=[0m [31m1[0m
+     ^^^^^^^^^^^^^
+debug_error(debug)% (debug) error
+debug_error(error)% debug_error(error)% = 1
+| x = 1
 debug_error(error)% repl% 

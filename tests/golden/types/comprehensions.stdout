@@ -1,20 +1,20 @@
-repl% [36m[[0mx [36m|[0m nums [36m=[0m [36m[[0m
-  [31m1[0m[36m,[0m
-  [31m2[0m[36m,[0m
-  [31m3[0m
-[36m][0m[36m;[0m x [36m=[0m nums[36m[[0m_[36m][0m[36m][0m [36m:[0m [34marray[0m[36m{[0m[34mnumber[0m[36m:[0m [34mnumber[0m[36m}[0m
-repl% [36m{[0mx [36m|[0m nums [36m=[0m [36m[[0m
-  [31m1[0m[36m,[0m
-  [31m2[0m[36m,[0m
-  [31m3[0m
-[36m][0m[36m;[0m x [36m=[0m nums[36m[[0m_[36m][0m[36m}[0m [36m:[0m [34mset[0m[36m{[0m[34mnumber[0m[36m}[0m
-repl% [36m{[0mk[36m:[0m v [36m|[0m nums [36m=[0m [36m[[0m
-  [31m1[0m[36m,[0m
-  [31m2[0m[36m,[0m
-  [31m3[0m
-[36m][0m[36m;[0m strs [36m=[0m [36m[[0m
-  [31m"one"[0m[36m,[0m
-  [31m"two"[0m[36m,[0m
-  [31m"three"[0m
-[36m][0m[36m;[0m v [36m=[0m nums[36m[[0m_[36m][0m[36m;[0m k [36m=[0m strs[36m[[0m_[36m][0m[36m}[0m [36m:[0m [34mobject[0m[36m{[0m[34mstring[0m[36m:[0m [34mnumber[0m[36m}[0m
+repl% [x | nums = [
+  1,
+  2,
+  3
+]; x = nums[_]] : array{number: number}
+repl% {x | nums = [
+  1,
+  2,
+  3
+]; x = nums[_]} : set{number}
+repl% {k: v | nums = [
+  1,
+  2,
+  3
+]; strs = [
+  "one",
+  "two",
+  "three"
+]; v = nums[_]; k = strs[_]} : object{string: number}
 repl% 

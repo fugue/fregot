@@ -1,2 +1,2 @@
-repl% repl% [36m=[0m [31m"sqlite.c"[0m
+repl% repl% = "sqlite.c"
 repl% 

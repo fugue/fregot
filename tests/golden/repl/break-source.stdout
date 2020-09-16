@@ -1,5 +1,5 @@
 repl% repl% 5|   true
-     [32m^^^^[0m
-step(debug)% [32m(debug)[0m [36m=[0m [31mtrue[0m
-[32m(debug)[0m finished
+     ^^^^
+step(debug)% (debug) = true
+(debug) finished
 repl% 

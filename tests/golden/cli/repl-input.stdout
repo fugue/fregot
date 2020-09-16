@@ -1,2 +1,2 @@
-repl% [36m=[0m [31m"Hello, world!"[0m
+repl% = "Hello, world!"
 repl% 
