@@ -58,7 +58,8 @@ main gopts opts = do
     replConfig <-
         (\c -> if opts ^. noHistoryFile
             then c {Repl._historyFile = Nothing}
-            else c) <$>
+            else c) .
+        (\c -> c {Repl._verbosity = gopts ^. verbosity}) <$>
         Repl.defaultConfig
 
     FileWatch.withHandle (FileWatch.Config (opts ^. watch)) $ \fileWatch ->

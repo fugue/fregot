@@ -2,7 +2,11 @@
 module Fregot.Main.GlobalOptions
     ( Format (..)
 
-    , GlobalOptions (..), dumpTags, format
+    , Verbosity
+    , silentVerbosity
+    , defaultVerbosity
+
+    , GlobalOptions (..), dumpTags, format, verbosity
     , parseGlobalOptions
 
     , inputPath
@@ -18,9 +22,18 @@ data Format
     | Json
     deriving (Bounded, Enum, Show)
 
+newtype Verbosity = Verbosity Int deriving (Eq, Ord, Read, Show)
+
+silentVerbosity :: Verbosity
+silentVerbosity = Verbosity 0
+
+defaultVerbosity :: Verbosity
+defaultVerbosity = Verbosity 1
+
 data GlobalOptions = GlobalOptions
-    { _dumpTags :: Dump.Tags
-    , _format   :: Format
+    { _dumpTags  :: Dump.Tags
+    , _format    :: Format
+    , _verbosity :: Verbosity
     } deriving (Show)
 
 $(makeLenses ''GlobalOptions)
@@ -41,6 +54,12 @@ parseGlobalOptions = GlobalOptions
             OA.long "format" <>
             OA.metavar "FORMAT" <>
             OA.help "Format for error messages and diagnostics" <>
+            OA.hidden)
+    <*> OA.option (Verbosity <$> OA.auto) (
+            OA.value defaultVerbosity <>
+            OA.short 'v' <>
+            OA.long "verbosity" <>
+            OA.metavar "VERBOSITY" <>
             OA.hidden)
 
 inputPath :: OA.Parser (Maybe FilePath)

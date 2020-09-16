@@ -45,6 +45,8 @@ import qualified Fregot.Error                      as Error
 import qualified Fregot.Error.Stack                as Stack
 import qualified Fregot.Eval                       as Eval
 import qualified Fregot.Eval.Value                 as Eval
+import           Fregot.Main.GlobalOptions         (Verbosity, defaultVerbosity,
+                                                    silentVerbosity)
 import qualified Fregot.Interpreter                as Interpreter
 import           Fregot.Names
 import qualified Fregot.Parser                     as Parser
@@ -81,7 +83,8 @@ data StepTo
     | StepOver    Stack.StackTrace
 
 data Config = Config
-    { _historyFile   :: !(Maybe FilePath)
+    { _verbosity     :: !Verbosity
+    , _historyFile   :: !(Maybe FilePath)
     , _resumeHistory :: !Int
     } deriving (Show)
 
@@ -122,7 +125,7 @@ $(makeLenses ''MetaCommand)
 defaultConfig :: IO Config
 defaultConfig = do
     home <- Directory.getHomeDirectory
-    pure $ Config (Just $ home </> ".fregot.repl") 10
+    pure $ Config defaultVerbosity (Just $ home </> ".fregot.repl") 10
 
 withHandle
     :: Config
@@ -358,12 +361,16 @@ run h = do
         more p0 line = case Multiline.feed p0 (T.pack line) of
             Multiline.Complete txt -> return $ Just txt
             Multiline.Partial  p1  -> do
-                mbNextLine <- Hl.getInputLine "  "
+                mbNextLine <- Hl.getInputLine $
+                    if h ^. config . verbosity == silentVerbosity
+                        then ""
+                        else "  "
                 case mbNextLine of
                     Nothing       -> return $ Just $ Multiline.finish p1
                     Just nextLine -> more p1 nextLine
 
 getPrompt :: Handle -> IO String
+getPrompt h | h ^. config . verbosity == silentVerbosity = pure ""
 getPrompt h = do
     pkg   <- readFocusedPackage h
     emode <- IORef.readIORef (h ^. mode)
