@@ -1,7 +1,7 @@
 {
     "input_files": "*.rego",
     "command": "fregot",
-    "arguments": ["test", "${GOLDPLATE_INPUT_NAME}.rego"],
+    "arguments": ["--dump", "opt", "test", "${GOLDPLATE_INPUT_NAME}.rego"],
     "asserts": [
         {"exit_code": 0},
         {"stderr": "${GOLDPLATE_INPUT_NAME}.stderr"}
