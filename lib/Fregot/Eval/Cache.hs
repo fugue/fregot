@@ -10,7 +10,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 module Fregot.Eval.Cache
     ( Version
-    , Cache
+    , Cache, enabled
     , new
     , bump
     , disable

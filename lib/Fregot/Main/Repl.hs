@@ -29,6 +29,7 @@ data Options = Options
     { _input         :: Maybe FilePath
     , _watch         :: Bool
     , _noHistoryFile :: Bool
+    , _opt           :: Bool
     , _paths         :: [DestinationPrefix FilePath]
     } deriving (Show)
 
@@ -45,6 +46,10 @@ parseOptions = Options
             OA.long "no-history-file" <>
             OA.hidden <>
             OA.help "Don't save repl history to a file")
+    <*> (OA.switch $
+            OA.short 'O' <>
+            OA.hidden <>
+            OA.help "Turn on optimizations when debugging")
     <*> (OA.many $ fmap parseDestinationPrefix $ OA.strArgument $
             OA.metavar "PATHS" <>
             OA.help    "Rego files or directories to load into repl")
@@ -52,7 +57,12 @@ parseOptions = Options
 main :: GlobalOptions -> Options -> IO ExitCode
 main gopts opts = do
     sources     <- Sources.newHandle
-    itpr        <- Interpreter.newHandle (gopts ^. dumpTags) sources
+    itpr        <- Interpreter.newHandle
+        (Interpreter.defaultConfig
+            { Interpreter._opt      = opts ^. opt
+            , Interpreter._dumpTags = gopts ^. dumpTags
+            })
+        sources
     regoPaths   <- Find.findPrefixedRegoFiles (opts ^. paths)
 
     replConfig <-

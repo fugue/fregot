@@ -43,7 +43,9 @@ parseOptions = Options
 main :: GlobalOptions -> Options -> IO ExitCode
 main gopts opts = do
     sources <- Sources.newHandle
-    interpreter <- Interpreter.newHandle (gopts ^. dumpTags) sources
+    interpreter <- Interpreter.newHandle
+        (Interpreter.defaultConfig {Interpreter._dumpTags = gopts ^. dumpTags})
+        sources
     regoPaths <- concat <$> traverse Find.findRegoFiles (opts ^. paths)
     (errors, _) <- Parachute.runParachuteT $ do
         forM_ regoPaths $ \path -> Interpreter.loadModule interpreter

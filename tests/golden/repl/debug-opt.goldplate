@@ -1,0 +1,31 @@
+{
+    "notes": [
+        "This actually takes more steps than `debug-noopt` since we fully",
+        "calculate the indexed comprehension!  But that is what we're testing."
+    ],
+    "command": "fregot",
+    "arguments": ["repl", "-O", "--no-history-file"],
+    "asserts": [
+        {"exit_code": 0},
+        {"stderr": "${GOLDPLATE_NAME}.stderr"},
+        {"stdout": "${GOLDPLATE_NAME}.stdout"}
+    ],
+    "stdin": [
+        ":load ../opt/comprehension-index.rego",
+        ":break exposed_ports_by_interface",
+        "access_twice {exposed_ports_by_interface[\"eth0\"]; exposed_ports_by_interface[\"lo1\"]}",
+        "access_twice",
+        ":next",
+        ":next",
+        "mock_input.exposed[j].port",
+        ":next",
+        "mock_input.exposed[j].port",
+        ":next",
+        "mock_input.exposed[j].port",
+        ":next",
+        "mock_input.exposed[j].port",
+        ":next",
+        ":next",
+        ":next"
+    ]
+}

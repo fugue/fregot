@@ -344,6 +344,16 @@ here, you can do a number of things:
  -  Use [`:where`](#where) to see your current location.
  -  Use [`:quit`](#quit) to exit debugging mode. Use `:quit` again to exit the REPL.
 
+#### Debugging notes
+
+ -  By default, `fregot` turns off optimizations when debugging.  This allows
+    you to more naturally follow what the code is doing.  However, this may get
+    in your way when trying to debug complex queries that take too long to
+    execute without optimizations.
+
+    To explicitly turn on optimizations (even while debugging), use
+    `fregot repl -O`.
+
 REPL Usage
 ----------
 

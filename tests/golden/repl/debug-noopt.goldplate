@@ -1,0 +1,29 @@
+{
+    "command": "fregot",
+    "arguments": ["repl", "--no-history-file"],
+    "notes": [
+        "This actually takes fewer steps than `debug-opt` since we don't fully",
+        "calculate the indexed comprehension."
+    ],
+    "asserts": [
+        {"exit_code": 0},
+        {"stderr": "${GOLDPLATE_NAME}.stderr"},
+        {"stdout": "${GOLDPLATE_NAME}.stdout"}
+    ],
+    "stdin": [
+        ":load ../opt/comprehension-index.rego",
+        ":break exposed_ports_by_interface",
+        "access_twice {exposed_ports_by_interface[\"eth0\"]; exposed_ports_by_interface[\"lo1\"]}",
+        "access_twice",
+        ":next",
+        ":next",
+        "mock_input.exposed[j].port",
+        ":next",
+        "mock_input.exposed[j].port",
+        ":next",
+        ":next",
+        ":next",
+        ":next",
+        ":next"
+    ]
+}
