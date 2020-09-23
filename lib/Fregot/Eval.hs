@@ -675,18 +675,24 @@ evalStatement (AssignS source x y) = suspend source $ do
     return muTrue
 evalStatement (TermS e) = suspend (e ^. termAnn) (evalTerm e)
 evalStatement (IndexedCompS source comp) = do
-    -- Evaluate the entire thing.
-    !index <- evalIndexedComprehension source comp
-    keyVals <- forM (comp ^. indexedKeys) (evalVar source >=> ground source)
-    let !collection = case HMS.lookup keyVals index of
+    cache <- view comprehensionCache
+    collection <- if cache ^. Cache.enabled then do
+        -- Evaluate the entire thing.
+        !index <- evalIndexedComprehension source comp
+        keyVals <- forM (comp ^. indexedKeys) (evalVar source >=> ground source)
+        pure $ case HMS.lookup keyVals index of
             Just mu -> mu
             Nothing -> muValueF $ case comp ^. indexedComprehension of
                 ArrayComp  _ _   -> ArrayV  V.empty
                 SetComp    _ _   -> SetV    HS.empty
                 ObjectComp _ _ _ -> ObjectV HMS.empty
+        else do
+            -- Cache not enabled, use normal evaluation.
+            evalComprehension source (comp ^. indexedComprehension)
     iv <- toInstVar (comp ^. indexedAssignee)
     _  <- unify source (Mu (FreeM iv)) collection
     return muTrue
+
 
 unify :: SourceSpan -> Mu' -> Mu' -> EvalM Mu'
 unify _source (Mu WildcardM) y = return y

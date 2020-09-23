@@ -25,7 +25,8 @@ tests :: Tasty.TestTree
 tests = Tasty.testGroup "Fregot.Interpreter.Tests"
     [ Tasty.testCase "insertBuiltin" $ do
         sources          <- Sources.newHandle
-        interpreter      <- Interpreter.newHandle mempty sources
+        interpreter      <- Interpreter.newHandle
+            Interpreter.defaultConfig sources
         (errs, mbResult) <- runParachuteT $ do
             Interpreter.insertBuiltin interpreter magicName magicImpl
             let input = "test.magic()"
