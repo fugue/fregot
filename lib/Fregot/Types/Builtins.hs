@@ -1,3 +1,10 @@
+{-|
+Copyright   : (c) 2020 Fugue, Inc.
+License     : Apache License, version 2.0
+Maintainer  : jasper@fugue.co
+Stability   : experimental
+Portability : POSIX
+-}
 -- Utilities and a very small DSL for typing Builtins.
 {-# LANGUAGE DataKinds      #-}
 {-# LANGUAGE GADTs          #-}

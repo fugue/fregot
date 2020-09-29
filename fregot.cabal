@@ -5,7 +5,7 @@ License:             Apache-2.0
 License-file:        LICENSE
 Author:              Jasper Van der Jeugt <jasper@fugue.co>
 Maintainer:          Jasper Van der Jeugt <jasper@fugue.co>
-Copyright:           2019 Fugue, Inc
+Copyright:           2020 Fugue, Inc
 Category:            Language
 Build-type:          Simple
 Cabal-version:       1.18

@@ -1,4 +1,12 @@
--- | Utility parsing module.
+{-|
+Copyright   : (c) 2020 Fugue, Inc.
+License     : Apache License, version 2.0
+Maintainer  : jasper@fugue.co
+Stability   : experimental
+Portability : POSIX
+
+Utility parsing module.
+-}
 module Fregot.Repl.Parse
     ( parseRuleOrQuery
     ) where

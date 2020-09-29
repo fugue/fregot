@@ -1,5 +1,13 @@
--- | Prototype for ordering statements in faster way (rather than the insertion
--- sort we have now).
+{-|
+Copyright   : (c) 2020 Fugue, Inc.
+License     : Apache License, version 2.0
+Maintainer  : jasper@fugue.co
+Stability   : experimental
+Portability : POSIX
+
+Prototype for ordering statements in faster way (rather than the insertion sort
+we have now).
+-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell     #-}
 module Data.SafeVar

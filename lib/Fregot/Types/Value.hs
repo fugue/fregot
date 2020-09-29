@@ -1,4 +1,12 @@
--- | Inferring already-evaluated values.
+{-|
+Copyright   : (c) 2020 Fugue, Inc.
+License     : Apache License, version 2.0
+Maintainer  : jasper@fugue.co
+Stability   : experimental
+Portability : POSIX
+
+Inferring already-evaluated values.
+-}
 {-# LANGUAGE LambdaCase #-}
 module Fregot.Types.Value
     ( TypeContext

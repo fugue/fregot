@@ -1,13 +1,21 @@
--- | Simple ternary logic following Kleene's "strong logic of indeterminacy".
---
--- In Kleene logic, the knowledge of whether any particular unknown state
--- secretly represents true or false at any moment in time is not available.
---
--- However, you can still derive useful results from logical operations, even if
--- some operands are unknown.  For example:
---
--- > any [False, Unknown, True]    == True
--- > all [Unknown, Unknown, False] == False
+{-|
+Copyright   : (c) 2020 Fugue, Inc.
+License     : Apache License, version 2.0
+Maintainer  : jasper@fugue.co
+Stability   : experimental
+Portability : POSIX
+
+Simple ternary logic following Kleene's "strong logic of indeterminacy".
+
+In Kleene logic, the knowledge of whether any particular unknown state
+secretly represents true or false at any moment in time is not available.
+
+However, you can still derive useful results from logical operations, even if
+some operands are unknown.  For example:
+
+> any [False, Unknown, True]    == True
+> all [Unknown, Unknown, False] == False
+-}
 module Data.Kleene
     ( -- * Datatype
       Ternary (..)

@@ -1,4 +1,12 @@
--- | Find rego files in directories.
+{-|
+Copyright   : (c) 2020 Fugue, Inc.
+License     : Apache License, version 2.0
+Maintainer  : jasper@fugue.co
+Stability   : experimental
+Portability : POSIX
+
+Find rego files in directories.
+-}
 module Fregot.Find
     ( findRegoFiles
     , findPrefixedRegoFiles

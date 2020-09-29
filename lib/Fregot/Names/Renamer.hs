@@ -1,8 +1,16 @@
--- | This module optimistically renames name in a program to their fully
--- qualified versions.
---
--- This is not always possible, and at this phase, we don't know about local
--- variables yet (that happens later in the safe variable analysis).
+{-|
+Copyright   : (c) 2020 Fugue, Inc.
+License     : Apache License, version 2.0
+Maintainer  : jasper@fugue.co
+Stability   : experimental
+Portability : POSIX
+
+This module optimistically renames name in a program to their fully
+qualified versions.
+
+This is not always possible, and at this phase, we don't know about local
+variables yet (that happens later in the safe variable analysis).
+-}
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell   #-}
