@@ -1,11 +1,19 @@
--- | Cache rule result documents.
---
--- The base cache structure that we are using is defined in the 'Data.Cache'
--- module.  Here, we add a simple IO layer, and versioning.
---
--- The idea is that we can bump the "version" of the cache and get a completely
--- empty cache.  However, the old entries are still available for parts of the
--- program that have a reference to the old version of the cache.
+{-|
+Copyright   : (c) 2020 Fugue, Inc.
+License     : Apache License, version 2.0
+Maintainer  : jasper@fugue.co
+Stability   : experimental
+Portability : POSIX
+
+Cache rule result documents.
+
+The base cache structure that we are using is defined in the 'Data.Cache'
+module.  Here, we add a simple IO layer, and versioning.
+
+The idea is that we can bump the "version" of the cache and get a completely
+empty cache.  However, the old entries are still available for parts of the
+program that have a reference to the old version of the cache.
+-}
 {-# LANGUAGE DeriveGeneric   #-}
 {-# LANGUAGE TemplateHaskell #-}
 module Fregot.Eval.Cache

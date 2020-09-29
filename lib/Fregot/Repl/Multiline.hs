@@ -1,8 +1,16 @@
--- | This module allows you to write something like:
---
--- > 1 + (
---
--- at the REPL, at which point we'll detect that the line is not yet completed.
+{-|
+Copyright   : (c) 2020 Fugue, Inc.
+License     : Apache License, version 2.0
+Maintainer  : jasper@fugue.co
+Stability   : experimental
+Portability : POSIX
+
+This module allows you to write something like:
+
+> 1 + (
+
+at the REPL, at which point we'll detect that the line is not yet completed.
+-}
 module Fregot.Repl.Multiline
     ( Multiline (..)
     , Partial

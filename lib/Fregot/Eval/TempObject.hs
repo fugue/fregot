@@ -1,5 +1,13 @@
--- | A module that allows us to build an object in an interleaved way, and check
--- for consistencies.  This is used for sets as well as objects.
+{-|
+Copyright   : (c) 2020 Fugue, Inc.
+License     : Apache License, version 2.0
+Maintainer  : jasper@fugue.co
+Stability   : experimental
+Portability : POSIX
+
+A module that allows us to build an object in an interleaved way, and check
+for consistencies.  This is used for sets as well as objects.
+-}
 {-# LANGUAGE OverloadedStrings #-}
 module Fregot.Eval.TempObject
     ( TempObject

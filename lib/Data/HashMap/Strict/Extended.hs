@@ -1,3 +1,10 @@
+{-|
+Copyright   : (c) 2020 Fugue, Inc.
+License     : Apache License, version 2.0
+Maintainer  : jasper@fugue.co
+Stability   : experimental
+Portability : POSIX
+-}
 {-# LANGUAGE Rank2Types #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 module Data.HashMap.Strict.Extended

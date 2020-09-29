@@ -1,7 +1,15 @@
--- | Works around two problems with 'Text.Printf.printf':
---
--- * It cannot take non-statically known number of arguments by default.
--- * Errors are not returned safely.
+{-|
+Copyright   : (c) 2020 Fugue, Inc.
+License     : Apache License, version 2.0
+Maintainer  : jasper@fugue.co
+Stability   : experimental
+Portability : POSIX
+
+Works around two problems with 'Text.Printf.printf':
+
+* It cannot take non-statically known number of arguments by default.
+* Errors are not returned safely.
+-}
 {-# LANGUAGE ConstraintKinds           #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE KindSignatures            #-}

@@ -1,4 +1,12 @@
--- | A more convenient representation of imports, collected under their aliases.
+{-|
+Copyright   : (c) 2020 Fugue, Inc.
+License     : Apache License, version 2.0
+Maintainer  : jasper@fugue.co
+Stability   : experimental
+Portability : POSIX
+
+A more convenient representation of imports, collected under their aliases.
+-}
 module Fregot.Names.Imports
     ( Imports
     , gatherImports

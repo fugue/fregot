@@ -1,3 +1,10 @@
+{-|
+Copyright   : (c) 2020 Fugue, Inc.
+License     : Apache License, version 2.0
+Maintainer  : jasper@fugue.co
+Stability   : experimental
+Portability : POSIX
+-}
 -- | Horrible DSL to be able to quickly construct syntax for use in tests.
 {-# LANGUAGE GADTs             #-}
 {-# LANGUAGE OverloadedStrings #-}

@@ -1,4 +1,12 @@
--- | Semantic pretty-printer
+{-|
+Copyright   : (c) 2020 Fugue, Inc.
+License     : Apache License, version 2.0
+Maintainer  : jasper@fugue.co
+Stability   : experimental
+Portability : POSIX
+
+Semantic pretty-printer
+-}
 {-# LANGUAGE DeriveGeneric #-}
 module Fregot.PrettyPrint.Sem
     ( Sem (..)
