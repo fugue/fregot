@@ -17,6 +17,7 @@ import           Control.Lens             ((^?))
 import qualified Data.Aeson               as A
 import qualified Data.HashMap.Strict      as HMS
 import qualified Data.HashSet             as HS
+import           Data.List                (sortOn)
 import qualified Data.Text                as T
 import           Fregot.Builtins.Internal
 import           Fregot.Names             (nameToText)
@@ -30,14 +31,18 @@ renderCapabilities builtins = A.object
     ]
 
 renderBuiltins :: Builtins m -> A.Value
-renderBuiltins = A.toJSON . map (uncurry renderBuiltin) . HMS.toList
+renderBuiltins = A.toJSON . map (uncurry renderBuiltin) .
+    sortOn (functionName . fst) . HMS.toList
+
+functionName :: Function -> T.Text
+functionName = \case
+    NamedFunction name  -> nameToText name
+    OperatorFunction op -> operatorName op
 
 renderBuiltin :: Function -> Builtin m -> A.Value
 renderBuiltin fn (Builtin bt _) = A.object $
     [ "decl" A..= renderDecl (Ty.btRepr bt)
-    , "name" A..= case fn of
-        NamedFunction name  -> A.toJSON $ nameToText name
-        OperatorFunction op -> A.toJSON $ operatorName op
+    , "name" A..= functionName fn
     ] ++ case fn of
         NamedFunction    _  -> []
         OperatorFunction op -> ["infix" A..= binOpToText op]
