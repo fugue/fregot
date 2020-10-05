@@ -7,10 +7,12 @@ install:
 
 .PHONY: test
 test:
-	fregot test tests/rego                                  # Rego tests
-	fregot test examples/ami_id                             # AMI ID example
-	fregot test examples/break_example                      # Breakpoint example
-	goldplate -j2 --pretty-diff tests/golden  # Golden tests
+	fregot test tests/rego                              # Rego tests
+	fregot test examples/ami_id                         # AMI ID example
+	fregot test examples/break_example                  # Breakpoint example
+	goldplate -j2 --pretty-diff tests/golden            # Golden tests
+	fregot capabilities | jq --sort-keys '.' | \
+	  diff - extra/capabilities-$(FREGOT_VERSION).json  # Capabilities doc
 
 extra/capabilities-$(FREGOT_VERSION).json: fregot.cabal
 	fregot capabilities | jq --sort-keys '.' >$@
