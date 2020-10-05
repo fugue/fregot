@@ -38,13 +38,12 @@ module Fregot.Builtins.Internal
     , ReadyBuiltin
     , arity
 
-    , Function (..)
-
     , BuiltinM
     , throwDoc
     , throwString
     , eitherToBuiltinM
 
+    , Function (..)
     , Builtins
     ) where
 

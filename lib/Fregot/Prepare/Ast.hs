@@ -55,12 +55,14 @@ module Fregot.Prepare.Ast
     , literal
     , unRefT
     , termToRule
+    , binOpToText
     ) where
 
 import           Control.Lens              (review, (^.))
 import           Control.Lens.TH           (makeLenses, makePrisms)
 import           Data.Hashable             (Hashable)
 import qualified Data.List                 as L
+import qualified Data.Text                 as T
 import           Data.Unique               (Unique)
 import           Fregot.Eval.Value         (Value)
 import           Fregot.Names
@@ -291,19 +293,7 @@ instance PP.Pretty PP.Sem Function where
     pretty (OperatorFunction o) = PP.pretty o
 
 instance PP.Pretty PP.Sem BinOp where
-    pretty = PP.punctuation . \case
-        NotEqualO           -> "!="
-        LessThanO           -> "<"
-        LessThanOrEqualO    -> "<="
-        GreaterThanO        -> ">"
-        GreaterThanOrEqualO -> ">="
-        PlusO               -> "+"
-        MinusO              -> "-"
-        TimesO              -> "*"
-        DivideO             -> "/"
-        ModuloO             -> "%"
-        BinAndO             -> "&"
-        BinOrO              -> "|"
+    pretty = PP.punctuation . PP.pretty . binOpToText
 
 instance PP.Pretty PP.Sem (With a) where
     pretty with = PP.keyword "with" <+>
@@ -344,3 +334,18 @@ termToRule source pkgname var t = Rule
         , _ruleElses      = []
         }
     }
+
+binOpToText :: BinOp -> T.Text
+binOpToText = \case
+    NotEqualO           -> "!="
+    LessThanO           -> "<"
+    LessThanOrEqualO    -> "<="
+    GreaterThanO        -> ">"
+    GreaterThanOrEqualO -> ">="
+    PlusO               -> "+"
+    MinusO              -> "-"
+    TimesO              -> "*"
+    DivideO             -> "/"
+    ModuloO             -> "%"
+    BinAndO             -> "&"
+    BinOrO              -> "|"
