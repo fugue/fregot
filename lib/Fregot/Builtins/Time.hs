@@ -49,13 +49,11 @@ nsToUtc ns =
 
 builtin_time_now_ns :: Monad m => Builtin m
 builtin_time_now_ns = Builtin
-    Out
     (Ty.out Ty.number) $ pure $
     \Nil -> review Number.int . utcToNs <$> liftIO Time.getCurrentTime
 
 builtin_time_date :: Monad m => Builtin m
 builtin_time_date = Builtin
-    (In Out)
     (Ty.number 🡒 Ty.out (Ty.arrayOf Ty.number)) $ pure $
     \(Cons ns Nil) ->
     let utc       = nsToUtc ns
@@ -64,7 +62,6 @@ builtin_time_date = Builtin
 
 builtin_time_parse_rfc3339_ns :: Monad m => Builtin m
 builtin_time_parse_rfc3339_ns = Builtin
-    (In Out)
     (Ty.string 🡒 Ty.out Ty.number) $ pure $
     \(Cons txt Nil) -> case Time.RFC3339.parseTimeRFC3339 txt of
         Just zoned -> return $! utcToNs $ Time.zonedTimeToUTC zoned

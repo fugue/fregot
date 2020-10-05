@@ -51,7 +51,6 @@ inferEnv = Types.emptyInferEnv & Types.ieBuiltins .~
   where
     builtin_add :: Monad m => B.Builtin m
     builtin_add = B.Builtin
-        (B.In (B.In B.Out))
         (Ty.number 🡒 Ty.number 🡒 Ty.out Ty.number) $ return $
         \(B.Cons x (B.Cons y B.Nil)) ->
         return ((x :: Number) + (y :: Number) :: Number)

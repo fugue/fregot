@@ -77,6 +77,7 @@ import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources.SourceSpan (SourceSpan)
 import           Fregot.Tree               (Tree)
 import qualified Fregot.Tree               as Tree
+import qualified Fregot.Types.Builtins     as Types
 import           Fregot.Types.Rule         (RuleType (..))
 
 ground :: SourceSpan -> Mu' -> EvalM Value
@@ -290,7 +291,7 @@ evalVar _source v = do
 
 
 evalBuiltin :: SourceSpan -> Builtin Identity -> [Mu'] -> EvalM Value
-evalBuiltin source builtin@(Builtin sig _ (Identity impl)) args0 = do
+evalBuiltin source builtin@(Builtin ty (Identity impl)) args0 = do
     -- There are two possible scenarios if we have an N-ary function, e.g.:
     --
     --     add(x, y) = z {
@@ -307,7 +308,7 @@ evalBuiltin source builtin@(Builtin sig _ (Identity impl)) args0 = do
             "arguments but got" <+> PP.pretty n
 
     args2 <- mapM (ground source) args1
-    args3 <- case toArgs sig args2 of
+    args3 <- case toArgs (Types.btRepr ty) args2 of
         Left err -> raise' source "builtin type error" $ PP.pretty err
         Right x  -> return x
 

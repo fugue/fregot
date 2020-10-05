@@ -51,6 +51,5 @@ tests = Tasty.testGroup "Fregot.Interpreter.Tests"
 
     magicImpl :: B.Builtin Identity
     magicImpl = B.Builtin
-        B.Out
         (Types.out Types.number) $
         pure $ \B.Nil -> return $! review Number.int 101

@@ -33,11 +33,11 @@ builtins = HMS.fromList
     ]
 
 encode :: Applicative m => (B.ByteString -> B.ByteString) -> Builtin m
-encode f = Builtin (In Out)
+encode f = Builtin
     (Ty.string 🡒 Ty.out Ty.string) $ pure $
     \(Cons text Nil) -> pure . T.decodeUtf8 . f $! T.encodeUtf8 text
 
 decode :: Applicative m => (B.ByteString -> B.ByteString) -> Builtin m
-decode f = Builtin (In Out)
+decode f = Builtin
     (Ty.string 🡒 Ty.out Ty.string) $ pure $
     \(Cons t Nil) -> pure . T.decodeUtf8 . f $! T.encodeUtf8 t
