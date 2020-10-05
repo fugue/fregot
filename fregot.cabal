@@ -29,6 +29,7 @@ Library
     Fregot.Builtins.Jwt
     Fregot.Builtins.Regex
     Fregot.Builtins.Time
+    Fregot.Capabilities
     Fregot.Compile.Graph
     Fregot.Compile.Order
     Fregot.Compile.Package
@@ -56,6 +57,7 @@ Library
     Fregot.Lexer.String
     Fregot.Main
     Fregot.Main.Bundle
+    Fregot.Main.Capabilities
     Fregot.Main.Eval
     Fregot.Main.GlobalOptions
     Fregot.Main.Repl

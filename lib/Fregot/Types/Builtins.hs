@@ -14,6 +14,8 @@ Portability : POSIX
 {-# LANGUAGE TypeOperators  #-}
 module Fregot.Types.Builtins
     ( TypeRepr (..)
+    , unTypeRepr
+
     , BuiltinChecker (..)
     , BuiltinType (..)
     , out
@@ -26,6 +28,11 @@ import           Fregot.Types.Internal
 data TypeRepr (i :: [*]) (o :: *) where
     Out :: ToVal o   => Type -> TypeRepr '[] o
     In  :: FromVal a => Type -> TypeRepr i o -> TypeRepr (a ': i) o
+
+-- | Deconstruct a 'TypeRepr' to a list of arguments and the return type.
+unTypeRepr :: TypeRepr i o -> ([Type], Type)
+unTypeRepr (Out ty)   = ([], ty)
+unTypeRepr (In ty tr) = let (args, ret) = unTypeRepr tr in (ty : args, ret)
 
 data BuiltinChecker m = BuiltinChecker
     { bcUnify    :: Type -> Type -> m Type
