@@ -628,15 +628,15 @@ inferBuiltin
     :: SourceSpan
     -> Function -> Builtin Proxy -> [Term SourceSpan]
     -> InferM SourceType
-inferBuiltin source name builtin@(Builtin.Builtin sig ty _) args =
+inferBuiltin source name builtin@(Builtin.Builtin ty _) args =
     inferCall source name arity args $ \inferredArgs -> do
-        inTypes <- toInTypes sig $ fmap fst inferredArgs
-        ty checker inTypes
+        inTypes <- toActualTypeRepr (B.btRepr ty) $ fmap fst inferredArgs
+        B.btCheck ty checker inTypes
   where
-    toInTypes :: Builtin.Sig j o -> [Type] -> InferM (B.InTypes j)
-    toInTypes Builtin.Out    _        = pure B.Nil
-    toInTypes (Builtin.In s) (t : ts) = B.Cons t <$> toInTypes s ts
-    toInTypes (Builtin.In _) []       =
+    toActualTypeRepr :: B.TypeRepr j o -> [Type] -> InferM (B.TypeRepr j o)
+    toActualTypeRepr (B.Out _)  _        = pure $ B.Out Types.unknown
+    toActualTypeRepr (B.In _ s) (t : ts) = B.In t <$> toActualTypeRepr s ts
+    toActualTypeRepr (B.In _ _) []       =
         fatal $ InternalError "internal arity mismatch for inTypes"
 
     arity = Builtin.arity builtin

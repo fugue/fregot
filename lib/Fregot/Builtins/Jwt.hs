@@ -74,14 +74,14 @@ runJwsM mx = liftIO (runExceptT mx) >>=
     either (\e -> throwString $ "JWS error: " ++ show e) pure
 
 builtin_encode_sign :: Applicative m => Builtin m
-builtin_encode_sign = Builtin (In (In (In Out)))
+builtin_encode_sign = Builtin
     (Ty.any 🡒 Ty.any 🡒 Ty.any 🡒 Ty.out (Ty.string)) $ pure $
     \(Cons (Headers header) (Cons (Payload payload) (Cons (Key key) Nil))) -> do
     signed <- runJwsM $ Jwt.signClaims key header payload
     pure . TL.toStrict . TL.decodeUtf8 $! Jwt.encodeCompact signed
 
 builtin_decode :: Applicative m => Builtin m
-builtin_decode = Builtin (In Out)
+builtin_decode = Builtin
     (Ty.string 🡒 Ty.out (Ty.arrayOf Ty.unknown)) $ pure $
     \(Cons t Nil) -> do
     -- Decode the compact representation.
@@ -166,7 +166,7 @@ instance Aeson.FromJSON Constraints where
         <*> parseValidationSettings obj
 
 builtin_decode_verify :: Applicative m => Builtin m
-builtin_decode_verify = Builtin (In (In Out))
+builtin_decode_verify = Builtin
     (Ty.string 🡒 Ty.any 🡒 Ty.out (Ty.arrayOf Ty.unknown)) $ pure $
     \(Cons t (Cons (Constraints jwk mbTime valSettings) Nil)) -> do
     jws <- runJwsM . Jwt.decodeCompact . TL.encodeUtf8 $! TL.fromStrict t

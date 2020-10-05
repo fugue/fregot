@@ -20,8 +20,6 @@ module Fregot.Builtins
     ( ToVal (..)
     , FromVal (..)
 
-    , Sig (..)
-
     , Args (..)
     , toArgs
 

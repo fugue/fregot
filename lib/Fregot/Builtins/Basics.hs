@@ -111,7 +111,6 @@ builtins = HMS.fromList
 
 builtin_all :: Monad m => Builtin m
 builtin_all = Builtin
-    (In Out)
     (Ty.collectionOf Ty.boolean 🡒 Ty.out Ty.boolean) $ pure $
     \(Cons arg Nil) -> case arg of
         InL arr -> return $! all (== Value (BoolV True)) (arr :: V.Vector Value)
@@ -119,7 +118,6 @@ builtin_all = Builtin
 
 builtin_any :: Monad m => Builtin m
 builtin_any = Builtin
-    (In Out)
     (Ty.collectionOf Ty.boolean 🡒 Ty.out Ty.boolean) $ pure $
     \(Cons arg Nil) -> case arg of
         InL arr -> return $! any (== Value (BoolV True)) (arr :: V.Vector Value)
@@ -127,14 +125,12 @@ builtin_any = Builtin
 
 builtin_array_concat :: Monad m => Builtin m
 builtin_array_concat = Builtin
-    (In (In Out))
     -- TODO(jaspervdj): We want `∀a b. array<a> -> array<b> -> array<a|b>`.
     (Ty.arrayOf Ty.any 🡒 Ty.arrayOf Ty.any 🡒 Ty.out Ty.unknown) $ pure $
     \(Cons l (Cons r Nil)) -> return (l <> r :: V.Vector Value)
 
 builtin_array_slice :: Monad m => Builtin m
 builtin_array_slice = Builtin
-    (In (In (In Out)))
     (Ty.arrayOf Ty.any 🡒  Ty.number 🡒  Ty.number 🡒 Ty.out (Ty.arrayOf Ty.unknown)) $ pure $
     \(Cons arr (Cons a (Cons b Nil))) -> return $! let
         start = max a 0
@@ -145,20 +141,17 @@ builtin_array_slice = Builtin
 
 builtin_concat :: Monad m => Builtin m
 builtin_concat = Builtin
-    (In (In Out))
     (Ty.string 🡒 Ty.collectionOf Ty.string 🡒 Ty.out Ty.string) $ pure $
     \(Cons delim (Cons (Values texts) Nil)) ->
     return $! T.intercalate delim texts
 
 builtin_contains :: Monad m => Builtin m
 builtin_contains = Builtin
-    (In (In Out))
     (Ty.string 🡒 Ty.string 🡒 Ty.out Ty.boolean) $ pure $
     \(Cons str (Cons search Nil)) -> return $! search `T.isInfixOf` str
 
 builtin_count :: Monad m => Builtin m
 builtin_count = Builtin
-    (In Out)
     (Ty.collectionOf Ty.any ∪ Ty.string 🡒 Ty.out Ty.number) $ pure $
     \(Cons countee Nil) -> case countee of
         InL (Values c) -> return $! length (c :: [Value])
@@ -166,20 +159,17 @@ builtin_count = Builtin
 
 builtin_endswith :: Monad m => Builtin m
 builtin_endswith = Builtin
-    (In (In Out))
     (Ty.string 🡒 Ty.string 🡒 Ty.out Ty.boolean) $ pure $
     \(Cons str (Cons suffix Nil)) -> return $! suffix `T.isSuffixOf` str
 
 builtin_format_int :: Monad m => Builtin m
 builtin_format_int = Builtin
-    (In (In Out))
     (Ty.number 🡒 Ty.number 🡒 Ty.out Ty.string) $ pure $
     \(Cons x (Cons base Nil)) ->
     return $! T.pack $ showIntAtBase base intToDigit (x :: Int) ""
 
 builtin_indexof :: Monad m => Builtin m
 builtin_indexof = Builtin
-    (In (In Out))
     (Ty.string 🡒 Ty.string 🡒 Ty.out Ty.number) $ pure $
     \(Cons haystack (Cons needle Nil)) ->
     let (prefix, match) = T.breakOn needle haystack in
@@ -190,7 +180,6 @@ builtin_indexof = Builtin
 
 builtin_intersection :: Monad m => Builtin m
 builtin_intersection = Builtin
-    (In Out)
     -- TODO(jaspervdj): Maybe this should be `∀a. set<set<a>> -> set<a>`.
     (Ty.setOf (Ty.setOf Ty.any) 🡒 Ty.out (Ty.setOf Ty.unknown)) $ pure $
     \(Cons set Nil) -> return $! case HS.toList (set :: (HS.HashSet (HS.HashSet Value))) of
@@ -199,7 +188,6 @@ builtin_intersection = Builtin
 
 builtin_is_array :: Monad m => Builtin m
 builtin_is_array = Builtin
-    (In Out)
     (Ty.any 🡒 Ty.out Ty.boolean) $ pure $
     \(Cons val Nil) -> case unValue val of
         ArrayV _ -> return True
@@ -207,7 +195,6 @@ builtin_is_array = Builtin
 
 builtin_is_boolean :: Monad m => Builtin m
 builtin_is_boolean = Builtin
-    (In Out)
     (Ty.any 🡒 Ty.out Ty.boolean) $ pure $
     \(Cons val Nil) -> case unValue val of
         BoolV _ -> return True
@@ -215,7 +202,6 @@ builtin_is_boolean = Builtin
 
 builtin_is_number :: Monad m => Builtin m
 builtin_is_number = Builtin
-    (In Out)
     (Ty.any 🡒 Ty.out Ty.boolean) $ pure $
     \(Cons val Nil) -> case unValue val of
         NumberV _ -> return True
@@ -223,7 +209,6 @@ builtin_is_number = Builtin
 
 builtin_is_object :: Monad m => Builtin m
 builtin_is_object = Builtin
-    (In Out)
     (Ty.any 🡒 Ty.out Ty.boolean) $ pure $
     \(Cons val Nil) -> case unValue val of
         ObjectV _ -> return True
@@ -231,7 +216,6 @@ builtin_is_object = Builtin
 
 builtin_is_set :: Monad m => Builtin m
 builtin_is_set = Builtin
-    (In Out)
     (Ty.any 🡒 Ty.out Ty.boolean) $ pure $
     \(Cons val Nil) -> case unValue val of
         SetV _ -> return True
@@ -239,7 +223,6 @@ builtin_is_set = Builtin
 
 builtin_is_string :: Monad m => Builtin m
 builtin_is_string = Builtin
-    (In Out)
     (Ty.any 🡒 Ty.out Ty.boolean) $ pure $
     \(Cons val Nil) -> case unValue val of
         StringV _ -> return True
@@ -247,13 +230,11 @@ builtin_is_string = Builtin
 
 builtin_lower :: Monad m => Builtin m
 builtin_lower = Builtin
-    (In Out)
     (Ty.string 🡒 Ty.out Ty.string) $ pure $
     \(Cons str Nil) -> return $! T.toLower str
 
 builtin_max :: Monad m => Builtin m
 builtin_max = Builtin
-    (In Out)
     -- TODO(jaspervdj): More like `∀a. collection<a> -> a`.
     (Ty.collectionOf Ty.any 🡒 Ty.out Ty.unknown) $ pure $
     \(Cons (Values vals) Nil) -> return $! case vals of
@@ -262,7 +243,6 @@ builtin_max = Builtin
 
 builtin_min :: Monad m => Builtin m
 builtin_min = Builtin
-    (In Out)
     -- TODO(jaspervdj): More like `∀a. collection<a> -> a`.
     (Ty.collectionOf Ty.any 🡒 Ty.out Ty.unknown) $ pure $
     \(Cons (Values vals) Nil) -> return $! case vals of
@@ -271,7 +251,6 @@ builtin_min = Builtin
 
 builtin_object_filter :: Monad m => Builtin m
 builtin_object_filter = Builtin
-    (In (In Out))
     (Ty.objectOf Ty.any Ty.any 🡒
      Ty.arrayOf Ty.any ∪ Ty.setOf Ty.any ∪ Ty.objectOf Ty.any Ty.any 🡒
      Ty.out (Ty.objectOf Ty.any Ty.any)) $ pure $
@@ -280,7 +259,6 @@ builtin_object_filter = Builtin
 
 builtin_object_remove :: Monad m => Builtin m
 builtin_object_remove = Builtin
-    (In (In Out))
     (Ty.objectOf Ty.any Ty.any 🡒
      Ty.arrayOf Ty.any ∪ Ty.setOf Ty.any ∪ Ty.objectOf Ty.any Ty.any 🡒
      Ty.out (Ty.objectOf Ty.any Ty.any)) $ pure $
@@ -289,32 +267,27 @@ builtin_object_remove = Builtin
 
 builtin_product :: Monad m => Builtin m
 builtin_product = Builtin
-    (In Out)
     (Ty.collectionOf Ty.number 🡒 Ty.out Ty.number) $ pure $
     \(Cons (Values vals) Nil) -> return $! num $ product vals
 
 builtin_replace :: Monad m => Builtin m
 builtin_replace = Builtin
-    (In (In (In Out)))
     (Ty.string 🡒 Ty.string 🡒 Ty.string 🡒 Ty.out Ty.string) $ pure $
     \(Cons str (Cons old (Cons new Nil))) -> return $! T.replace old new str
 
 -- `set()` is OPA's constructor for an empty set, since `{}` is an empty object
 builtin_set :: Monad m => Builtin m
 builtin_set = Builtin
-    Out
     (Ty.out (Ty.setOf Ty.unknown)) $ pure $
     \Nil -> return $! Value $ SetV HS.empty
 
 builtin_split :: Monad m => Builtin m
 builtin_split = Builtin
-    (In (In Out))
     (Ty.string 🡒 Ty.string 🡒 Ty.out (Ty.arrayOf Ty.string)) $ pure $
     \(Cons str (Cons delim Nil)) -> return $! T.splitOn delim str
 
 builtin_sprintf :: Monad m => Builtin m
 builtin_sprintf = Builtin
-    (In (In Out))
     (Ty.string 🡒 Ty.arrayOf Ty.any 🡒 Ty.out Ty.string) $ pure $
     \(Cons format (Cons args Nil)) -> eitherToBuiltinM $
     fmap T.pack $ Printf.sprintf (T.unpack format) $
@@ -322,7 +295,6 @@ builtin_sprintf = Builtin
 
 builtin_substring :: Monad m => Builtin m
 builtin_substring = Builtin
-    (In (In (In Out)))
     (Ty.string 🡒 Ty.number 🡒 Ty.number 🡒 Ty.out Ty.string) $ pure $
     \(Cons str (Cons start (Cons len Nil))) ->
         return $!
@@ -331,26 +303,22 @@ builtin_substring = Builtin
 
 builtin_sum :: Monad m => Builtin m
 builtin_sum = Builtin
-    (In Out)
     (Ty.collectionOf Ty.number 🡒 Ty.out Ty.number) $ pure $
     \(Cons (Values vals) Nil) -> return $! num $ sum vals
 
 builtin_sort :: Monad m => Builtin m
 builtin_sort = Builtin
-    (In Out)
     -- TODO(jaspervdj): Something more akin to `∀a. collection<a> -> array<a>`.
     (Ty.collectionOf Ty.any 🡒 Ty.out (Ty.arrayOf Ty.unknown)) $ pure $
     \(Cons (Values vals) Nil) -> return $! L.sort (vals :: [Value])
 
 builtin_startswith :: Monad m => Builtin m
 builtin_startswith = Builtin
-    (In (In Out))
     (Ty.string 🡒 Ty.string 🡒 Ty.out Ty.boolean) $ pure $
     (\(Cons str (Cons prefix Nil)) -> return $! prefix `T.isPrefixOf` str)
 
 builtin_to_number :: Monad m => Builtin m
 builtin_to_number = Builtin
-    (In Out)
     (Ty.string 🡒 Ty.out Ty.number) $ pure $
     \(Cons txt Nil) ->
         let str = T.unpack txt
@@ -362,60 +330,52 @@ builtin_to_number = Builtin
             Just (Right d) -> return $ review Number.double d
 
 builtin_trace :: Monad m => Builtin m
-builtin_trace = Builtin (In Out)
+builtin_trace = Builtin
     (Ty.string 🡒 Ty.out Ty.void) $ pure $
     \(Cons txt Nil) -> liftIO (T.hPutStrLn IO.stderr txt) $> Value NullV
 
 builtin_trim :: Monad m => Builtin m
 builtin_trim = Builtin
-    (In (In Out))
     (Ty.string 🡒 Ty.string 🡒 Ty.out Ty.string) $ pure $
     \(Cons str (Cons cutset Nil)) ->
         return $! T.dropAround (\c -> T.any (== c) cutset) str
 
 builtin_trim_left :: Monad m => Builtin m
 builtin_trim_left = Builtin
-    (In (In Out))
     (Ty.string 🡒 Ty.string 🡒 Ty.out Ty.string) $ pure $
     \(Cons str (Cons cutset Nil)) ->
         return $! T.dropWhile (\c -> T.any (== c) cutset) str
 
 builtin_trim_prefix :: Monad m => Builtin m
 builtin_trim_prefix = Builtin
-    (In (In Out))
     (Ty.string 🡒 Ty.string 🡒 Ty.out Ty.string) $ pure $
     \(Cons str (Cons prefix Nil)) ->
         return $! fromMaybe str $ T.stripPrefix prefix str
 
 builtin_trim_right :: Monad m => Builtin m
 builtin_trim_right = Builtin
-    (In (In Out))
     (Ty.string 🡒 Ty.string 🡒 Ty.out Ty.string) $ pure $
     \(Cons str (Cons cutset Nil)) ->
         return $! T.dropWhileEnd (\c -> T.any (== c) cutset) str
 
 builtin_trim_suffix :: Monad m => Builtin m
 builtin_trim_suffix = Builtin
-    (In (In Out))
     (Ty.string 🡒 Ty.string 🡒 Ty.out Ty.string) $ pure $
     \(Cons str (Cons suffix Nil)) ->
         return $! fromMaybe str $ T.stripSuffix suffix str
 
 builtin_trim_space :: Monad m => Builtin m
 builtin_trim_space = Builtin
-    (In Out)
     (Ty.string 🡒 Ty.out Ty.string) $ pure $
     \(Cons str Nil) -> return $! T.dropAround isSpace str
 
 builtin_upper :: Monad m => Builtin m
 builtin_upper = Builtin
-    (In Out)
     (Ty.string 🡒 Ty.out Ty.string) $ pure $
     \(Cons str Nil) -> return $! T.toUpper str
 
 builtin_union :: Monad m => Builtin m
 builtin_union = Builtin
-    (In Out)
     -- TODO(jaspervdj): Maybe this should be `∀a. set<set<a>> -> set<a>`.
     (Ty.setOf (Ty.setOf Ty.any) 🡒 Ty.out (Ty.setOf Ty.unknown)) $ pure $
     \(Cons set Nil) ->
@@ -423,7 +383,6 @@ builtin_union = Builtin
 
 builtin_walk :: Monad m => Builtin m
 builtin_walk = Builtin
-    (In Out)
     -- TODO(jaspervdj): We could type this way better if we had proper "pair"
     -- array types.
     (Ty.any 🡒 Ty.out (Ty.arrayOf Ty.unknown)) $ pure $
@@ -439,54 +398,52 @@ builtin_walk = Builtin
 
 builtin_not_equal :: Monad m => Builtin m
 builtin_not_equal = Builtin
-  (In (In Out))
   (Ty.any 🡒 Ty.any 🡒 Ty.out Ty.boolean) $ pure $
   \(Cons x (Cons y Nil)) -> return $! Value $ BoolV $! x /= (y :: Value)
 
 builtin_less_than :: Monad m => Builtin m
 builtin_less_than = Builtin
-  (In (In Out))
   (Ty.number 🡒 Ty.number 🡒 Ty.out Ty.boolean) $ pure $
   \(Cons x (Cons y Nil)) -> return $! x < num y
 
 builtin_less_than_or_equal :: Monad m => Builtin m
 builtin_less_than_or_equal = Builtin
-  (In (In Out))
   (Ty.number 🡒 Ty.number 🡒 Ty.out Ty.boolean) $ pure $
   \(Cons x (Cons y Nil)) -> return $! x <= num y
 
 builtin_greater_than :: Monad m => Builtin m
 builtin_greater_than = Builtin
-  (In (In Out))
   (Ty.number 🡒 Ty.number 🡒 Ty.out Ty.boolean) $ pure $
   \(Cons x (Cons y Nil)) -> return $! x > num y
 
 builtin_greater_than_or_equal :: Monad m => Builtin m
 builtin_greater_than_or_equal = Builtin
-  (In (In Out))
   (Ty.number 🡒 Ty.number 🡒 Ty.out Ty.boolean) $ pure $
   \(Cons x (Cons y Nil)) -> return $! x >= num y
 
 builtin_plus :: Monad m => Builtin m
 builtin_plus = Builtin
-  (In (In Out))
   (Ty.number 🡒 Ty.number 🡒 Ty.out Ty.number) $ pure $
   \(Cons x (Cons y Nil)) -> return $! num $ x + y
 
 builtin_minus :: Monad m => Builtin m
 builtin_minus = Builtin
-  (In (In Out))
   -- TODO(jaspervdj): Maybe this should be `∀a. set<a> -> set<a> -> set<a>`.
-  (\c (Ty.Cons x (Ty.Cons y Ty.Nil)) ->
-    Ty.bcCatch c
-        (do
-            Ty.bcSubsetOf c x Ty.number
-            Ty.bcSubsetOf c y Ty.number
-            return Ty.number)
-        (do
-            Ty.bcSubsetOf c x $ Ty.setOf Ty.any
-            Ty.bcSubsetOf c y $ Ty.setOf Ty.any
-            return $ Ty.setOf Ty.unknown)) $ pure $
+  (Ty.BuiltinType
+      { Ty.btRepr =
+          Ty.In  (Ty.setOf Ty.any ∪ Ty.number) $
+          Ty.In  (Ty.setOf Ty.any ∪ Ty.number) $
+          Ty.Out (Ty.setOf Ty.any ∪ Ty.number)
+      , Ty.btCheck = \c (Ty.In x (Ty.In y (Ty.Out _))) -> Ty.bcCatch c
+            (do
+                Ty.bcSubsetOf c x Ty.number
+                Ty.bcSubsetOf c y Ty.number
+                return Ty.number)
+            (do
+                Ty.bcSubsetOf c x $ Ty.setOf Ty.any
+                Ty.bcSubsetOf c y $ Ty.setOf Ty.any
+                return $ Ty.setOf Ty.unknown)
+        }) $ pure $
   \(Cons x (Cons y Nil)) -> case (x, y) of
       (InL x', InL y') -> return $! Value $ NumberV $ num $ x' - y'
       (InR x', InR y') -> return $! Value $ SetV $ HS.difference (x' :: HS.HashSet Value) y'
@@ -495,32 +452,27 @@ builtin_minus = Builtin
 
 builtin_times :: Monad m => Builtin m
 builtin_times = Builtin
-  (In (In Out))
   (Ty.number 🡒 Ty.number 🡒 Ty.out Ty.number) $ pure $
   \(Cons x (Cons y Nil)) -> return $! num $ x * y
 
 builtin_divide :: Monad m => Builtin m
 builtin_divide = Builtin
-  (In (In Out))
   (Ty.number 🡒 Ty.number 🡒 Ty.out Ty.number) $ pure $
   \(Cons x (Cons y Nil)) -> return $! num $ x / y
 
 builtin_modulo :: Monad m => Builtin m
 builtin_modulo = Builtin
-  (In (In Out))
   (Ty.number 🡒 Ty.number 🡒 Ty.out Ty.number) $ pure $
   \(Cons x (Cons y Nil)) -> return $! x `Number.mod` y
 
 builtin_bin_and :: Monad m => Builtin m
 builtin_bin_and = Builtin
-  (In (In Out))
   -- TODO(jaspervdj): Maybe this should be `∀a. set<a> -> set<a> -> set<a>`.
   (Ty.setOf Ty.any 🡒 Ty.setOf Ty.any 🡒 Ty.out (Ty.setOf Ty.unknown)) $ pure $
   \(Cons x (Cons y Nil)) -> return $! Value $ SetV $ HS.intersection x y
 
 builtin_bin_or :: Monad m => Builtin m
 builtin_bin_or = Builtin
-  (In (In Out))
   -- TODO(jaspervdj): Maybe this should be `∀a. set<a> -> set<a> -> set<a>`.
   (Ty.setOf Ty.any 🡒 Ty.setOf Ty.any 🡒 Ty.out (Ty.setOf Ty.unknown)) $ pure $
   \(Cons x (Cons y Nil)) -> return $! Value $ SetV $ HS.union x y

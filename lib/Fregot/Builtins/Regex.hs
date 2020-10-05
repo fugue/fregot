@@ -34,7 +34,6 @@ builtins = HMS.fromList
 
 builtin_regex_split :: Builtin IO
 builtin_regex_split = Builtin
-    (In (In Out))
     (Ty.string 🡒 Ty.string 🡒 Ty.out (Ty.arrayOf Ty.string)) $ do
     cacheRef <- newIORef HMS.empty
     pure $
@@ -61,7 +60,6 @@ builtin_regex_split = Builtin
 
 builtin_re_match :: Builtin IO
 builtin_re_match = Builtin
-    (In (In Out))
     (Ty.string 🡒 Ty.string 🡒 Ty.out Ty.boolean) $ do
     cacheRef <- newIORef HMS.empty
     pure $
