@@ -148,7 +148,10 @@
           }
         ],
         "result": {
-          "type": "any"
+          "dynamic": {
+            "type": "any"
+          },
+          "type": "array"
         },
         "type": "function"
       },
