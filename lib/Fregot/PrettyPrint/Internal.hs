@@ -1,3 +1,10 @@
+{-|
+Copyright   : (c) 2020 Fugue, Inc.
+License     : Apache License, version 2.0
+Maintainer  : jasper@fugue.co
+Stability   : experimental
+Portability : POSIX
+-}
 {-# OPTIONS_GHC -fno-warn-orphans  #-}
 {-# LANGUAGE DeriveAnyClass        #-}
 {-# LANGUAGE DeriveGeneric         #-}
@@ -47,6 +54,7 @@ module Fregot.PrettyPrint.Internal
     , removeLines
     ) where
 
+import           Control.Monad                     (when)
 import qualified Data.Aeson                        as Aeson
 import           Data.Char                         (isSpace)
 import           Data.Int                          (Int64)
@@ -202,19 +210,22 @@ hPutColDoc :: IO.Handle -> Doc Ansi.Color -> IO ()
 hPutColDoc h = hPutSimpleColDoc h . renderDefaults
 
 hPutSimpleColDoc :: IO.Handle -> SimpleDoc Ansi.Color -> IO ()
-hPutSimpleColDoc h = IO.hWithEncoding h IO.utf8 . go
-  where
-    go SEmpty = IO.hPutStrLn h "" >> IO.hFlush h
-    go (SChar c doc) =
-        IO.hPutChar h c >> go doc
-    go (SText _width str doc) =
-        IO.hPutStr h str >> go doc
-    go (SLine i doc) =
-        IO.hPutStrLn h "" >> IO.hPutStr h (replicate i ' ') >> go doc
-    go (SAnnotStart col doc) =
-        Ansi.hSetSGR h [Ansi.SetColor Ansi.Foreground Ansi.Dull col] >> go doc
-    go (SAnnotStop doc) =
-        Ansi.hSetSGR h [Ansi.Reset] >> go doc
+hPutSimpleColDoc h doc0 = IO.hWithEncoding h IO.utf8 $ do
+    ansi <- Ansi.hSupportsANSI h
+    let go SEmpty = IO.hPutStrLn h "" >> IO.hFlush h
+        go (SChar c doc) =
+            IO.hPutChar h c >> go doc
+        go (SText _width str doc) =
+            IO.hPutStr h str >> go doc
+        go (SLine i doc) =
+            IO.hPutStrLn h "" >> IO.hPutStr h (replicate i ' ') >> go doc
+        go (SAnnotStart col doc) = do
+            when ansi $ Ansi.hSetSGR h [Ansi.SetColor Ansi.Foreground Ansi.Dull col]
+            go doc
+        go (SAnnotStop doc) = do
+            when ansi $ Ansi.hSetSGR h [Ansi.Reset]
+            go doc
+    go doc0
 
 renderDefaults :: Doc a -> SimpleDoc a
 renderDefaults = removeIndentOnly . renderPretty 0.9 80

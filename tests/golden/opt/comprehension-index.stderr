@@ -1,32 +1,32 @@
-mock_input = [31m[36m{[0m[31m"exposed"[0m[36m:[0m [36m[[0m
-  [36m{[0m
-    [31m"port"[0m[36m:[0m [31m8080[0m[36m,[0m
-    [31m"interface"[0m[36m:[0m [31m"eth0"[0m
-  [36m}[0m[36m,[0m
-  [36m{[0m
-    [31m"port"[0m[36m:[0m [31m8081[0m[36m,[0m
-    [31m"interface"[0m[36m:[0m [31m"eth0"[0m
-  [36m}[0m[36m,[0m
-  [36m{[0m
-    [31m"port"[0m[36m:[0m [31m443[0m[36m,[0m
-    [31m"interface"[0m[36m:[0m [31m"eth1"[0m
-  [36m}[0m[36m,[0m
-  [36m{[0m
-    [31m"port"[0m[36m:[0m [31m5000[0m[36m,[0m
-    [31m"interface"[0m[36m:[0m [31m"lo1"[0m
-  [36m}[0m
-[36m][0m[36m}[0m[0m
-exposed_ports_by_interface [intf] = ports [36m{[0m
-  intf [36m:=[0m [35mcomprehension_index[0m[36m.[0mmock_input[36m.[0m[31m[31m"exposed"[0m[0m[36m.[0mi[36m.[0m[31m[31m"interface"[0m[0m
-  [36m[[0m[34mindex[0m intf[36m][0m ports [36m:=[0m [36m[[0mport [36m|[0m
-    [35mcomprehension_index[0m[36m.[0mmock_input[36m.[0m[31m[31m"exposed"[0m[0m[36m.[0mj[36m.[0m[31m[31m"interface"[0m[0m [36m=[0m intf
-    port [36m:=[0m [35mcomprehension_index[0m[36m.[0mmock_input[36m.[0m[31m[31m"exposed"[0m[0m[36m.[0mj[36m.[0m[31m[31m"port"[0m[0m
-  [36m][0m
-[36m}[0m
-deny [msg] [36m{[0m
-  [36m>[0m[36m([0m[34mcount[0m[36m([0m[35mcomprehension_index[0m[36m.[0mexposed_ports_by_interface[36m.[0mi[36m)[0m, [31m[31m1[0m[0m[36m)[0m
-  msg [36m:=[0m [34msprintf[0m[36m([0m[31m[31m"interface '%v' exposes too many ports"[0m[0m, [36m[[0mi[36m][0m[36m)[0m
-[36m}[0m
-test_deny [36m{[0m
-  [35mcomprehension_index[0m[36m.[0mdeny[36m.[0m[31m[31m"interface 'eth0' exposes too many ports"[0m[0m [34mwith[0m [34minput[0m[36m.[0m [34mas[0m [35mcomprehension_index[0m[36m.[0mmock_input
-[36m}[0m
+mock_input = {"exposed": [
+  {
+    "port": 8080,
+    "interface": "eth0"
+  },
+  {
+    "port": 8081,
+    "interface": "eth0"
+  },
+  {
+    "port": 443,
+    "interface": "eth1"
+  },
+  {
+    "port": 5000,
+    "interface": "lo1"
+  }
+]}
+exposed_ports_by_interface [intf] = ports {
+  intf := comprehension_index.mock_input."exposed".i."interface"
+  [index intf] ports := [port |
+    comprehension_index.mock_input."exposed".j."interface" = intf
+    port := comprehension_index.mock_input."exposed".j."port"
+  ]
+}
+deny [msg] {
+  >(count(comprehension_index.exposed_ports_by_interface.i), 1)
+  msg := sprintf("interface '%v' exposes too many ports", [i])
+}
+test_deny {
+  comprehension_index.deny."interface 'eth0' exposes too many ports" with input. as comprehension_index.mock_input
+}

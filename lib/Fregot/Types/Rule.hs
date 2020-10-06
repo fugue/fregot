@@ -1,3 +1,10 @@
+{-|
+Copyright   : (c) 2020 Fugue, Inc.
+License     : Apache License, version 2.0
+Maintainer  : jasper@fugue.co
+Stability   : experimental
+Portability : POSIX
+-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TemplateHaskell       #-}
 module Fregot.Types.Rule
@@ -14,8 +21,8 @@ import           Fregot.Types.Internal
 data RuleType
     = CompleteRuleType Type
     | GenSetRuleType Type
-    | GenObjectRuleType (Object Ast.Scalar Type)
-    | FunctionType  Int
+    | GenObjectRuleType (StaticDynamic Ast.Scalar Type)
+    | FunctionType Int
     | ErrorType
     deriving (Show)
 

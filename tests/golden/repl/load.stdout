@@ -1,2 +1,2 @@
-repl% fregot.tests.repl.load% [36m=[0m [31m1[0m
+repl% fregot.tests.repl.load% = 1
 fregot.tests.repl.load% 

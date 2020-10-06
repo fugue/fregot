@@ -1,8 +1,16 @@
--- | This module optimistically renames name in a program to their fully
--- qualified versions.
---
--- This is not always possible, and at this phase, we don't know about local
--- variables yet (that happens later in the safe variable analysis).
+{-|
+Copyright   : (c) 2020 Fugue, Inc.
+License     : Apache License, version 2.0
+Maintainer  : jasper@fugue.co
+Stability   : experimental
+Portability : POSIX
+
+This module optimistically renames name in a program to their fully
+qualified versions.
+
+This is not always possible, and at this phase, we don't know about local
+variables yet (that happens later in the safe variable analysis).
+-}
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell   #-}
@@ -152,13 +160,24 @@ specialBuiltinVar "input" = True
 specialBuiltinVar _       = False
 
 -- | Resolves a reference as far as possible.  Returns the new name, and
--- bits that were not resolved yet.
+-- bits that were not resolved yet.  You can generally think of as the
+-- left part of the tuple as the "statically known" part, and the right
+-- part is of the tuple is the "dynamic" part.
 --
 -- For example, `foo` is a package, and `foo.bar` is a rule in that package
 -- that evaluates to `foo.bar = {"value": 1}`.
 --
 -- We resolve the `foo.bar` part in `foo.bar.value` and keep the `.value`
 -- part unresolved, then "attach it back on".
+--
+-- Why does this code have so many cases?  Well, there's a tradeoff going on
+-- here.  We could significantly reduce the number of checks here, which would
+-- make the code much simpler.  However, we also want to be able to catch all
+-- "this thing is not defined" errors here if possible.
+--
+-- Catching all errors like that is not possible in general (because of the
+-- dynamic part), but we want to at least deal with all the common cases to
+-- help policy authors.
 resolveRef
     :: SourceSpan
     -> Var -> [RefArg SourceSpan Var]
@@ -187,18 +206,37 @@ resolveRef source var refArgs = do
 
     case var of
 
+        -- A simple wildcard variable.
+        "_"     | null refArgs -> pure $ Just (WildcardName, [])
+
+        -- A fully qualified path, e.g. `data.foo.bar`.  Resolve as far
+        -- as possible using `resolveData`.
         "data"  | Just (pkg, rname, remainder) <-
                     resolveData thispkg universe refArgs ->
             checkExists pkg rname $ do
                 remainder' <- traverse renameRefArg remainder
                 pure $ Just (mkQualifiedName pkg rname, remainder')
 
+        -- Using an import, e.g. `foo.bar` where we also have `import data.foo`
+        -- or `import data.qux as foo`.  Think of this as "importing a package".
         _       | Just (_, ImportData pkg) <- HMS.lookup var imports
                 , (ra1 : ras)              <- refArgs
                 , Just rname               <- refArgToVar ra1 ->
             checkExists pkg rname $ do
             ras' <- traverse renameRefArg ras
             pure $ Just (mkQualifiedName pkg rname, ras')
+
+        -- Using an import as a variable, e.g. `bar` where we have
+        -- `import data.foo.bar`.
+        _       | Just (_, ImportData pkg0) <- HMS.lookup var imports
+                , null refArgs
+                , pieces@(_ : _) <- unPackageName pkg0 ->
+            -- The package name starts out incorrect here, we need to move it
+            -- one level up.
+            let pkg1 = mkPackageName (init pieces)
+                var1 = mkVar (last pieces) in
+            checkExists pkg1 var1 $
+            pure $ Just (mkQualifiedName pkg1 var1, [])
 
         -- For input imports, it's relatively simple.  If we have something like
         --
@@ -212,13 +250,13 @@ resolveRef source var refArgs = do
             refArgs' <- traverse renameRefArg refArgs
             pure $ Just (BuiltinName "input", importRefs ++ refArgs')
 
-        -- Nothing was found.  We will assume it is a local var.
+        -- Nothing was found: probably a local variable, possibly fresh.
         _ -> do
             refArgs' <- traverse renameRefArg refArgs
             let name
                     | specialBuiltinVar var  = BuiltinName var
-                    | HS.member var rules    = mkQualifiedName thispkg var
                     | var `HS.member` locals = LocalName var
+                    | HS.member var rules    = mkQualifiedName thispkg var
                     | otherwise              = LocalName var
             return $ Just (name, refArgs')
 
@@ -249,6 +287,13 @@ renameTerm = \case
         case mbResolved of
             Just (name, [])       -> pure $ VarT source name
             Just (name, refArgs') -> pure $ RefT source varSource name refArgs'
+            Nothing               -> pure $ ErrorT source
+
+    VarT source v -> do
+        mbResolved <- resolveRef source v []
+        case mbResolved of
+            Just (name, [])       -> pure $ VarT source name
+            Just (name, refArgs') -> pure $ RefT source source name refArgs'
             Nothing               -> pure $ ErrorT source
 
     CallT source ns args -> do
@@ -298,21 +343,6 @@ renameTerm = \case
             _ -> fatal $ Error.mkError "renamer" source "unknown call" $
                 -- NOTE(jaspervdj): We can use ErrorT here.
                 "Unknown call to" <+> PP.pretty (Nested ns)
-
-    -- Find out of the variable is a rule in this package.  If so, it's a
-    -- QualifiedName, if not it's a LocalName.  WildcardName and BuiltinName are
-    -- special cases.
-    VarT a "_" -> pure $ VarT a WildcardName
-    VarT a v | specialBuiltinVar v ->
-        pure $ VarT a (BuiltinName v)
-    VarT a v -> do
-        locals <- view reLocalVars
-        pkg    <- view rePackage
-        rules  <- view rePackageRules
-        case v `HS.member` rules of
-            _ | v `HS.member` locals -> pure (VarT a (LocalName v))
-            True                     -> pure (VarT a (mkQualifiedName pkg v))
-            False                    -> pure (VarT a (LocalName v))
 
     ScalarT a s -> pure (ScalarT a s)
 

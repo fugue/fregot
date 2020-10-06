@@ -1,3 +1,10 @@
+{-|
+Copyright   : (c) 2020 Fugue, Inc.
+License     : Apache License, version 2.0
+Maintainer  : jasper@fugue.co
+Stability   : experimental
+Portability : POSIX
+-}
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE Rank2Types        #-}
@@ -6,6 +13,8 @@
 {-# LANGUAGE TypeFamilies      #-}
 module Fregot.Interpreter
     ( InterpreterM
+    , Config (..)
+    , defaultConfig
     , Handle
     , newHandle
     , copyHandle
@@ -110,8 +119,16 @@ import           System.FilePath.Extended        (listExtensions)
 
 type InterpreterM a = ParachuteT Error IO a
 
+data Config = Config
+    { _opt      :: !Bool
+    , _dumpTags :: !Dump.Tags
+    }
+
+defaultConfig :: Config
+defaultConfig = Config True mempty
+
 data Handle = Handle
-    { _dumpTags :: !Dump.Tags
+    { _config   :: !Config
     , _builtins :: !(IORef (Builtins Identity))
     , _sources  :: !Sources.Handle
     -- | List of modules, and files we loaded them from.  Grouped by package
@@ -124,13 +141,14 @@ data Handle = Handle
     , _inputDoc :: !(IORef Eval.Value)
     }
 
+$(makeLenses ''Config)
 $(makeLenses ''Handle)
 
 newHandle
-    :: Dump.Tags
+    :: Config
     -> Sources.Handle
     -> IO Handle
-newHandle _dumpTags _sources = do
+newHandle _config _sources = do
     initializedBuiltins <- traverse (htraverse (fmap Identity)) defaultBuiltins
 
     _builtins     <- IORef.newIORef initializedBuiltins
@@ -145,7 +163,7 @@ newHandle _dumpTags _sources = do
 -- clears the cache.
 copyHandle :: Handle -> IO Handle
 copyHandle h = do
-    let _dumpTags = h ^. dumpTags
+    let _config = h ^. config
     _sources  <- copy (h ^. sources)
     _builtins <- copy (h ^. builtins)
     _modules  <- copy (h ^. modules)
@@ -370,7 +388,7 @@ compileRules h = do
 
     -- Compile the tree and save it.
     tree1 <- mapParachuteT
-        (`runReaderT` (h ^. dumpTags))
+        (`runReaderT` (h ^. config . dumpTags))
         (Compile.compileTree builtin tree0 preparedTree)
     dieIfErrors
     liftIO $ IORef.writeIORef (h ^. ruleTree) tree1
@@ -458,10 +476,7 @@ newResumeStep
     -> InterpreterM (Eval.ResumeStep Eval.Value)
 newResumeStep h pkgname query = do
     -- Disable the cache for evaluating queries in resume steps.
-    envctx <-
-        over (Eval.ecEnvironment . Eval.ruleCache) Cache.disable .
-        over (Eval.ecEnvironment . Eval.comprehensionCache) Cache.disable <$>
-        newEvalContext h
+    envctx   <- disableOpt <$> newEvalContext h
     ctree    <- liftIO $ IORef.readIORef (h ^. ruleTree)
     universe <- universeForRenamer h
 
@@ -484,6 +499,12 @@ newResumeStep h pkgname query = do
 
     dieIfErrors
     return $ Eval.newResumeStep envctx (Eval.evalQuery cquery)
+  where
+    disableOpt
+        | h ^. config . opt = id
+        | otherwise         =
+            over (Eval.ecEnvironment . Eval.ruleCache) Cache.disable .
+            over (Eval.ecEnvironment . Eval.comprehensionCache) Cache.disable
 
 step
     :: Handle -> Eval.ResumeStep Eval.Value

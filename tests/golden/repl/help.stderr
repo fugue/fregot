@@ -1,23 +1,23 @@
 F u g u e   R E G O   T o o l k i t
-fregot v0.12.0 repl - use :help for usage info
+fregot v0.12.3 repl - use :help for usage info
 Enter an expression to evaluate it.
 Enter a rule to add it to the current package.
 
 Other commands:
-  [33m:break     [0mSet or remove a breakpoint
-  [33m:help      [0mshow this info
-  [33m:input     [0mset the input document
-  [33m:open      [0mopen a different package, e.g. `:open foo`
-  [33m:quit      [0mexit the repl
-  [33m:load      [0mload a rego file, e.g. `:load foo.rego`
-  [33m:reload    [0mreload modified rego files
-  [33m:continue  [0mcontinue running the debugged program
-  [33m:step      [0mstep (into) the next rule in the debugged program
-  [33m:next      [0mstep (over) the next rule in the debugged program
-  [33m:rewind    [0mgo back to the previous debug suspension
-  [33m:test      [0mrun tests in the current package
-  [33m:type      [0mprint the type of a term
-  [33m:where     [0mprint your location
-  [33m:watch     [0mevaluate input after file changes
+  :break     Set or remove a breakpoint
+  :help      show this info
+  :input     set the input document
+  :open      open a different package, e.g. `:open foo`
+  :quit      exit the repl
+  :load      load a rego file, e.g. `:load foo.rego`
+  :reload    reload modified rego files
+  :continue  continue running the debugged program
+  :step      step (into) the next rule in the debugged program
+  :next      step (over) the next rule in the debugged program
+  :rewind    go back to the previous debug suspension
+  :test      run tests in the current package
+  :type      print the type of a term
+  :where     print your location
+  :watch     evaluate input after file changes
 
 Shortcuts are supported for commands, e.g. `:l` for `:load`.

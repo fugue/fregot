@@ -1,3 +1,10 @@
+{-|
+Copyright   : (c) 2020 Fugue, Inc.
+License     : Apache License, version 2.0
+Maintainer  : jasper@fugue.co
+Stability   : experimental
+Portability : POSIX
+-}
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE KindSignatures      #-}
 {-# LANGUAGE LambdaCase          #-}
@@ -15,17 +22,18 @@ module Fregot.Compile.Package
     , valueToCompiledRule
     ) where
 
-import           Control.Lens                      (at, iforM_, review,
-                                                    traverseOf, view, (&), (.~),
-                                                    (^.))
+import           Control.Lens                      (at, review, traverseOf,
+                                                    view, (&), (.~), (^.))
 import           Control.Monad                     (foldM, forM)
 import           Control.Monad.Identity            (runIdentity)
 import           Control.Monad.Parachute           (ParachuteT, catching,
                                                     tellError, tellErrors)
+import           Data.Foldable                     (for_)
 import           Data.Functor                      (($>))
 import qualified Data.Graph                        as Graph
 import qualified Data.HashMap.Strict.Extended      as HMS
 import qualified Data.HashSet.Extended             as HS
+import           Data.List                         (sortOn)
 import           Data.List.NonEmpty.Extended       (NonEmpty (..))
 import           Data.Proxy                        (Proxy (..))
 import           Data.Traversable.HigherOrder      (htraverse)
@@ -181,13 +189,12 @@ compileTerm builtins ctree typeContext term0 = do
     safe0 = Safe (HMS.keysSet typeContext)
 
 -- | Designed to match the return type of `orderTermForSafety`.
-runOrder
-    :: (Monad m, PP.Pretty PP.Sem v)
-    => (a, Unsafe v SourceSpan) -> ParachuteT Error m a
+runOrder :: Monad m => (a, Unsafe Var SourceSpan) -> ParachuteT Error m a
 runOrder (x, Unsafe unsafe) = do
-    iforM_ unsafe $ \var (source :| _) -> tellError $ Error.mkError
-        "compile" source "unknown variable" $
-        "Undefined variable:" <+> PP.pretty var
+    for_ (sortOn (\(v, src :| _) -> (src, unVar v)) $ HMS.toList unsafe) $
+        \(v, src :| _) -> tellError $ Error.mkError
+        "compile" src "unknown variable" $
+        "Undefined variable:" <+> PP.pretty v
     return x
 
 recursionError :: [Rule ty a] -> Error

@@ -1,3 +1,10 @@
+{-|
+Copyright   : (c) 2020 Fugue, Inc.
+License     : Apache License, version 2.0
+Maintainer  : jasper@fugue.co
+Stability   : experimental
+Portability : POSIX
+-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell   #-}
 module Fregot.Main.Test
@@ -41,7 +48,9 @@ parseOptions = Options
 main :: GlobalOptions -> Options -> IO ExitCode
 main gopts opts = do
     sources <- Sources.newHandle
-    interpreter <- Interpreter.newHandle (gopts ^. dumpTags) sources
+    interpreter <- Interpreter.newHandle
+        (Interpreter.defaultConfig {Interpreter._dumpTags = gopts ^. dumpTags})
+        sources
     regoPaths <- Find.findPrefixedRegoFiles (opts ^. paths)
     (errors, mbResult) <- Parachute.runParachuteT $ do
         forM_ regoPaths $ Interpreter.loadFileByExtension

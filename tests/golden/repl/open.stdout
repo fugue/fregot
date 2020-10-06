@@ -1,5 +1,5 @@
-repl% mypkg1% mypkg1% [36m=[0m [31m1[0m
-mypkg1% mypkg2% mypkg2% [36m=[0m [31m2[0m
-mypkg2% mypkg1% [36m=[0m [31m1[0m
-mypkg1% [36m=[0m [31m2[0m
+repl% mypkg1% mypkg1% = 1
+mypkg1% mypkg2% mypkg2% = 2
+mypkg2% mypkg1% = 1
+mypkg1% = 2
 mypkg1% 

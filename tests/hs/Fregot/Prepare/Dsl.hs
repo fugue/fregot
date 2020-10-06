@@ -1,3 +1,10 @@
+{-|
+Copyright   : (c) 2020 Fugue, Inc.
+License     : Apache License, version 2.0
+Maintainer  : jasper@fugue.co
+Stability   : experimental
+Portability : POSIX
+-}
 -- | Horrible DSL to be able to quickly construct syntax for use in tests.
 {-# LANGUAGE GADTs             #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -44,7 +51,6 @@ inferEnv = Types.emptyInferEnv & Types.ieBuiltins .~
   where
     builtin_add :: Monad m => B.Builtin m
     builtin_add = B.Builtin
-        (B.In (B.In B.Out))
         (Ty.number 🡒 Ty.number 🡒 Ty.out Ty.number) $ return $
         \(B.Cons x (B.Cons y B.Nil)) ->
         return ((x :: Number) + (y :: Number) :: Number)

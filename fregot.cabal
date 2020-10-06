@@ -1,11 +1,11 @@
 Name:                fregot
-Version:             0.12.0
+Version:             0.12.3
 Synopsis:            Fugue Rego Toolkit
 License:             Apache-2.0
 License-file:        LICENSE
 Author:              Jasper Van der Jeugt <jasper@fugue.co>
 Maintainer:          Jasper Van der Jeugt <jasper@fugue.co>
-Copyright:           2019 Fugue, Inc
+Copyright:           2020 Fugue, Inc
 Category:            Language
 Build-type:          Simple
 Cabal-version:       1.18
@@ -29,6 +29,7 @@ Library
     Fregot.Builtins.Jwt
     Fregot.Builtins.Regex
     Fregot.Builtins.Time
+    Fregot.Capabilities
     Fregot.Compile.Graph
     Fregot.Compile.Order
     Fregot.Compile.Package
@@ -44,6 +45,7 @@ Library
     Fregot.Eval.Number
     Fregot.Eval.TempObject
     Fregot.Eval.Value
+    Fregot.Eval.Value.Conversion
     Fregot.Find
     Fregot.Interpreter
     Fregot.Interpreter.Bundle
@@ -55,6 +57,7 @@ Library
     Fregot.Lexer.String
     Fregot.Main
     Fregot.Main.Bundle
+    Fregot.Main.Capabilities
     Fregot.Main.Eval
     Fregot.Main.GlobalOptions
     Fregot.Main.Repl

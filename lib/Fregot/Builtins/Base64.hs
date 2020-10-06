@@ -1,4 +1,12 @@
--- | Base64-related builtins.
+{-|
+Copyright   : (c) 2020 Fugue, Inc.
+License     : Apache License, version 2.0
+Maintainer  : jasper@fugue.co
+Stability   : experimental
+Portability : POSIX
+
+Base64-related builtins.
+-}
 {-# LANGUAGE GADTs             #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Fregot.Builtins.Base64
@@ -25,11 +33,11 @@ builtins = HMS.fromList
     ]
 
 encode :: Applicative m => (B.ByteString -> B.ByteString) -> Builtin m
-encode f = Builtin (In Out)
+encode f = Builtin
     (Ty.string 🡒 Ty.out Ty.string) $ pure $
     \(Cons text Nil) -> pure . T.decodeUtf8 . f $! T.encodeUtf8 text
 
 decode :: Applicative m => (B.ByteString -> B.ByteString) -> Builtin m
-decode f = Builtin (In Out)
+decode f = Builtin
     (Ty.string 🡒 Ty.out Ty.string) $ pure $
     \(Cons t Nil) -> pure . T.decodeUtf8 . f $! T.encodeUtf8 t

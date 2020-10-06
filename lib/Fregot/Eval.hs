@@ -1,3 +1,10 @@
+{-|
+Copyright   : (c) 2020 Fugue, Inc.
+License     : Apache License, version 2.0
+Maintainer  : jasper@fugue.co
+Stability   : experimental
+Portability : POSIX
+-}
 {-# LANGUAGE BangPatterns               #-}
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE FlexibleContexts           #-}
@@ -38,7 +45,7 @@ module Fregot.Eval
 import           Control.Arrow             ((>>>))
 import           Control.Lens              (review, to, use, view, (%=), (.=),
                                             (.~), (^.), (^?))
-import           Control.Monad             (when, (>=>))
+import           Control.Monad             (void, when, (>=>))
 import           Control.Monad.Extended    (forM, zipWithM_)
 import           Control.Monad.Identity    (Identity (..))
 import           Control.Monad.Reader      (ask, local)
@@ -70,6 +77,7 @@ import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources.SourceSpan (SourceSpan)
 import           Fregot.Tree               (Tree)
 import qualified Fregot.Tree               as Tree
+import qualified Fregot.Types.Builtins     as Types
 import           Fregot.Types.Rule         (RuleType (..))
 
 ground :: SourceSpan -> Mu' -> EvalM Value
@@ -283,7 +291,7 @@ evalVar _source v = do
 
 
 evalBuiltin :: SourceSpan -> Builtin Identity -> [Mu'] -> EvalM Value
-evalBuiltin source builtin@(Builtin sig _ (Identity impl)) args0 = do
+evalBuiltin source builtin@(Builtin ty (Identity impl)) args0 = do
     -- There are two possible scenarios if we have an N-ary function, e.g.:
     --
     --     add(x, y) = z {
@@ -300,7 +308,7 @@ evalBuiltin source builtin@(Builtin sig _ (Identity impl)) args0 = do
             "arguments but got" <+> PP.pretty n
 
     args2 <- mapM (ground source) args1
-    args3 <- case toArgs sig args2 of
+    args3 <- case toArgs (Types.btRepr ty) args2 of
         Left err -> raise' source "builtin type error" $ PP.pretty err
         Right x  -> return x
 
@@ -405,14 +413,13 @@ evalCompiledRule callerSource crule mbIndex
         case mbCacheResult of
             Just (Cache.Singleton val) -> pure val
             _                          -> do
-                val <- requireComplete (crule ^. ruleAnn) $ do
-                    val <- case crule ^. ruleDefault of
+                val <- requireComplete (crule ^. ruleAnn) $
+                    case crule ^. ruleDefault of
                         -- If there is a default, then we fill it in if the rule
                         -- yields no rows.
                         Nothing  -> snd <$> branch branches
-                        Just def -> withDefault (evalTerm def) $
+                        Just def -> withDefault (evalGroundTerm def) $
                                     snd <$> branch branches
-                    ground callerSource val
                 Cache.writeSingleton c ckey val
                 pure val
 
@@ -443,17 +450,16 @@ evalCompiledRule callerSource crule mbIndex
                     compute <- branches
                     pure $ do
                         (idxVal, val) <- compute
-                        gval          <- ground callerSource val
                         let (k, v) = case crule ^. ruleKind of
-                                GenSetRule -> (fromMaybe gval idxVal, true)
-                                _          -> (fromMaybe gval idxVal, gval)
+                                GenSetRule -> (fromMaybe val idxVal, true)
+                                _          -> (fromMaybe val idxVal, val)
                         write <- TempObject.write tempObj k v
                         case write of
                             TempObject.Ok              -> pure ()
                             TempObject.Duplicate       -> cut
                             TempObject.Inconsistent v' ->
                                 raiseInconsistentObject callerSource k v v'
-                        return (idxVal, gval)) ++ (pure $ do
+                        return (idxVal, val)) ++ (pure $ do
                     -- After all branches have executed, indicate that the
                     -- collection is finished.
                     --
@@ -502,7 +508,7 @@ evalCompiledRule callerSource crule mbIndex
   where
     -- Standard branching evaluation of rule definitions; used for all
     -- evaluations.
-    branches :: [EvalM (Maybe Value, Mu')]
+    branches :: [EvalM (Maybe Value, Value)]
     branches = do
         def <- crule ^. ruleDefs
         pure $ evalRuleDefinition callerSource def mbIndex
@@ -517,32 +523,42 @@ evalCompiledRule callerSource crule mbIndex
 
 evalRuleDefinition
     :: SourceSpan -> RuleDefinition SourceSpan -> Maybe Mu'
-    -> EvalM (Maybe Value, Mu')
-evalRuleDefinition callerSource rule mbIndex =
+    -> EvalM (Maybe Value, Value)
+evalRuleDefinition callerSource rule mbArg =
     clearLocals $ do
 
-    mbIdxVal <- case (mbIndex, rule ^. ruleIndex) of
-        (Nothing, Nothing) -> return Nothing
-        (Just arg, Just tpl) -> do
+        -- Optimization: If the index of the rule is just a variable or a
+        -- literal, we can assign it now which may allow us to index directly
+        -- into rules.  Not that not all terms are safe to evaluate, for some
+        -- e.g. `foo.bar` we need to wait until after the evaluation of the
+        -- body.
+    let safeToEval (NameT _ _)  = True
+        safeToEval (ValueT _ _) = True
+        safeToEval _            = False
+    mbArgVal <- case (mbArg, rule ^. ruleIndex) of
+        (Just arg, Just tpl) | safeToEval tpl -> do
             tplv <- evalTerm tpl
-            _    <- unify callerSource arg tplv
-            return $ Just tplv
-        (Just _, Nothing) -> raise' callerSource "arity problem" $
-            "An argument was given for rule" <+>
-            PP.pretty (rule ^. ruleDefName) <+>
-            "but it does not expect one"
-        (Nothing, Just tpl) -> do
-            tplv <- evalTerm tpl
-            return $ Just tplv
+            void $ unify callerSource arg tplv
+            pure $ Just tplv
+        _ -> pure Nothing
 
-    let ret mbRet = case mbRet of
-            Nothing -> do
-                i <- traverse (ground (rule ^. ruleDefAnn)) mbIdxVal
-                return (Nothing, Mu (GroundedM (fromMaybe true i)))
-            Just term -> do
-                i <- traverse (ground (rule ^. ruleDefAnn)) mbIdxVal
-                v <- evalTerm term
-                return (i, v)
+    let ret mbRet = do
+            i <- case rule ^. ruleIndex of
+                Nothing  -> pure Nothing
+                Just idx -> do
+                    case mbArg of
+                        Nothing -> Just <$> evalGroundTerm idx
+                        Just arg -> do
+                            -- Make sure to finally unify the given index (arg)
+                            -- against the computed index (idx).
+                            let argv = fromMaybe arg mbArgVal
+                            iv <- evalTerm idx
+                            void $ unify callerSource argv iv
+                            Just <$> ground (rule ^. ruleDefAnn) iv
+            v <- case mbRet of
+                Nothing   -> pure $ fromMaybe true i
+                Just term -> evalGroundTerm term
+            return (i, v)
 
     case rule ^. ruleBodies of
         -- If there is not a single body, we probably have something like
@@ -667,18 +683,24 @@ evalStatement (AssignS source x y) = suspend source $ do
     return muTrue
 evalStatement (TermS e) = suspend (e ^. termAnn) (evalTerm e)
 evalStatement (IndexedCompS source comp) = do
-    -- Evaluate the entire thing.
-    !index <- evalIndexedComprehension source comp
-    keyVals <- forM (comp ^. indexedKeys) (evalVar source >=> ground source)
-    let !collection = case HMS.lookup keyVals index of
+    cache <- view comprehensionCache
+    collection <- if cache ^. Cache.enabled then do
+        -- Evaluate the entire thing.
+        !index <- evalIndexedComprehension source comp
+        keyVals <- forM (comp ^. indexedKeys) (evalVar source >=> ground source)
+        pure $ case HMS.lookup keyVals index of
             Just mu -> mu
             Nothing -> muValueF $ case comp ^. indexedComprehension of
                 ArrayComp  _ _   -> ArrayV  V.empty
                 SetComp    _ _   -> SetV    HS.empty
                 ObjectComp _ _ _ -> ObjectV HMS.empty
+        else do
+            -- Cache not enabled, use normal evaluation.
+            evalComprehension source (comp ^. indexedComprehension)
     iv <- toInstVar (comp ^. indexedAssignee)
     _  <- unify source (Mu (FreeM iv)) collection
     return muTrue
+
 
 unify :: SourceSpan -> Mu' -> Mu' -> EvalM Mu'
 unify _source (Mu WildcardM) y = return y

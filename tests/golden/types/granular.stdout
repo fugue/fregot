@@ -1,13 +1,22 @@
-repl% granular% people [36m:[0m [34marray[0m[36m{[0m[34mobject[0m[36m{[0m
-  [31m"name"[0m[36m:[0m [34mstring[0m[36m,[0m
-  [31m"age"[0m[36m:[0m [34mnumber[0m[36m,[0m
-  [31m"address"[0m[36m:[0m [34mobject[0m[36m{[0m
-    [31m"number"[0m[36m:[0m [34mnumber[0m[36m,[0m
-    [31m"street"[0m[36m:[0m [34mstring[0m
-  [36m}[0m
-[36m}[0m[36m}[0m
-granular% people[36m[[0m[31m99[0m[36m][0m[36m.[0maddress [36m:[0m [34mobject[0m[36m{[0m
-  [31m"number"[0m[36m:[0m [34mnumber[0m[36m,[0m
-  [31m"street"[0m[36m:[0m [34mstring[0m
-[36m}[0m
+repl% granular% people : array{0: object{
+  "name": string,
+  "age": number,
+  "address": object{
+    "number": number,
+    "street": string
+  }
+}}
+granular% people[99].address : object{
+  "number": number,
+  "street": string
+}
+granular% [
+  "Hello",
+  1,
+  true
+] : array{
+  0: string,
+  1: number,
+  2: boolean
+}
 granular% 

@@ -1,5 +1,5 @@
-repl% repl% [36m=[0m [36m{[0m[31m"name"[0m[36m:[0m [31m"input-1"[0m[36m}[0m
-repl% repl% [36m=[0m [36m{[0m[31m"name"[0m[36m:[0m [31m"input-2"[0m[36m}[0m
+repl% repl% = {"name": "input-1"}
+repl% repl% = {"name": "input-2"}
 repl% 
-repl% [36m=[0m [36m{[0m[31m"name"[0m[36m:[0m [31m"input-changed!"[0m[36m}[0m
+repl% = {"name": "input-changed!"}
 repl% 

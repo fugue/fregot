@@ -1,4 +1,12 @@
--- | Json-related builtins.
+{-|
+Copyright   : (c) 2020 Fugue, Inc.
+License     : Apache License, version 2.0
+Maintainer  : jasper@fugue.co
+Stability   : experimental
+Portability : POSIX
+
+Json-related builtins.
+-}
 {-# LANGUAGE GADTs             #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Fregot.Builtins.Json
@@ -24,7 +32,6 @@ builtins = HMS.fromList
 
 builtin_json_marshal :: Monad m => Builtin m
 builtin_json_marshal = Builtin
-    (In Out)
     (Ty.any 🡒 Ty.out Ty.string) $ pure $
     \(Cons val Nil) -> case Json.fromValue val of
         Left err   -> throwDoc err
@@ -32,7 +39,6 @@ builtin_json_marshal = Builtin
 
 builtin_json_unmarshal :: Monad m => Builtin m
 builtin_json_unmarshal = Builtin
-    (In Out)
     (Ty.string 🡒 Ty.out Ty.unknown) $ pure $
     \(Cons str Nil) -> case A.eitherDecodeStrict' (T.encodeUtf8 str) of
         Left  err -> throwString err

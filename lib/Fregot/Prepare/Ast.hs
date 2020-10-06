@@ -1,3 +1,10 @@
+{-|
+Copyright   : (c) 2020 Fugue, Inc.
+License     : Apache License, version 2.0
+Maintainer  : jasper@fugue.co
+Stability   : experimental
+Portability : POSIX
+-}
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE FlexibleContexts           #-}
@@ -42,18 +49,20 @@ module Fregot.Prepare.Ast
     , Sugar.WithPath (..)
     , With (..), withAnn, withPath, withAs
 
-    , Sugar.Scalar (..)
+    , Sugar.Scalar (..), Sugar._String, Sugar._Number, Sugar._Bool, Sugar._Null
 
       -- * Constructors and destructors
     , literal
     , unRefT
     , termToRule
+    , binOpToText
     ) where
 
 import           Control.Lens              (review, (^.))
 import           Control.Lens.TH           (makeLenses, makePrisms)
 import           Data.Hashable             (Hashable)
 import qualified Data.List                 as L
+import qualified Data.Text                 as T
 import           Data.Unique               (Unique)
 import           Fregot.Eval.Value         (Value)
 import           Fregot.Names
@@ -284,19 +293,7 @@ instance PP.Pretty PP.Sem Function where
     pretty (OperatorFunction o) = PP.pretty o
 
 instance PP.Pretty PP.Sem BinOp where
-    pretty = PP.punctuation . \case
-        NotEqualO           -> "!="
-        LessThanO           -> "<"
-        LessThanOrEqualO    -> "<="
-        GreaterThanO        -> ">"
-        GreaterThanOrEqualO -> ">="
-        PlusO               -> "+"
-        MinusO              -> "-"
-        TimesO              -> "*"
-        DivideO             -> "/"
-        ModuloO             -> "%"
-        BinAndO             -> "&"
-        BinOrO              -> "|"
+    pretty = PP.punctuation . PP.pretty . binOpToText
 
 instance PP.Pretty PP.Sem (With a) where
     pretty with = PP.keyword "with" <+>
@@ -337,3 +334,18 @@ termToRule source pkgname var t = Rule
         , _ruleElses      = []
         }
     }
+
+binOpToText :: BinOp -> T.Text
+binOpToText = \case
+    NotEqualO           -> "!="
+    LessThanO           -> "<"
+    LessThanOrEqualO    -> "<="
+    GreaterThanO        -> ">"
+    GreaterThanOrEqualO -> ">="
+    PlusO               -> "+"
+    MinusO              -> "-"
+    TimesO              -> "*"
+    DivideO             -> "/"
+    ModuloO             -> "%"
+    BinAndO             -> "&"
+    BinOrO              -> "|"

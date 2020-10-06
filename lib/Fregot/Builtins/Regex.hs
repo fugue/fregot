@@ -1,4 +1,12 @@
--- | Regex-related builtins.
+{-|
+Copyright   : (c) 2020 Fugue, Inc.
+License     : Apache License, version 2.0
+Maintainer  : jasper@fugue.co
+Stability   : experimental
+Portability : POSIX
+
+Regex-related builtins.
+-}
 {-# LANGUAGE BangPatterns      #-}
 {-# LANGUAGE GADTs             #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -26,7 +34,6 @@ builtins = HMS.fromList
 
 builtin_regex_split :: Builtin IO
 builtin_regex_split = Builtin
-    (In (In Out))
     (Ty.string 🡒 Ty.string 🡒 Ty.out (Ty.arrayOf Ty.string)) $ do
     cacheRef <- newIORef HMS.empty
     pure $
@@ -53,7 +60,6 @@ builtin_regex_split = Builtin
 
 builtin_re_match :: Builtin IO
 builtin_re_match = Builtin
-    (In (In Out))
     (Ty.string 🡒 Ty.string 🡒 Ty.out Ty.boolean) $ do
     cacheRef <- newIORef HMS.empty
     pure $

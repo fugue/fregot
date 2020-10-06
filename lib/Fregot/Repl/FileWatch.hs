@@ -1,5 +1,13 @@
--- | This module holds the modification times for file paths, and get get you a
--- list of files that have been modified since.
+{-|
+Copyright   : (c) 2020 Fugue, Inc.
+License     : Apache License, version 2.0
+Maintainer  : jasper@fugue.co
+Stability   : experimental
+Portability : POSIX
+
+This module holds the modification times for file paths, and get get you a
+list of files that have been modified since.
+-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE RecordWildCards            #-}
 module Fregot.Repl.FileWatch

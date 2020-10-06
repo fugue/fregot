@@ -1,25 +1,25 @@
 F u g u e   R E G O   T o o l k i t
-fregot v0.12.0 repl - use :help for usage info
+fregot v0.12.3 repl - use :help for usage info
 Set breakpoint at debug_error.test_crash
-fregot ([34meval error[0m):
+fregot (eval error):
   "debug-error.rego" (line 5, column 3):
   builtin type error:
 
     5|   x + input.msg with input as {"msg": "crash"}
-         [31m^^^^^^^^^^^^^[0m
+         ^^^^^^^^^^^^^
 
   Expected number but got string
 
   Stack trace:
-    rule [33m[35mdebug_error[0m[36m.[0mtest_crash[0m at data.debug_error.test_crash:1:1
-fregot ([34meval error[0m):
+    rule debug_error.test_crash at data.debug_error.test_crash:1:1
+fregot (eval error):
   "debug-error.rego" (line 5, column 3):
   builtin type error:
 
     5|   x + input.msg with input as {"msg": "crash"}
-         [31m^^^^^^^^^^^^^[0m
+         ^^^^^^^^^^^^^
 
   Expected number but got string
 
   Stack trace:
-    rule [33m[35mdebug_error[0m[36m.[0mtest_crash[0m at data.debug_error.test_crash:1:1
+    rule debug_error.test_crash at data.debug_error.test_crash:1:1

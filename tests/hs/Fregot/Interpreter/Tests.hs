@@ -1,3 +1,10 @@
+{-|
+Copyright   : (c) 2020 Fugue, Inc.
+License     : Apache License, version 2.0
+Maintainer  : jasper@fugue.co
+Stability   : experimental
+Portability : POSIX
+-}
 {-# LANGUAGE GADTs             #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Fregot.Interpreter.Tests
@@ -25,7 +32,8 @@ tests :: Tasty.TestTree
 tests = Tasty.testGroup "Fregot.Interpreter.Tests"
     [ Tasty.testCase "insertBuiltin" $ do
         sources          <- Sources.newHandle
-        interpreter      <- Interpreter.newHandle mempty sources
+        interpreter      <- Interpreter.newHandle
+            Interpreter.defaultConfig sources
         (errs, mbResult) <- runParachuteT $ do
             Interpreter.insertBuiltin interpreter magicName magicImpl
             let input = "test.magic()"
@@ -43,6 +51,5 @@ tests = Tasty.testGroup "Fregot.Interpreter.Tests"
 
     magicImpl :: B.Builtin Identity
     magicImpl = B.Builtin
-        B.Out
         (Types.out Types.number) $
         pure $ \B.Nil -> return $! review Number.int 101
