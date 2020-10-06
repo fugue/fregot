@@ -1,0 +1,26 @@
+fregot (typecheck error):
+  "invalid_array_01.rego" (line 8, column 3):
+  Subtype error:
+
+    8|   array_big[_] > 0
+         ^^^^^^^^^^^^^^^^
+
+  Cannot use type string as number
+
+fregot (typecheck error):
+  "invalid_array_01.rego" (line 13, column 3):
+  Subtype error:
+
+    13|   array_small[_] > 0
+          ^^^^^^^^^^^^^^^^^^
+
+  Cannot use type string as number
+
+fregot (typecheck error):
+  "invalid_array_01.rego" (line 20, column 3):
+  Subtype error:
+
+    20|   set_string[_] > 0
+          ^^^^^^^^^^^^^^^^^
+
+  Cannot use type string|boolean as number

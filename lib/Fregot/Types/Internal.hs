@@ -16,6 +16,7 @@ Portability : POSIX
 module Fregot.Types.Internal
     ( StaticDynamic (..)
     , sdLookup
+    , sdValues
 
     , Elem (..), _String, _Number, _Boolean, _Null, _Scalar, _Object, _Array
     , _Set
@@ -73,6 +74,11 @@ instance (Hashable k, Hashable ty) => Hashable (StaticDynamic k ty)
 
 sdLookup :: (Eq k, Hashable k) => k -> StaticDynamic k ty -> Maybe ty
 sdLookup k sd = HMS.lookup k (sdStatic sd) <|> fmap snd (sdDynamic sd)
+
+sdValues :: StaticDynamic k ty -> [ty]
+sdValues sd =
+    fmap snd (HMS.toList $ sdStatic sd) ++
+    fmap snd (maybeToList $ sdDynamic sd)
 
 data Elem ty
     = String

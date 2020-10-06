@@ -23,7 +23,7 @@ module Fregot.Builtins.Basics
     ) where
 
 import           Control.Applicative      ((<|>))
-import           Control.Lens             (ifoldMap, review)
+import           Control.Lens             (ifoldMap, review, to, (^?))
 import           Control.Monad.Trans      (liftIO)
 import           Data.Char                (intToDigit, isSpace)
 import           Data.Functor             (($>))
@@ -125,13 +125,36 @@ builtin_any = Builtin
 
 builtin_array_concat :: Monad m => Builtin m
 builtin_array_concat = Builtin
-    -- TODO(jaspervdj): We want `∀a b. array<a> -> array<b> -> array<a|b>`.
-    (Ty.arrayOf Ty.any 🡒 Ty.arrayOf Ty.any 🡒 Ty.out Ty.unknown) $ pure $
+    (Ty.BuiltinType
+        { Ty.btRepr = Ty.In (Ty.arrayOf Ty.any) $ Ty.In (Ty.arrayOf Ty.any) $
+            Ty.Out (Ty.arrayOf Ty.unknown)
+        , Ty.btCheck = \tc (Ty.In l (Ty.In r (Ty.Out _))) -> do
+            la <- Ty.bcUnify tc l (Ty.arrayOf Ty.any)
+            ra <- Ty.bcUnify tc r (Ty.arrayOf Ty.any)
+            pure $ fromMaybe (Ty.arrayOf Ty.unknown) $ do
+                -- We just union all values.  We could do a better job and
+                -- perhaps even carry on static information but we don't have
+                -- the length of the arrays available here.
+                xs <- la ^? Ty.singleton . Ty._Array . to Ty.sdValues
+                ys <- ra ^? Ty.singleton . Ty._Array . to Ty.sdValues
+                pure . Ty.arrayOf . Ty.unions $ xs ++ ys
+        }) $ pure $
     \(Cons l (Cons r Nil)) -> return (l <> r :: V.Vector Value)
 
 builtin_array_slice :: Monad m => Builtin m
 builtin_array_slice = Builtin
-    (Ty.arrayOf Ty.any 🡒  Ty.number 🡒  Ty.number 🡒 Ty.out (Ty.arrayOf Ty.unknown)) $ pure $
+    (Ty.BuiltinType
+        { Ty.btRepr = Ty.In (Ty.arrayOf Ty.any) $
+            Ty.In Ty.number $ Ty.In Ty.number $ Ty.Out (Ty.arrayOf Ty.unknown)
+        , Ty.btCheck = \tc (Ty.In arr (Ty.In a (Ty.In b (Ty.Out _)))) -> do
+            tarr <- Ty.bcUnify tc arr (Ty.arrayOf Ty.any)
+            Ty.bcSubsetOf tc a Ty.number
+            Ty.bcSubsetOf tc b Ty.number
+            -- We don't know at compile time at which indices the array was
+            -- sliced.
+            pure . Ty.arrayOf . maybe Ty.unknown Ty.unions $
+                tarr ^? Ty.singleton . Ty._Array . to Ty.sdValues
+        }) $ pure $
     \(Cons arr (Cons a (Cons b Nil))) -> return $! let
         start = max a 0
         end   = min b (V.length arr)
@@ -155,7 +178,7 @@ builtin_count = Builtin
     (Ty.collectionOf Ty.any ∪ Ty.string 🡒 Ty.out Ty.number) $ pure $
     \(Cons countee Nil) -> case countee of
         InL (Values c) -> return $! length (c :: [Value])
-        InR txt            -> return $! T.length txt
+        InR txt        -> return $! T.length txt
 
 builtin_endswith :: Monad m => Builtin m
 builtin_endswith = Builtin
@@ -180,11 +203,18 @@ builtin_indexof = Builtin
 
 builtin_intersection :: Monad m => Builtin m
 builtin_intersection = Builtin
-    -- TODO(jaspervdj): Maybe this should be `∀a. set<set<a>> -> set<a>`.
-    (Ty.setOf (Ty.setOf Ty.any) 🡒 Ty.out (Ty.setOf Ty.unknown)) $ pure $
-    \(Cons set Nil) -> return $! case HS.toList (set :: (HS.HashSet (HS.HashSet Value))) of
-      []   -> HS.empty
-      sets -> foldr1 HS.intersection sets
+    (Ty.BuiltinType
+        { Ty.btRepr =
+            Ty.In (Ty.setOf (Ty.setOf Ty.any)) $ Ty.Out (Ty.setOf Ty.unknown)
+        , Ty.btCheck = \tc (Ty.In sets (Ty.Out _)) -> do
+            tsets <- Ty.bcUnify tc sets (Ty.setOf (Ty.setOf Ty.any))
+            pure . Ty.setOf . fromMaybe Ty.unknown $
+                tsets ^? Ty.singleton . Ty._Set . Ty.singleton . Ty._Set
+        }) $ pure $
+    \(Cons set Nil) -> return $!
+        case HS.toList (set :: (HS.HashSet (HS.HashSet Value))) of
+        []   -> HS.empty
+        sets -> foldr1 HS.intersection sets
 
 builtin_is_array :: Monad m => Builtin m
 builtin_is_array = Builtin
