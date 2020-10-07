@@ -1,0 +1,6 @@
+packages:
+  ./
+  packages/pcre-simple/
+
+package fregot
+  tests: True
