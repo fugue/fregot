@@ -11,8 +11,8 @@ test:
 	fregot test examples/ami_id                   # AMI ID example
 	fregot test examples/break_example            # Breakpoint example
 	goldplate -j2 --pretty-diff tests/golden      # Golden tests
-	fregot capabilities | jq --sort-keys '.' | \
+	fregot capabilities | \
 	  diff - extra/capabilities-master.json       # Capabilities doc
 
 extra/capabilities-master.json: fregot.cabal
-	fregot capabilities | jq --sort-keys '.' >$@
+	fregot capabilities >$@
