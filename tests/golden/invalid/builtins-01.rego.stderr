@@ -9,7 +9,7 @@ fregot (typecheck error):
     "bar": boolean,
     "foo": boolean,
     "baz": number
-  } as object{any: boolean}|set{boolean}|array{number: boolean}
+  } as object{any: boolean}|array{number: boolean}|set{boolean}
 
 fregot (typecheck error):
   "builtins-01.rego" (line 9, column 3):
@@ -22,4 +22,4 @@ fregot (typecheck error):
     "bar": boolean,
     "foo": boolean,
     "baz": number
-  } as object{any: boolean}|set{boolean}|array{number: boolean}
+  } as object{any: boolean}|array{number: boolean}|set{boolean}
