@@ -55,7 +55,7 @@ import           Data.Hashable       (Hashable)
 import qualified Data.HashMap.Strict as HMS
 import qualified Data.HashSet        as HS
 import qualified Data.Kleene         as K
-import           Data.List           (foldl', intersperse)
+import           Data.List           (foldl', intersperse, sort)
 import           Data.Maybe          (catMaybes, maybeToList)
 import qualified Fregot.Prepare.Ast  as Ast
 import qualified Fregot.PrettyPrint  as PP
@@ -68,7 +68,7 @@ import qualified Prelude             as Prelude
 data StaticDynamic k ty = StaticDynamic
     { sdStatic  :: HMS.HashMap k ty
     , sdDynamic :: Maybe (ty, ty)
-    } deriving (Eq, Generic, Show)
+    } deriving (Eq, Generic, Ord, Show)
 
 instance (Hashable k, Hashable ty) => Hashable (StaticDynamic k ty)
 
@@ -89,7 +89,7 @@ data Elem ty
     | Object (StaticDynamic Ast.Scalar ty)
     | Array  (StaticDynamic Int ty)
     | Set    ty
-    deriving (Eq, Generic, Show)
+    deriving (Eq, Generic, Ord, Show)
 
 instance Hashable ty => Hashable (Elem ty)
 
@@ -97,7 +97,7 @@ data Type
     = Universe
     | Unknown
     | Union !(HS.HashSet (Elem Type))
-    deriving (Eq, Generic, Show)
+    deriving (Eq, Generic, Ord, Show)
 
 instance Hashable Type
 
@@ -133,8 +133,8 @@ instance PP.Pretty PP.Sem Type where
         Universe              -> PP.keyword "any"
         Unknown               -> PP.keyword "unknown"
         Union es | HS.null es -> PP.keyword "empty"
-        Union es              -> mconcat $
-            intersperse (PP.punctuation "|") (map PP.pretty $ HS.toList es)
+        Union es              -> mconcat $ intersperse (PP.punctuation "|") .
+            map PP.pretty . sort $ HS.toList es
 
 
 --------------------------------------------------------------------------------

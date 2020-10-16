@@ -189,7 +189,7 @@ data Scalar
     | Number Scientific
     | Bool   Bool
     | Null
-    deriving (Eq, Generic, Show)
+    deriving (Eq, Generic, Ord, Show)
 
 instance Binary Scalar
 instance Hashable Scalar
