@@ -1577,6 +1577,34 @@
         "type": "function"
       },
       "name": "walk"
+    },
+    {
+      "decl": {
+        "args": [
+          {
+            "type": "any"
+          }
+        ],
+        "result": {
+          "type": "string"
+        },
+        "type": "function"
+      },
+      "name": "yaml.marshal"
+    },
+    {
+      "decl": {
+        "args": [
+          {
+            "type": "string"
+          }
+        ],
+        "result": {
+          "type": "any"
+        },
+        "type": "function"
+      },
+      "name": "yaml.unmarshal"
     }
   ]
 }

@@ -29,6 +29,7 @@ Library
     Fregot.Builtins.Jwt
     Fregot.Builtins.Regex
     Fregot.Builtins.Time
+    Fregot.Builtins.Yaml
     Fregot.Capabilities
     Fregot.Compile.Graph
     Fregot.Compile.Order
@@ -155,6 +156,7 @@ Library
     hashable             >= 1.2   && < 1.4,
     haskeline            >= 0.7   && < 0.8,
     HsYAML               >= 0.2   && < 0.3,
+    HsYAML-aeson         >= 0.2   && < 0.3,
     indents              >= 0.5   && < 0.6,
     jose                 >= 0.8.3 && < 0.9,
     lens                 >= 4.18  && < 4.19,
