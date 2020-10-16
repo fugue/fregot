@@ -17,7 +17,7 @@ import           Control.Lens             ((^?))
 import qualified Data.Aeson               as A
 import qualified Data.HashMap.Strict      as HMS
 import qualified Data.HashSet             as HS
-import           Data.List                (sortOn)
+import           Data.List                (sort, sortOn)
 import qualified Data.Text                as T
 import           Fregot.Builtins.Internal
 import           Fregot.Names             (nameToText)
@@ -77,7 +77,7 @@ renderType = \case
     Ty.Universe                     -> anyType
     Ty.Unknown                      -> anyType
     Ty.Union multi                  -> A.object
-        [typeTag "any", "of" A..= fmap renderElemType (HS.toList multi)]
+        [typeTag "any", "of" A..= fmap renderElemType (sort $ HS.toList multi)]
 
 renderElemType :: Ty.Elem Ty.Type -> A.Value
 renderElemType = \case
