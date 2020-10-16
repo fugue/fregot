@@ -41,6 +41,7 @@ import qualified Fregot.Builtins.Json     as Builtins.Json
 import qualified Fregot.Builtins.Jwt      as Builtins.Jwt
 import qualified Fregot.Builtins.Regex    as Builtins.Regex
 import qualified Fregot.Builtins.Time     as Builtins.Time
+import qualified Fregot.Builtins.Yaml     as Builtins.Yaml
 
 defaultBuiltins :: Builtins IO
 defaultBuiltins =
@@ -49,4 +50,5 @@ defaultBuiltins =
     Builtins.Json.builtins <>
     Builtins.Jwt.builtins <>
     Builtins.Regex.builtins <>
-    Builtins.Time.builtins
+    Builtins.Time.builtins <>
+    Builtins.Yaml.builtins
