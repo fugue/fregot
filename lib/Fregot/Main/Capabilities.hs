@@ -12,9 +12,8 @@ module Fregot.Main.Capabilities
     , main
     ) where
 
-import qualified Data.Aeson                 as A
+import qualified Data.Aeson.Extended        as A
 import qualified Data.ByteString.Lazy       as BL
-import qualified Data.ByteString.Lazy.Char8 as BL8
 import           Fregot.Builtins            (defaultBuiltins)
 import           Fregot.Capabilities
 import           Fregot.Main.GlobalOptions
@@ -29,6 +28,5 @@ parseOptions = pure Options
 
 main :: GlobalOptions -> Options -> IO ExitCode
 main _gopts _opts = do
-    BL.hPutStr IO.stdout $ A.encode $ renderCapabilities defaultBuiltins
-    BL8.hPutStrLn IO.stdout BL8.empty
+    BL.hPutStr IO.stdout . A.encodePretty $ renderCapabilities defaultBuiltins
     return ExitSuccess
