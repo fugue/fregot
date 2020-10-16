@@ -28,8 +28,10 @@ import qualified Text.Pcre2               as Pcre2
 
 builtins :: Builtins IO
 builtins = HMS.fromList
-    [ (NamedFunction (QualifiedName "regex.split"), builtin_regex_split)
-    , (NamedFunction (BuiltinName "re_match"),      builtin_re_match)
+    [ (NamedFunction (BuiltinName "re_match"),         builtin_regex_match)
+    , (NamedFunction (QualifiedName "regex.split"),    builtin_regex_split)
+    , (NamedFunction (QualifiedName "regex.match"),    builtin_regex_match)
+    , (NamedFunction (QualifiedName "regex.is_valid"), builtin_regex_is_valid)
     ]
 
 builtin_regex_split :: Builtin IO
@@ -58,8 +60,8 @@ builtin_regex_split = Builtin
         let (pre, post) = T.splitAt (start - offset) remainder in
         pre : split matches (start + len) (T.drop len post)
 
-builtin_re_match :: Builtin IO
-builtin_re_match = Builtin
+builtin_regex_match :: Builtin IO
+builtin_regex_match = Builtin
     (Ty.string 🡒 Ty.string 🡒 Ty.out Ty.boolean) $ do
     cacheRef <- newIORef HMS.empty
     pure $
@@ -75,3 +77,10 @@ builtin_re_match = Builtin
             regex <- first show errOrRegex
             match <- first show (Pcre2.match regex value)
             return $! not $ null match
+
+builtin_regex_is_valid :: Monad m => Builtin m
+builtin_regex_is_valid = Builtin
+    (Ty.string 🡒 Ty.out Ty.boolean) $ pure $
+    \(Cons pattern Nil) -> case Pcre2.compile pattern of
+        Left  _ -> pure False
+        Right _ -> pure True
