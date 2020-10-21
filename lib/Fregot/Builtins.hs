@@ -36,6 +36,7 @@ module Fregot.Builtins
 
 import qualified Fregot.Builtins.Base64   as Builtins.Base64
 import qualified Fregot.Builtins.Basics   as Builtins.Basics
+import qualified Fregot.Builtins.Graph    as Builtins.Graph
 import           Fregot.Builtins.Internal
 import qualified Fregot.Builtins.Json     as Builtins.Json
 import qualified Fregot.Builtins.Jwt      as Builtins.Jwt
@@ -47,6 +48,7 @@ defaultBuiltins :: Builtins IO
 defaultBuiltins =
     Builtins.Base64.builtins <>
     Builtins.Basics.builtins <>
+    Builtins.Graph.builtins <>
     Builtins.Json.builtins <>
     Builtins.Jwt.builtins <>
     Builtins.Regex.builtins <>

@@ -23,7 +23,7 @@ module Fregot.Builtins.Basics
     ) where
 
 import           Control.Applicative      ((<|>))
-import           Control.Lens             (ifoldMap, review, to, (^?))
+import           Control.Lens             (review, to, (^?))
 import           Control.Monad.Trans      (liftIO)
 import           Data.Char                (intToDigit, isSpace)
 import           Data.Functor             (($>))
@@ -94,7 +94,6 @@ builtins = HMS.fromList
     , (NamedFunction (BuiltinName "trim_space"),       builtin_trim_space)
     , (NamedFunction (BuiltinName "upper"),            builtin_upper)
     , (NamedFunction (BuiltinName "union"),            builtin_union)
-    , (NamedFunction (BuiltinName "walk"),             builtin_walk)
     , (OperatorFunction BinAndO,             builtin_bin_and)
     , (OperatorFunction NotEqualO,           builtin_not_equal)
     , (OperatorFunction LessThanO,           builtin_less_than)
@@ -410,21 +409,6 @@ builtin_union = Builtin
     (Ty.setOf (Ty.setOf Ty.any) 🡒 Ty.out (Ty.setOf Ty.unknown)) $ pure $
     \(Cons set Nil) ->
         return $! HS.unions $ HS.toList (set :: (HS.HashSet (HS.HashSet Value)))
-
-builtin_walk :: Monad m => Builtin m
-builtin_walk = Builtin
-    -- TODO(jaspervdj): We could type this way better if we had proper "pair"
-    -- array types.
-    (Ty.any 🡒 Ty.out (Ty.arrayOf Ty.unknown)) $ pure $
-    \(Cons val Nil) -> walk V.empty val
-  where
-    walk path val =
-        (pure $ Value $ ArrayV [Value (ArrayV path), val]) <>
-        (case unValue val of
-            ArrayV v  -> ifoldMap (\i -> walk (path <> [toVal i])) v
-            SetV   s  -> foldMap (\v -> walk (path <> [v]) v) s
-            ObjectV o -> ifoldMap (\k -> walk (path <> [toVal k])) o
-            _         -> mempty)
 
 builtin_not_equal :: Monad m => Builtin m
 builtin_not_equal = Builtin

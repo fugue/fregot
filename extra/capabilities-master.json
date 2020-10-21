@@ -63,6 +63,7 @@
         },
         "type": "function"
       },
+      "infix": "&",
       "name": "and"
     },
     {
@@ -89,7 +90,6 @@
         },
         "type": "function"
       },
-      "infix": "&",
       "name": "and"
     },
     {
@@ -391,6 +391,62 @@
         "type": "function"
       },
       "name": "format_int"
+    },
+    {
+      "decl": {
+        "args": [
+          {
+            "dynamic": {
+              "key": {
+                "type": "any"
+              },
+              "value": {
+                "of": [
+                  {
+                    "dynamic": {
+                      "type": "any"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "of": {
+                      "type": "any"
+                    },
+                    "type": "set"
+                  }
+                ],
+                "type": "any"
+              }
+            },
+            "type": "array"
+          },
+          {
+            "of": [
+              {
+                "dynamic": {
+                  "type": "any"
+                },
+                "type": "array"
+              },
+              {
+                "of": {
+                  "type": "any"
+                },
+                "type": "set"
+              }
+            ],
+            "type": "any"
+          }
+        ],
+        "result": {
+          "of": {
+            "type": "any"
+          },
+          "type": "set"
+        },
+        "type": "function"
+      },
+      "name": "graph.reachable"
     },
     {
       "decl": {
