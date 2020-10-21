@@ -856,6 +856,26 @@
       "decl": {
         "args": [
           {
+            "type": "number"
+          },
+          {
+            "type": "number"
+          }
+        ],
+        "result": {
+          "dynamic": {
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "type": "function"
+      },
+      "name": "numbers.range"
+    },
+    {
+      "decl": {
+        "args": [
+          {
             "dynamic": {
               "key": {
                 "type": "any"
@@ -909,6 +929,34 @@
         "type": "function"
       },
       "name": "object.filter"
+    },
+    {
+      "decl": {
+        "args": [
+          {
+            "dynamic": {
+              "key": {
+                "type": "any"
+              },
+              "value": {
+                "type": "any"
+              }
+            },
+            "type": "array"
+          },
+          {
+            "type": "any"
+          },
+          {
+            "type": "any"
+          }
+        ],
+        "result": {
+          "type": "any"
+        },
+        "type": "function"
+      },
+      "name": "object.get"
     },
     {
       "decl": {
