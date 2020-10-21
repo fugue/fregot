@@ -5,15 +5,15 @@ comprehension_index(debug)% 35|     mock_input.exposed[j].interface = intf
 comprehension_index(debug)% 36|     port := mock_input.exposed[j].port
         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 comprehension_index(debug)% = 8080
+| intf = "eth0"
 | j = 0
 | i = 0
-| intf = "eth0"
 comprehension_index(debug)% 36|     port := mock_input.exposed[j].port
         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 comprehension_index(debug)% = 8081
+| intf = "eth0"
 | j = 1
 | i = 0
-| intf = "eth0"
 comprehension_index(debug)% 1| access_twice {exposed_ports_by_interface["eth0"]; exposed_ports_by_interface["lo1"]}
                                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 comprehension_index(debug)% (debug) = true
