@@ -243,6 +243,40 @@
       "decl": {
         "args": [
           {
+            "type": "number"
+          },
+          {
+            "type": "number"
+          }
+        ],
+        "result": {
+          "type": "number"
+        },
+        "type": "function"
+      },
+      "name": "bits.and"
+    },
+    {
+      "decl": {
+        "args": [
+          {
+            "type": "number"
+          },
+          {
+            "type": "number"
+          }
+        ],
+        "result": {
+          "type": "number"
+        },
+        "type": "function"
+      },
+      "name": "bits.or"
+    },
+    {
+      "decl": {
+        "args": [
+          {
             "type": "string"
           },
           {
@@ -1096,6 +1130,7 @@
         },
         "type": "function"
       },
+      "infix": "|",
       "name": "or"
     },
     {
@@ -1122,7 +1157,6 @@
         },
         "type": "function"
       },
-      "infix": "|",
       "name": "or"
     },
     {
