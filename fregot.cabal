@@ -24,6 +24,7 @@ Library
     Fregot.Builtins
     Fregot.Builtins.Base64
     Fregot.Builtins.Basics
+    Fregot.Builtins.Graph
     Fregot.Builtins.Internal
     Fregot.Builtins.Json
     Fregot.Builtins.Jwt
