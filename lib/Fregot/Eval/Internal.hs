@@ -28,6 +28,7 @@ module Fregot.Eval.Internal
 
 import           Control.Lens.TH           (makeLenses)
 import qualified Data.HashMap.Strict       as HMS
+import           Data.List                 (sortOn)
 import           Data.Maybe                (maybeToList)
 import           Data.Unification          (Unification)
 import qualified Data.Unification          as Unification
@@ -80,7 +81,7 @@ prettyRowWithContext (Row context value) = PP.vcat $
     [PP.punctuation "=" <+> PP.pretty value] ++
     [ PP.punctuation "|" <+> PP.pretty var <+> PP.punctuation "=" <+>
         PP.nest 2 (PP.pretty mu)
-    | (var, iv) <- HMS.toList $ _locals context
+    | (var, iv) <- sortOn fst . HMS.toList $ _locals context
     , mu <- maybeToList . Unification.lookupMaybe iv $ _unification context
     ]
 
