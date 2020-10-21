@@ -73,6 +73,7 @@ builtins = HMS.fromList
     , (NamedFunction (BuiltinName "max"),              builtin_max)
     , (NamedFunction (BuiltinName "min"),              builtin_min)
     , (NamedFunction (QualifiedName "object.filter"),  builtin_object_filter)
+    , (NamedFunction (QualifiedName "object.get"),     builtin_object_get)
     , (NamedFunction (QualifiedName "object.remove"),  builtin_object_remove)
     , (NamedFunction (BuiltinName "or"),               builtin_bin_or)
     , (NamedFunction (BuiltinName "product"),          builtin_product)
@@ -286,6 +287,12 @@ builtin_object_filter = Builtin
      Ty.out (Ty.objectOf Ty.any Ty.any)) $ pure $
     \(Cons obj (Cons (Keys keys) Nil)) ->
      return $! HMS.intersection (obj :: HMS.HashMap Value Value) $ HS.toMap $ HS.fromList keys
+
+builtin_object_get :: Monad m => Builtin m
+builtin_object_get = Builtin
+    (Ty.objectOf Ty.any Ty.any 🡒 Ty.any 🡒 Ty.any 🡒 Ty.out Ty.any) $ pure $
+    \(Cons obj (Cons key (Cons def Nil))) ->
+     return $! HMS.lookupDefault def key (obj :: HMS.HashMap Value Value)
 
 builtin_object_remove :: Monad m => Builtin m
 builtin_object_remove = Builtin

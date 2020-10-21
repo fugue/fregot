@@ -925,6 +925,34 @@
             "type": "array"
           },
           {
+            "type": "any"
+          },
+          {
+            "type": "any"
+          }
+        ],
+        "result": {
+          "type": "any"
+        },
+        "type": "function"
+      },
+      "name": "object.get"
+    },
+    {
+      "decl": {
+        "args": [
+          {
+            "dynamic": {
+              "key": {
+                "type": "any"
+              },
+              "value": {
+                "type": "any"
+              }
+            },
+            "type": "array"
+          },
+          {
             "of": [
               {
                 "dynamic": {
