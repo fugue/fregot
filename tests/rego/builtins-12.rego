@@ -16,3 +16,11 @@ test_object_filter {
 	object.filter(x, {"foo": "what", "baz": "ever"}) == {"foo": 100, "baz": {"q": "a"}}
 	object.filter(x, {"foo", "bar"}) == {"foo": 100, "bar": true}
 }
+
+test_object_get {
+	x := {"foo": 100, "bar": true, "baz": {"q": "a"}}
+	object.get(x, "foo", "def") == 100
+	object.get(x, "faz", "def") == "def"
+	object.get(x, "baz", 100) == {"q": "a"}
+	object.get(x, "faz", {"a": "q"}) == {"a": "q"}
+}
