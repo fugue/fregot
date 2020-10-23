@@ -271,7 +271,72 @@
         },
         "type": "function"
       },
+      "name": "bits.lsh"
+    },
+    {
+      "decl": {
+        "args": [
+          {
+            "type": "number"
+          }
+        ],
+        "result": {
+          "type": "number"
+        },
+        "type": "function"
+      },
+      "name": "bits.negate"
+    },
+    {
+      "decl": {
+        "args": [
+          {
+            "type": "number"
+          },
+          {
+            "type": "number"
+          }
+        ],
+        "result": {
+          "type": "number"
+        },
+        "type": "function"
+      },
       "name": "bits.or"
+    },
+    {
+      "decl": {
+        "args": [
+          {
+            "type": "number"
+          },
+          {
+            "type": "number"
+          }
+        ],
+        "result": {
+          "type": "number"
+        },
+        "type": "function"
+      },
+      "name": "bits.rsh"
+    },
+    {
+      "decl": {
+        "args": [
+          {
+            "type": "number"
+          },
+          {
+            "type": "number"
+          }
+        ],
+        "result": {
+          "type": "number"
+        },
+        "type": "function"
+      },
+      "name": "bits.xor"
     },
     {
       "decl": {
