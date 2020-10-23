@@ -25,7 +25,7 @@ module Fregot.Builtins.Basics
 import           Control.Applicative      ((<|>))
 import           Control.Lens             (review, to, (^?))
 import           Control.Monad.Trans      (liftIO)
-import           Data.Bits                ((.|.), (.&.))
+import           Data.Bits                ((.|.), (.&.), xor, complement, shiftL, shiftR)
 import           Data.Char                (intToDigit, isSpace)
 import           Data.Functor             (($>))
 import qualified Data.HashMap.Strict      as HMS
@@ -57,8 +57,12 @@ builtins = HMS.fromList
     , (NamedFunction (QualifiedName "array.concat"),   builtin_array_concat)
     , (NamedFunction (QualifiedName "array.slice"),    builtin_array_slice)
     , (NamedFunction (BuiltinName "and"),              builtin_bin_and)
-    , (NamedFunction (QualifiedName "bits.and"),       builtin_bits_and)
-    , (NamedFunction (QualifiedName "bits.or"),        builtin_bits_or)
+    , (NamedFunction (QualifiedName "bits.and"),       lift_bits (.&.))
+    , (NamedFunction (QualifiedName "bits.lsh"),       lift_bits (shiftL))
+    , (NamedFunction (QualifiedName "bits.negate"),    builtin_bits_negate)
+    , (NamedFunction (QualifiedName "bits.or"),        lift_bits (.|.))
+    , (NamedFunction (QualifiedName "bits.rsh"),       lift_bits (shiftR))
+    , (NamedFunction (QualifiedName "bits.xor"),       lift_bits xor)
     , (NamedFunction (BuiltinName "concat"),           builtin_concat)
     , (NamedFunction (BuiltinName "contains"),         builtin_contains)
     , (NamedFunction (BuiltinName "count"),            builtin_count)
@@ -510,15 +514,15 @@ builtin_bin_or = Builtin
   (Ty.setOf Ty.any 🡒 Ty.setOf Ty.any 🡒 Ty.out (Ty.setOf Ty.unknown)) $ pure $
   \(Cons x (Cons y Nil)) -> return $! Value $ SetV $ HS.union x y
 
-builtin_bits_or :: Monad m => Builtin m
-builtin_bits_or = Builtin
+lift_bits :: Monad m => (Int -> Int -> Int) -> Builtin m
+lift_bits b = Builtin
   (Ty.number 🡒 Ty.number 🡒 Ty.out Ty.number) $ pure $
-  \(Cons x (Cons y Nil)) -> return $! (x :: Int) .|. y
+  \(Cons x (Cons y Nil)) -> return $! x `b` y
 
-builtin_bits_and :: Monad m => Builtin m
-builtin_bits_and = Builtin
-  (Ty.number 🡒 Ty.number 🡒 Ty.out Ty.number) $ pure $
-  \(Cons x (Cons y Nil)) -> return $! (x :: Int) .&. y
+builtin_bits_negate :: Monad m => Builtin m
+builtin_bits_negate = Builtin
+  (Ty.number 🡒 Ty.out Ty.number) $ pure $
+  \(Cons x Nil) -> return $! complement (x :: Int)
 
 -- | Auxiliary function to fix types.
 num :: Number -> Number
