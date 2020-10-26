@@ -1731,6 +1731,20 @@
       "decl": {
         "args": [
           {
+            "type": "any"
+          }
+        ],
+        "result": {
+          "type": "string"
+        },
+        "type": "function"
+      },
+      "name": "type_name"
+    },
+    {
+      "decl": {
+        "args": [
+          {
             "of": {
               "of": {
                 "type": "any"

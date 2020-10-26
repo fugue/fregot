@@ -101,6 +101,7 @@ builtins = HMS.fromList
     , (NamedFunction (BuiltinName "trim_right"),       builtin_trim_right)
     , (NamedFunction (BuiltinName "trim_suffix"),      builtin_trim_suffix)
     , (NamedFunction (BuiltinName "trim_space"),       builtin_trim_space)
+    , (NamedFunction (BuiltinName "type_name"),        builtin_type_name)
     , (NamedFunction (BuiltinName "upper"),            builtin_upper)
     , (NamedFunction (BuiltinName "union"),            builtin_union)
     , (OperatorFunction BinAndO,             builtin_bin_and)
@@ -420,6 +421,11 @@ builtin_trim_space :: Monad m => Builtin m
 builtin_trim_space = Builtin
     (Ty.string 🡒 Ty.out Ty.string) $ pure $
     \(Cons str Nil) -> return $! T.dropAround isSpace str
+
+builtin_type_name :: Monad m => Builtin m
+builtin_type_name = Builtin
+    (Ty.any 🡒 Ty.out Ty.string) $ pure $
+    \(Cons v Nil) -> return $! T.pack $ describeValue v
 
 builtin_upper :: Monad m => Builtin m
 builtin_upper = Builtin
