@@ -127,9 +127,15 @@ fromTypeError = \case
         "The name" <+> PP.code (PP.pretty name) <+> "is not defined"
 
     NoUnify mbSource (τ, source NonEmpty.:| _) (σ, _) ->
-        Error.mkError sub (fromMaybe source mbSource) "Unification error" $
-            "Could not unify type" <+> PP.code (PP.pretty τ) <+>
-            "with" <+> PP.code (PP.pretty σ)
+        let msg =
+                "Could not unify type" <+> PP.code (PP.pretty τ) <+>
+                "with" <+> PP.code (PP.pretty σ) in
+        Error.mkError sub (fromMaybe source mbSource) "Unification error" msg
+            & Error.hints .~
+                [ "An" <+> PP.pretty Types.void <+> "type may mean that" <+>
+                    "you're trying to use a function as a variable"
+                | τ == Types.void || σ == Types.void
+                ]
 
     NoSubset source σ τ ->
         Error.mkError sub source "Subtype error" $

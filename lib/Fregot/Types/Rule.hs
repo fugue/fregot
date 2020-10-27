@@ -34,7 +34,7 @@ ruleTypeToType :: RuleType -> Type
 ruleTypeToType (CompleteRuleType ty)   = ty
 ruleTypeToType (GenSetRuleType ty)     = setOf ty
 ruleTypeToType (GenObjectRuleType oty) = object oty
-ruleTypeToType (FunctionType _)        = error "ruleTypeToType (FunctionType _)"
+ruleTypeToType (FunctionType _)        = void
 ruleTypeToType ErrorType               = unknown
 
 $(makePrisms ''RuleType)
