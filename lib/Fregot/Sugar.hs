@@ -154,6 +154,10 @@ data Expr a n
     -- missing from the grammar, so I'm not sure at this point.
     | BinOpE  a (Expr a n) BinOp (Expr a n)
     | ParensE a (Expr a n)
+    -- Indirect references.  Can be folded into 'RefT' but it's useful to
+    -- do it this way for renaming, as we don't attempt to rename indirect
+    -- references.
+    | IndRefE a (Term a n) [RefArg a n]
     deriving (Generic, Show)
 
 instance (Binary a, Binary n) => Binary (Expr a n)
@@ -332,6 +336,7 @@ instance PP.Pretty PP.Sem n => PP.Pretty PP.Sem (Expr a n) where
     pretty (BinOpE _ x o y) = PP.pretty x <+> PP.pretty o <+> PP.pretty y
     pretty (ParensE _ e)    =
         PP.punctuation "(" <> PP.pretty e <> PP.punctuation ")"
+    pretty (IndRefE _ x ys) = PP.pretty x <> mconcat (map PP.pretty ys)
 
 instance PP.Pretty PP.Sem n => PP.Pretty PP.Sem (Term a n) where
     pretty (RefT _ _ v args) = PP.pretty v <> mconcat (map PP.pretty args)
@@ -423,11 +428,13 @@ exprAnn = lens getAnn setAnn
         TermE   a _     -> a
         BinOpE  a _ _ _ -> a
         ParensE a _     -> a
+        IndRefE a _ _   -> a
 
     setAnn e a = case e of
         TermE   _ t     -> TermE   a t
         BinOpE  _ x o y -> BinOpE  a x o y
         ParensE _ x     -> ParensE a x
+        IndRefE _ x ys  -> IndRefE a x ys
 
 termAnn :: Lens' (Term a n) a
 termAnn = lens getAnn setAnn

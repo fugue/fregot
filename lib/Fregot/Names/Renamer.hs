@@ -153,6 +153,7 @@ renameExpr = \case
     TermE a t      -> TermE   a <$> renameTerm t
     BinOpE a x b y -> BinOpE  a <$> renameExpr x <*> pure b <*> renameExpr y
     ParensE a x    -> ParensE a <$> renameExpr x
+    IndRefE a x ys -> IndRefE a <$> renameTerm x <*> traverse renameRefArg ys
 
 specialBuiltinVar :: Var -> Bool
 specialBuiltinVar "data"  = True
@@ -267,9 +268,6 @@ resolveRef source var refArgs = do
         _                                            -> Nothing
 
     -- Hidden in this body because we don't want to naively call it.
-    renameRefArg = \case
-        RefBrackArg e  -> RefBrackArg <$> renameExpr e
-        RefDotArg s uv -> pure (RefDotArg s uv)
 
     resolveData thispkg universe args = listToMaybe $ do
         -- The reverse here is used to try the longest path first.
@@ -279,6 +277,11 @@ resolveRef source var refArgs = do
         name' <- maybeToList $ refArgToVar name
         guard $ pkg == thispkg || not (null (universe pkg))
         return (pkg, name', remainder)
+
+renameRefArg :: Rename RefArg
+renameRefArg = \case
+    RefBrackArg e  -> RefBrackArg <$> renameExpr e
+    RefDotArg s uv -> pure (RefDotArg s uv)
 
 renameTerm :: Rename Term
 renameTerm = \case
