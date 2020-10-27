@@ -1,0 +1,11 @@
+fregot (typecheck error):
+  "function-rule-01.rego" (line 8, column 3):
+  Unification error:
+
+    8|   p = 1
+         ^
+
+  Could not unify type empty with number
+
+  Hint:
+    An empty type may mean that you're trying to use a function as a variable
