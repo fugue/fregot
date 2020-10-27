@@ -4,3 +4,4 @@ packages:
 
 package fregot
   tests: True
+  ghc-options: -Werror

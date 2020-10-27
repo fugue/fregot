@@ -256,6 +256,7 @@ prepareLiteral slit = do
         Sugar.TermE _ t -> assignLhsTerm t
         Sugar.BinOpE _ _ _ _ -> False
         Sugar.ParensE _ e -> assignLhsExpr e
+        Sugar.IndRefE _ _ _ -> False
 
     assignLhsTerm = \case
         Sugar.RefT _ _ _ _ -> False
@@ -282,6 +283,10 @@ prepareExpr = \case
         y' <- prepareExpr y
         return $ CallT source (OperatorFunction o') [x', y']
     Sugar.ParensE _source e -> prepareExpr e
+    Sugar.IndRefE source x args -> do
+        t <- prepareTerm x
+        prepareRef source t args
+
 
 prepareTerm
     :: Monad m
@@ -289,7 +294,7 @@ prepareTerm
     -> ParachuteT Error m (Term SourceSpan)
 prepareTerm = \case
     Sugar.RefT source nameSource name0 refs ->
-        prepareRef source nameSource name0 refs
+        prepareRef source (NameT nameSource name0) refs
 
     Sugar.CallT source names args -> case names of
         [name] -> CallT source (NamedFunction name) <$> traverse prepareExpr args
@@ -315,16 +320,16 @@ prepareTerm = \case
 
 prepareRef
     :: Monad m
-    => SourceSpan -> SourceSpan -> Name -> [Sugar.RefArg SourceSpan Name]
+    => SourceSpan -> Term SourceSpan -> [Sugar.RefArg SourceSpan Name]
     -> ParachuteT Error m (Term SourceSpan)
-prepareRef source nameSource name0 refs = foldM
+prepareRef source term0 refs = foldM
     (\acc refArg -> case refArg of
         Sugar.RefDotArg ann v -> return $
             RefT source acc (review termToScalar (ann, Sugar.String (unVar v)))
         Sugar.RefBrackArg k -> do
             k' <- prepareExpr k
             return $ RefT source acc k')
-    (NameT nameSource name0)
+    term0
     refs
 
 prepareObjectItem
@@ -340,7 +345,7 @@ prepareObjectKey
 prepareObjectKey = \case
     Sugar.ScalarK ann s      -> return $! ValueT ann $! review valueToScalar s
     Sugar.VarK    ann v      -> return $! NameT ann (LocalName v)
-    Sugar.RefK    ann v args -> prepareRef ann ann v args
+    Sugar.RefK    ann v args -> prepareRef ann (NameT ann v) args
     Sugar.ErrorK  ann        -> return $! ErrorT ann
 
 prepareBinOp

@@ -215,8 +215,12 @@ expr = Parsec.buildExpressionParser
             expectToken Tok.TRParen
             return $ \ss -> ParensE ss e) <|>
         (do
+            startI <- Indent.indentation
             t <- term
-            return $ \ss -> TermE ss t)
+            ras <- Parsec.option [] $ Indent.same startI >> Parsec.many refArg
+            case ras of
+                [] -> pure $ \ss -> TermE ss t
+                _ : _ -> pure $ \ss -> IndRefE ss t ras)
 
     binary tok op = Parsec.Infix (do
         Tok.symbol tok
