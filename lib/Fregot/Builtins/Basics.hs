@@ -300,13 +300,13 @@ builtin_object_filter :: Monad m => Builtin m
 builtin_object_filter = Builtin
     (Ty.objectOf Ty.any Ty.any 🡒
      Ty.arrayOf Ty.any ∪ Ty.setOf Ty.any ∪ Ty.objectOf Ty.any Ty.any 🡒
-     Ty.out (Ty.objectOf Ty.any Ty.any)) $ pure $
+     Ty.out (Ty.objectOf Ty.unknown Ty.unknown)) $ pure $
     \(Cons obj (Cons (Keys keys) Nil)) ->
      return $! HMS.intersection (obj :: HMS.HashMap Value Value) $ HS.toMap $ HS.fromList keys
 
 builtin_object_get :: Monad m => Builtin m
 builtin_object_get = Builtin
-    (Ty.objectOf Ty.any Ty.any 🡒 Ty.any 🡒 Ty.any 🡒 Ty.out Ty.any) $ pure $
+    (Ty.objectOf Ty.any Ty.any 🡒 Ty.any 🡒 Ty.any 🡒 Ty.out Ty.unknown) $ pure $
     \(Cons obj (Cons key (Cons def Nil))) ->
      return $! HMS.lookupDefault def key (obj :: HMS.HashMap Value Value)
 
@@ -314,7 +314,7 @@ builtin_object_remove :: Monad m => Builtin m
 builtin_object_remove = Builtin
     (Ty.objectOf Ty.any Ty.any 🡒
      Ty.arrayOf Ty.any ∪ Ty.setOf Ty.any ∪ Ty.objectOf Ty.any Ty.any 🡒
-     Ty.out (Ty.objectOf Ty.any Ty.any)) $ pure $
+     Ty.out (Ty.objectOf Ty.unknown Ty.unknown)) $ pure $
     \(Cons obj (Cons (Keys keys) Nil)) ->
       return $! foldr HMS.delete (obj :: HMS.HashMap Value Value) keys
 
