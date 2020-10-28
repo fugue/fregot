@@ -16,6 +16,7 @@ module Data.Unification
     , lookup
     , bindVar
     , bindTerm
+    , coerceTerm
 
     , Unification
     , empty
@@ -74,6 +75,13 @@ bindTerm source v term = do
     case root v uni0 of
         (r, Nothing) -> modifyUnification (unsafeInsert r term) $> term
         (_, Just t)  -> unify source term t
+
+-- | Replace a bound variable without unifying.  Use with care.
+coerceTerm :: (Eq v, Hashable v, MonadUnify s v t m) => s -> v -> t -> m ()
+coerceTerm _source v term = do
+    uni0 <- getUnification
+    let (r, _) = root v uni0
+    modifyUnification (unsafeInsert r term)
 
 data Node k a = Ref !k | Root !a deriving (Functor, Show)
 
