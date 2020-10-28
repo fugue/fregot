@@ -334,7 +334,52 @@ inferLiteral lit = do
     _ <- (if lit ^.literalNegation then isolateUnification else id) $
         inferStatement (lit ^. literalStatement)
 
-    return ()
+    inferCoercion lit
+
+-- Some special cases for `is_x` family of functions that allow us to really
+-- narrow down the type here in certain cases.
+inferCoercion
+    :: Literal SourceSpan -> InferM ()
+inferCoercion lit
+    | not (lit ^. literalNegation)
+    , TermS term <- lit ^. literalStatement
+    , CallT _ (NamedFunction k) [NameT _ (LocalName var)] <- term
+    , Just σ <- lookup k coercers = do
+        -- We only match statements that look exactly like:
+        --
+        --     is_array(var)
+        --
+        -- If `var` is unknown, we set it to the coerced type.  If `var` is
+        -- known, we first try to unify the known type with the coerced type.
+        -- If that works, we're done.  If the unification fails, we just use
+        -- the coerced type.
+        mbSourceTy <- Unify.lookup var
+        let source = lit ^. literalAnn
+        let coercedTy = case mbSourceTy of
+                Nothing     -> (σ Types.unknown, source :| [])
+                Just (τ, s) ->
+                    let ρ = τ ∩ σ Types.any in
+                    ( if ρ == Types.void then σ Types.unknown else ρ
+                    , NonEmpty.singleton source <> s
+                    )
+        Unify.coerceTerm (lit ^. literalAnn) var coercedTy
+
+    | otherwise = pure ()
+  where
+    -- NOTE(jaspervdj): Perhaps we can move these to a separate 'Builtins'
+    -- module together with their implementations?  Alternatively, we can
+    -- extend the `btCheck` language with coercions?  Unfortunately, it can't
+    -- currently deal with variables: we would need to store refinements on
+    -- those.
+    coercers :: [(Name, Type -> Type)]
+    coercers =
+        [ (BuiltinName "is_array",   Types.arrayOf)
+        , (BuiltinName "is_boolean", const Types.boolean)
+        , (BuiltinName "is_number",  const Types.number)
+        , (BuiltinName "is_object",  \e -> Types.objectOf e e)
+        , (BuiltinName "is_set",     Types.setOf)
+        , (BuiltinName "is_string",  const Types.string)
+        ]
 
 inferStatement
     :: Statement SourceSpan -> InferM ()
