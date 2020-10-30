@@ -1,6 +1,12 @@
 # Number and bits related tests
 package fregot.tests.builtins_13
 
+test_abs {
+	abs(1) == 1
+	abs(-2) == 2
+	abs(0) == 0
+}
+
 test_numbers_range {
 	numbers.range(1, 1) == [1]
 	numbers.range(1, 5) == [1, 2, 3, 4, 5]

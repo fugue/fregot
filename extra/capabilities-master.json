@@ -4,6 +4,20 @@
       "decl": {
         "args": [
           {
+            "type": "number"
+          }
+        ],
+        "result": {
+          "type": "number"
+        },
+        "type": "function"
+      },
+      "name": "abs"
+    },
+    {
+      "decl": {
+        "args": [
+          {
             "of": [
               {
                 "dynamic": {
