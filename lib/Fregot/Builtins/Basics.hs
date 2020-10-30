@@ -52,7 +52,8 @@ import           Text.Read                (readMaybe)
 
 builtins :: Builtins IO
 builtins = HMS.fromList
-    [ (NamedFunction (BuiltinName "all"),              builtin_all)
+    [ (NamedFunction (BuiltinName "abs"),              builtin_abs)
+    , (NamedFunction (BuiltinName "all"),              builtin_all)
     , (NamedFunction (BuiltinName "any"),              builtin_any)
     , (NamedFunction (QualifiedName "array.concat"),   builtin_array_concat)
     , (NamedFunction (QualifiedName "array.slice"),    builtin_array_slice)
@@ -117,6 +118,11 @@ builtins = HMS.fromList
     , (OperatorFunction ModuloO,             builtin_modulo)
     , (OperatorFunction BinOrO,              builtin_bin_or)
     ]
+
+builtin_abs :: Monad m => Builtin m
+builtin_abs = Builtin
+    (Ty.number 🡒 Ty.out Ty.number) $ pure $
+    \(Cons i Nil) -> return $! abs (i :: Number)
 
 builtin_all :: Monad m => Builtin m
 builtin_all = Builtin
