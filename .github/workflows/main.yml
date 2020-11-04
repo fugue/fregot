@@ -2,15 +2,32 @@ name: 'CI'
 on: ['pull_request', 'push']
 jobs:
   build:
-    runs-on: 'ubuntu-latest'
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+      os: [ubuntu-latest, macOS-latest, windows-latest]
     steps:
-    - uses: 'actions/checkout@v1'
+    - uses: actions/checkout@v2
+
+    - uses: actions/setup-haskell@v1.1.2
+      name: Setup Haskell Stack
       with:
-        submodules: true
-    - uses: 'mstksg/setup-stack@v1'
-    - uses: 'actions/cache@v1'
+        ghc-version: ${{ matrix.ghc }}
+        stack-version: ${{ matrix.stack }}
+
+    - uses: actions/cache@v2
+      name: Cache ~/.stack
       with:
-        path: '~/.stack'
-        key: "${{ runner.os }}-v2-stack-${{ hashFiles('fregot.cabal', 'stack.yaml', 'stack.yaml.lock') }}"
-        restore-keys: '${{ runner.os }}-v2-stack'
-    - run: 'make install test'
+        path: ~/.stack
+        key: ${{ runner.os }}-${{ matrix.ghc }}-v4
+
+    - name: Add ~/.local/bin to PATH
+      run: echo "::add-path::$HOME/.local/bin"
+
+    - name: Build
+      run: make install
+      id: build
+
+    - name: Test
+      run: make test
