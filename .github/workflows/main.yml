@@ -9,6 +9,19 @@ jobs:
         os: [ubuntu-latest, macOS-latest, windows-latest]
         ghc: ['8.8.4']
     steps:
+    - name: Get info
+      id: info
+      shell: bash
+      run: |
+      'echo ::set-output name=version::${GITHUB_REF#refs/tags/}'
+        if [[ "$RUNNER_OS" == "Windows" ]]; then
+          echo "::set-output name=path::C:\Users\runneradmin\AppData\Roaming\local\bin"
+          echo "::set-output name=cache::C:\Users\runneradmin\AppData\Roaming\stack"
+        else
+          echo "::set-output name=path::$HOME/.local/bin"
+          echo "::set-output name=cache::$HOME/.stack"
+        fi
+
     - uses: actions/checkout@v2
 
     - uses: actions/setup-haskell@v1.1.2
@@ -20,17 +33,12 @@ jobs:
     - uses: actions/cache@v2
       name: Cache ~/.stack
       with:
-        path: ~/.stack
+        path: ${{ steps.info.outputs.cache }}
         key: ${{ runner.os }}-${{ matrix.ghc }}-${{ hashFiles('fregot.cabal', 'stack.yaml', 'stack.yaml.lock') }}
 
     - name: Add local/bin to PATH
       shell: bash
-      run: |
-        if [[ "$RUNNER_OS" == "Windows" ]]; then
-          echo "::add-path::C:\Users\runneradmin\AppData\Roaming\local\bin"
-        else
-          echo "::add-path::$HOME/.local/bin"
-        fi
+      run: echo "::add-path::${{ steps.info.outputs.path }}"
 
     - name: Build
       run: make install
