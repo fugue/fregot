@@ -7,6 +7,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macOS-latest, windows-latest]
+        ghc: '8.8.4'
     steps:
     - uses: actions/checkout@v2
 
@@ -20,10 +21,14 @@ jobs:
       name: Cache ~/.stack
       with:
         path: ~/.stack
-        key: ${{ runner.os }}-${{ matrix.ghc }}-v4
+        key: ${{ runner.os }}-${{ matrix.ghc }}-${{ hashFiles('fregot.cabal', 'stack.yaml', 'stack.yaml.lock') }}
 
-    - name: Add ~/.local/bin to PATH
+    - name: Add local/bin to PATH
       run: echo "::add-path::$HOME/.local/bin"
+      if: ${{ runner.os != "windows-latest" }}
+    - name: Add local/bin to PATH
+      run: echo "::add-path::C:\Users\runneradmin\AppData\Roaming\local\bin"
+      if: ${{ runner.os == "windows-latest" }}
 
     - name: Build
       run: make install
