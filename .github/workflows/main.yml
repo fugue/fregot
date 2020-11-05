@@ -13,7 +13,6 @@ jobs:
       id: info
       shell: bash
       run: |
-      'echo ::set-output name=version::${GITHUB_REF#refs/tags/}'
         if [[ "$RUNNER_OS" == "Windows" ]]; then
           echo "::set-output name=path::C:\Users\runneradmin\AppData\Roaming\local\bin"
           echo "::set-output name=cache::C:\Users\runneradmin\AppData\Roaming\stack"
