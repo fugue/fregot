@@ -12,7 +12,7 @@ extra-deps:
 - 'HsYAML-0.2.1.0'
 - 'jose-0.8.3'
 - git: https://github.com/fugue/goldplate.git
-  commit: 0ac9d399eb7bcac810a1bf4d97ccc08fe6f39f39
+  commit: 3a6b7f49723f21d4bcce4b909a88b18395a657ef
 
 nix:
   packages: ["zlib.dev", "zlib.out"]
