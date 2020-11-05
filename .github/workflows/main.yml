@@ -25,10 +25,10 @@ jobs:
 
     - name: Add local/bin to PATH
       run: echo "::add-path::$HOME/.local/bin"
-      if: ${{ runner.os }} != "windows-latest"
+      if: ${{ runner.os }} != "Windows"
     - name: Add local/bin to PATH
       run: echo "::add-path::C:\Users\runneradmin\AppData\Roaming\local\bin"
-      if: ${{ runner.os }} == "windows-latest"
+      if: ${{ runner.os }} == "Windows"
 
     - name: Build
       run: make install
