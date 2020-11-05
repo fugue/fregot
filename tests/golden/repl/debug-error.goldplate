@@ -3,8 +3,14 @@
     "arguments": ["repl", "--no-history-file", "debug-error.rego"],
     "asserts": [
         {"exit_code": 0},
-        {"stderr": "${GOLDPLATE_NAME}.stderr"},
-        {"stdout": "${GOLDPLATE_NAME}.stdout"}
+        {
+            "stdout": "${GOLDPLATE_NAME}.stdout",
+            "post_process": {"pattern": "\\r$", "replacement": ""}
+        },
+        {
+            "stderr": "${GOLDPLATE_NAME}.stderr",
+            "post_process": {"pattern": "\\r$", "replacement": ""}
+        }
     ],
     "stdin": [
         ":break debug_error.test_crash",
