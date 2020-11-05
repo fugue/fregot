@@ -5,11 +5,11 @@
         {"exit_code": 0},
         {
             "stdout": "${GOLDPLATE_NAME}.stdout",
-            "post_process": {"pattern": "\r\n", "replacement": "\n"}
+            "post_process": {"pattern": "\r", "replacement": ""}
         },
         {
             "stderr": "${GOLDPLATE_NAME}.stderr",
-            "post_process": {"pattern": "\r\n", "replacement": "\n"}
+            "post_process": {"pattern": "\r", "replacement": ""}
         }
     ],
     "stdin": [
