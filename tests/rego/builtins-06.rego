@@ -13,3 +13,8 @@ test_is_set {
   is_set({set()})
   not is_set([set()])
 }
+
+test_is_null {
+  is_null(null)
+  not is_null(false)
+}

@@ -375,6 +375,7 @@ inferCoercion lit
     coercers =
         [ (BuiltinName "is_array",   Types.arrayOf)
         , (BuiltinName "is_boolean", const Types.boolean)
+        , (BuiltinName "is_null",    const Types.null)
         , (BuiltinName "is_number",  const Types.number)
         , (BuiltinName "is_object",  \e -> Types.objectOf e e)
         , (BuiltinName "is_set",     Types.setOf)
