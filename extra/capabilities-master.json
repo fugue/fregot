@@ -734,6 +734,20 @@
         },
         "type": "function"
       },
+      "name": "is_null"
+    },
+    {
+      "decl": {
+        "args": [
+          {
+            "type": "any"
+          }
+        ],
+        "result": {
+          "type": "boolean"
+        },
+        "type": "function"
+      },
       "name": "is_number"
     },
     {

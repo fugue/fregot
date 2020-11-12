@@ -74,6 +74,7 @@ builtins = HMS.fromList
     , (NamedFunction (BuiltinName "is_array"),         builtin_is_array)
     , (NamedFunction (BuiltinName "is_boolean"),       builtin_is_boolean)
     , (NamedFunction (BuiltinName "is_number"),        builtin_is_number)
+    , (NamedFunction (BuiltinName "is_null"),          builtin_is_null)
     , (NamedFunction (BuiltinName "is_object"),        builtin_is_object)
     , (NamedFunction (BuiltinName "is_set"),           builtin_is_set)
     , (NamedFunction (BuiltinName "is_string"),        builtin_is_string)
@@ -244,6 +245,13 @@ builtin_is_boolean = Builtin
     \(Cons val Nil) -> case unValue val of
         BoolV _ -> return True
         _       -> return False
+
+builtin_is_null :: Monad m => Builtin m
+builtin_is_null = Builtin
+    (Ty.any 🡒 Ty.out Ty.boolean) $ pure $
+    \(Cons val Nil) -> case unValue val of
+        NullV -> return True
+        _     -> return False
 
 builtin_is_number :: Monad m => Builtin m
 builtin_is_number = Builtin

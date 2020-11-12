@@ -257,6 +257,7 @@ processInput h input = do
             forM_ mbRows $ \rows -> case rows of
                 [] -> PP.hPutSemDoc IO.stderr $ PP.pretty Eval.emptyObject
                 _  -> forM_ rows $ \row ->
+                    -- TODO: Don't repeat expr.
                     PP.hPutSemDoc IO.stdout $ Eval.prettyRowWithContext row
 
         Nothing -> return ()
