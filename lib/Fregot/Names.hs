@@ -76,8 +76,7 @@ import qualified Fregot.Lexer.Internal as Lexer
 import qualified Fregot.PrettyPrint    as PP
 import           GHC.Generics          (Generic)
 import           System.FilePath       (dropTrailingPathSeparator, isRelative,
-                                        joinPath, splitExtension, splitPath,
-                                        (<.>))
+                                        splitExtension, splitPath, (<.>))
 import           System.IO.Unsafe      (unsafePerformIO)
 
 data PackageName = PackageName {-# UNPACK #-} !Unique ![T.Text]
@@ -308,7 +307,7 @@ instance PP.Pretty a InstVar where
 packageNameFromFilePath :: Prism' FilePath PackageName
 packageNameFromFilePath = prism' to from
   where
-    to   p  = joinPath (fmap T.unpack $ unPackageName p) <.> "rego"
+    to   p  = T.unpack (T.intercalate "/" $ unPackageName p) <.> "rego"
     from fp = do
         guard $ isRelative fp
         let (pieces, ext) = splitExtension fp
