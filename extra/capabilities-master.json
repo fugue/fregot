@@ -796,6 +796,20 @@
       "decl": {
         "args": [
           {
+            "type": "string"
+          }
+        ],
+        "result": {
+          "type": "boolean"
+        },
+        "type": "function"
+      },
+      "name": "json.is_valid"
+    },
+    {
+      "decl": {
+        "args": [
+          {
             "type": "any"
           }
         ],
@@ -1822,6 +1836,20 @@
         "type": "function"
       },
       "name": "walk"
+    },
+    {
+      "decl": {
+        "args": [
+          {
+            "type": "string"
+          }
+        ],
+        "result": {
+          "type": "boolean"
+        },
+        "type": "function"
+      },
+      "name": "yaml.is_valid"
     },
     {
       "decl": {
