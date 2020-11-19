@@ -9,3 +9,8 @@ test_json_02 {
   out := json.marshal({"foo": 1, "bar": ["Hello", "World"]})
   out == `{"foo":1,"bar":["Hello","World"]}`
 }
+
+test_json_03 {
+  json.is_valid("{}")
+  not json.is_valid("}{")
+}
