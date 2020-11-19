@@ -5,6 +5,7 @@ jobs:
     runs-on: 'ubuntu-latest'
     steps:
     - run: echo "ACTIONS_ALLOW_UNSECURE_COMMANDS=true" >> $GITHUB_ENV
+    - run: echo "$HOME/.local/bin" >> $GITHUB_PATH
     - uses: 'actions/checkout@v1'
       with:
         submodules: true
