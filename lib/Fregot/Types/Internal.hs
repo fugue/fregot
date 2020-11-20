@@ -51,9 +51,9 @@ import           Control.Lens        (Prism', prism', review)
 import           Control.Lens.TH     (makePrisms)
 import           Control.Monad       (forM)
 import           Data.Functor        (($>))
-import           Data.Hashable       (Hashable)
 import qualified Data.HashMap.Strict as HMS
 import qualified Data.HashSet        as HS
+import           Data.Hashable       (Hashable)
 import qualified Data.Kleene         as K
 import           Data.List           (foldl', intersperse, sort)
 import           Data.Maybe          (catMaybes, maybeToList)
