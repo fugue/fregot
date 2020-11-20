@@ -14,7 +14,7 @@ module Fregot.Main.Test
     , main
     ) where
 
-import           Control.Lens              ((^.))
+import           Control.Lens              ((&), (.~), (^.))
 import           Control.Lens.TH           (makeLenses)
 import           Control.Monad.Extended    (foldMapM, forM_)
 import qualified Control.Monad.Parachute   as Parachute
@@ -49,7 +49,9 @@ main :: GlobalOptions -> Options -> IO ExitCode
 main gopts opts = do
     sources <- Sources.newHandle
     interpreter <- Interpreter.newHandle
-        (Interpreter.defaultConfig {Interpreter._dumpTags = gopts ^. dumpTags})
+        (Interpreter.defaultConfig
+            & Interpreter.dumpTags .~ gopts ^. dumpTags
+            & Interpreter.strictBuiltinErrors .~ gopts ^. strictBuiltinErrors)
         sources
     regoPaths <- Find.findPrefixedRegoFiles (opts ^. paths)
     (errors, mbResult) <- Parachute.runParachuteT $ do
@@ -65,6 +67,6 @@ main gopts opts = do
     Error.hPutErrors IO.stderr sources' (gopts ^. format) errors
 
     return $! case mbResult of
-        _ | Error.severe errors -> ExitFailure 1
+        _ | Error.severe errors                               -> ExitFailure 1
         Just tr | null (tr ^. failed) && null (tr ^. errored) -> ExitSuccess
-        _ -> ExitFailure 1
+        _                                                     -> ExitFailure 1

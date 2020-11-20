@@ -22,6 +22,7 @@ module Control.Monad.Stream
 
     , coerce
     , mapError
+    , ignoreError
     ) where
 
 import           Control.Monad       (join)
@@ -233,3 +234,14 @@ mapError f (Stream mstep) = Stream $ do
         SSingle  x    -> return $! SSingle x
         SError   e    -> return $! SError (f e)
 {-# SPECIALIZE mapError :: (e -> f) -> Stream e i IO a -> Stream f i IO a #-}
+
+ignoreError :: Monad m => Stream e i m a -> Stream f i m a
+ignoreError (Stream mstep) = Stream $ do
+    xstep <- mstep
+    case xstep of
+        SDone         -> return SDone
+        SYield   x xs -> return $! SYield x (ignoreError xs)
+        SSuspend i xs -> return $! SSuspend i (ignoreError xs)
+        SSingle  x    -> return $! SSingle x
+        SError   _    -> return SDone
+{-# SPECIALIZE ignoreError :: Stream e i IO a -> Stream f i IO a #-}

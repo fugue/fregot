@@ -14,7 +14,7 @@ module Fregot.Main.Eval
     , main
     ) where
 
-import           Control.Lens                 (view, (^.))
+import           Control.Lens                 (view, (&), (.~), (^.))
 import           Control.Lens.TH              (makeLenses)
 import           Control.Monad.Extended       (forM_)
 import qualified Control.Monad.Parachute      as Parachute
@@ -61,7 +61,9 @@ main :: GlobalOptions -> Options -> IO ExitCode
 main gopts opts = do
     sources <- Sources.newHandle
     interpreter <- Interpreter.newHandle
-        (Interpreter.defaultConfig {Interpreter._dumpTags = gopts ^. dumpTags})
+        (Interpreter.defaultConfig
+            & Interpreter.dumpTags .~ gopts ^. dumpTags
+            & Interpreter.strictBuiltinErrors .~ gopts ^. strictBuiltinErrors)
         sources
     regoPaths <- Find.findPrefixedRegoFiles (opts ^. paths)
     (errors, mbResult) <- Parachute.runParachuteT $ do

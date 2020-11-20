@@ -23,7 +23,7 @@ module Fregot.Eval.Monad
     , RuleCache
 
     , Environment (..), builtins, rules, inputDoc
-    , ruleCache, comprehensionCache, stack
+    , ruleCache, comprehensionCache, stack, strictBuiltinErrors
 
     , EvalException (..)
 
@@ -289,9 +289,10 @@ raise' source title body = raise (Error.mkError "eval" source title body)
 
 runBuiltinM :: SourceSpan -> Stream BuiltinException Suspension IO a -> EvalM a
 runBuiltinM source stream = EvalM $ \env ctx ->
-    -- Stream.throw $ EvalException env ctx $
-    Stream.mapError
-        (\(BuiltinException err) -> EvalException env ctx $
-            (Error.mkError "eval" source "builtin error" $ PP.pretty err)
-                & Error.stack .~ (env ^. stack))
-        (Row ctx <$> stream)
+    let handleErrors = case env ^. strictBuiltinErrors of
+            True -> Stream.mapError $ \(BuiltinException err) ->
+                EvalException env ctx $
+                (Error.mkError "eval" source "builtin error" $ PP.pretty err)
+                    & Error.stack .~ (env ^. stack)
+            False -> Stream.ignoreError in
+    handleErrors (Row ctx <$> stream)

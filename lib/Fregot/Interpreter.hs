@@ -13,7 +13,7 @@ Portability : POSIX
 {-# LANGUAGE TypeFamilies      #-}
 module Fregot.Interpreter
     ( InterpreterM
-    , Config (..)
+    , Config (..), opt, dumpTags, strictBuiltinErrors
     , defaultConfig
     , Handle
     , newHandle
@@ -55,8 +55,8 @@ module Fregot.Interpreter
 
 import qualified Codec.Compression.GZip          as GZip
 import           Control.Comonad                 (Comonad (..))
-import           Control.Lens                    (forOf_, ix, over, preview,
-                                                  review, to, (^.), (^..), _1)
+import           Control.Lens                    (_1, forOf_, ix, over, preview,
+                                                  review, to, (^.), (^..))
 import           Control.Lens.TH                 (makeLenses)
 import           Control.Monad                   (foldM, guard, unless, when)
 import           Control.Monad.Identity          (Identity (..))
@@ -120,12 +120,13 @@ import           System.FilePath.Extended        (listExtensions)
 type InterpreterM a = ParachuteT Error IO a
 
 data Config = Config
-    { _opt      :: !Bool
-    , _dumpTags :: !Dump.Tags
+    { _opt                 :: !Bool
+    , _dumpTags            :: !Dump.Tags
+    , _strictBuiltinErrors :: !Bool
     }
 
 defaultConfig :: Config
-defaultConfig = Config True mempty
+defaultConfig = Config True mempty True
 
 data Handle = Handle
     { _config   :: !Config
@@ -447,7 +448,8 @@ newEvalContext h = Eval.EnvContext
         <*> liftIO (IORef.readIORef (h ^. inputDoc))
         <*> liftIO (IORef.readIORef (h ^. cache))
         <*> Cache.new
-        <*> pure Stack.empty)
+        <*> pure Stack.empty
+        <*> pure (h ^. config . strictBuiltinErrors))
 
 eval
     :: Handle -> Maybe Eval.EnvContext -> PackageName -> Eval.EvalM a

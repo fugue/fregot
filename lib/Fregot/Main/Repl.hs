@@ -13,7 +13,7 @@ module Fregot.Main.Repl
     , main
     ) where
 
-import           Control.Lens              ((^.))
+import           Control.Lens              ((&), (.~), (^.))
 import           Control.Lens.TH           (makeLenses)
 import           Control.Monad             (forM_)
 import           Control.Monad.Parachute   (runParachuteT)
@@ -66,9 +66,9 @@ main gopts opts = do
     sources     <- Sources.newHandle
     itpr        <- Interpreter.newHandle
         (Interpreter.defaultConfig
-            { Interpreter._opt      = opts ^. opt
-            , Interpreter._dumpTags = gopts ^. dumpTags
-            })
+            & Interpreter.opt                 .~ opts ^. opt
+            & Interpreter.dumpTags            .~ gopts ^. dumpTags
+            & Interpreter.strictBuiltinErrors .~ gopts ^. strictBuiltinErrors)
         sources
     regoPaths   <- Find.findPrefixedRegoFiles (opts ^. paths)
 
