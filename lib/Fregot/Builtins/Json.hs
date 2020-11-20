@@ -16,12 +16,12 @@ module Fregot.Builtins.Json
     ( builtins
     ) where
 
-import           Control.Lens             (LensLike', Traversal', ix, (&), (.~),
-                                           (^?), (<&>))
+import           Control.Lens             (Traversal', ix, (&), (.~), (<&>),
+                                           (^?))
 import           Control.Monad            (guard)
 import qualified Data.Aeson               as A
 import qualified Data.HashMap.Strict      as HMS
-import qualified Data.HashSet as HS
+import qualified Data.HashSet             as HS
 import qualified Data.List.Extended       as List
 import qualified Data.Text                as T
 import qualified Data.Text.Encoding       as T
@@ -122,14 +122,14 @@ toArrayIndex key = case key of
 traversePath :: Path -> Traversal' Value Value
 traversePath = foldr (\x t -> ixValue x . t) id
   where
-    ixValue :: Applicative f => Value -> LensLike' f Value Value
-    ixValue key f (Value (ObjectV obj)) =
-        Value . ObjectV <$> ix key f obj
-    ixValue key f (Value (ArrayV arr)) | Just i <- toArrayIndex key =
-        Value . ArrayV <$> ix (fromIntegral i) f arr
-    ixValue key f (Value (SetV set)) | HS.member key set =
-        f key <&> \key' -> Value . SetV . HS.insert key' $ HS.delete key set
-    ixValue _ _ val = pure val
+    ixValue key f = \case
+        Value (ObjectV obj) ->
+            Value . ObjectV <$> ix key f obj
+        Value (ArrayV arr) | Just i <- toArrayIndex key ->
+            Value . ArrayV <$> ix (fromIntegral i) f arr
+        Value (SetV set) | HS.member key set ->
+            f key <&> \key' -> Value . SetV . HS.insert key' $ HS.delete key set
+        val -> pure val
 
 applyPatch :: Patch -> Value -> Maybe Value
 applyPatch (Add path value) root = case List.maybeInitLast path of
