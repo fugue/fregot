@@ -3,7 +3,7 @@ fregot v0.12.3 repl - use :help for usage info
 Set breakpoint at rewind.crashing_rule
 fregot (eval error):
   "rewind.rego" (line 5, column 3):
-  builtin type error:
+  builtin error:
 
     5|   x + input.msg with input as {"msg": "crash"}
          ^^^^^^^^^^^^^

@@ -13,7 +13,7 @@ module Fregot.Main.GlobalOptions
     , silentVerbosity
     , defaultVerbosity
 
-    , GlobalOptions (..), dumpTags, format, verbosity
+    , GlobalOptions (..), dumpTags, format, verbosity, strictBuiltinErrors
     , parseGlobalOptions
 
     , inputPath
@@ -21,6 +21,7 @@ module Fregot.Main.GlobalOptions
 
 import           Control.Lens.TH              (makeLenses)
 import qualified Data.HashSet                 as HS
+import           Data.Maybe                   (fromMaybe)
 import qualified Fregot.Dump                  as Dump
 import qualified Options.Applicative.Extended as OA
 
@@ -38,9 +39,10 @@ defaultVerbosity :: Verbosity
 defaultVerbosity = Verbosity 1
 
 data GlobalOptions = GlobalOptions
-    { _dumpTags  :: Dump.Tags
-    , _format    :: Format
-    , _verbosity :: Verbosity
+    { _dumpTags            :: Dump.Tags
+    , _format              :: Format
+    , _verbosity           :: Verbosity
+    , _strictBuiltinErrors :: Bool
     } deriving (Show)
 
 $(makeLenses ''GlobalOptions)
@@ -68,6 +70,9 @@ parseGlobalOptions = GlobalOptions
             OA.long "verbosity" <>
             OA.metavar "VERBOSITY" <>
             OA.hidden)
+    <*> fmap (fromMaybe True) (OA.dualSwitch "strict-builtin-errors"
+            (OA.long "Raise builtin errors (default)")
+            (OA.long "Treat builtin errors as undefined"))
 
 inputPath :: OA.Parser (Maybe FilePath)
 inputPath = OA.optional $ OA.strOption $

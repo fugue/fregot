@@ -3,7 +3,7 @@ fregot v0.12.3 repl - use :help for usage info
 Set breakpoint at debug_error.test_crash
 fregot (eval error):
   "debug-error.rego" (line 5, column 3):
-  builtin type error:
+  builtin error:
 
     5|   x + input.msg with input as {"msg": "crash"}
          ^^^^^^^^^^^^^
@@ -14,7 +14,7 @@ fregot (eval error):
     rule debug_error.test_crash at data.debug_error.test_crash:1:1
 fregot (eval error):
   "debug-error.rego" (line 5, column 3):
-  builtin type error:
+  builtin error:
 
     5|   x + input.msg with input as {"msg": "crash"}
          ^^^^^^^^^^^^^

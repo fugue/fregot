@@ -23,7 +23,7 @@ module Fregot.Eval.Internal
     , ComprehensionCache
 
     , Environment (..), builtins, rules, inputDoc, ruleCache, comprehensionCache
-    , stack
+    , stack, strictBuiltinErrors
     ) where
 
 import           Control.Lens.TH           (makeLenses)
@@ -88,12 +88,13 @@ prettyRowWithContext (Row context value) = PP.vcat $
 --------------------------------------------------------------------------------
 
 data Environment = Environment
-    { _builtins           :: !(HMS.HashMap Function ReadyBuiltin)
-    , _rules              :: !(Tree.Tree (Rule RuleType SourceSpan))
-    , _inputDoc           :: !Value
-    , _ruleCache          :: !RuleCache
-    , _comprehensionCache :: !ComprehensionCache
-    , _stack              :: !Stack.StackTrace
+    { _builtins            :: !(HMS.HashMap Function ReadyBuiltin)
+    , _rules               :: !(Tree.Tree (Rule RuleType SourceSpan))
+    , _inputDoc            :: !Value
+    , _ruleCache           :: !RuleCache
+    , _comprehensionCache  :: !ComprehensionCache
+    , _stack               :: !Stack.StackTrace
+    , _strictBuiltinErrors :: !Bool
     }
 
 $(makeLenses ''Context)

@@ -308,11 +308,11 @@ evalBuiltin source builtin@(Builtin ty (Identity impl)) args0 = do
             "arguments but got" <+> PP.pretty n
 
     args2 <- mapM (ground source) args1
-    args3 <- case toArgs (Types.btRepr ty) args2 of
-        Left err -> raise' source "builtin type error" $ PP.pretty err
-        Right x  -> return x
-
-    result <- fmap toVal . runBuiltinM source . Stream.coerce $ impl args3
+    result <- fmap toVal . runBuiltinM source . Stream.coerce $ do
+        args3 <- case toArgs (Types.btRepr ty) args2 of
+            Left err -> throwString err
+            Right x  -> return x
+        impl args3
 
     -- Return value depends on supplied arguments.
     case mbFinalArg of
