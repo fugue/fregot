@@ -2,7 +2,7 @@ passed: 0, failed: 0, errored: 1
 fregot.tests.invalid.stack_trace_01.test_stack_trace:
 fregot (eval error):
   "stack-trace-01.rego" (line 5, column 3):
-  builtin type error:
+  builtin error:
 
     5|   x + input.msg with input as {"msg": "crash"}
          ^^^^^^^^^^^^^
