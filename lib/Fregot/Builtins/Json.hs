@@ -17,10 +17,11 @@ module Fregot.Builtins.Json
     ) where
 
 import           Control.Lens             (LensLike', Traversal', ix, (&), (.~),
-                                           (^?))
+                                           (^?), (<&>))
 import           Control.Monad            (guard)
 import qualified Data.Aeson               as A
 import qualified Data.HashMap.Strict      as HMS
+import qualified Data.HashSet as HS
 import qualified Data.List.Extended       as List
 import qualified Data.Text                as T
 import qualified Data.Text.Encoding       as T
@@ -126,6 +127,8 @@ traversePath = foldr (\x t -> ixValue x . t) id
         Value . ObjectV <$> ix key f obj
     ixValue key f (Value (ArrayV arr)) | Just i <- toArrayIndex key =
         Value . ArrayV <$> ix (fromIntegral i) f arr
+    ixValue key f (Value (SetV set)) | HS.member key set =
+        f key <&> \key' -> Value . SetV . HS.insert key' $ HS.delete key set
     ixValue _ _ val = pure val
 
 applyPatch :: Patch -> Value -> Maybe Value
@@ -144,6 +147,8 @@ applyPatch (Add path value) root = case List.maybeInitLast path of
                     let (pre, post) = V.splitAt i arr
                         arr' = pre <> V.cons value post in
                     pure $ root & traversePath ks .~ Value (ArrayV arr')
+            Value (SetV set) | k == value -> pure $ root
+                & traversePath ks .~ Value (SetV $ HS.insert value set)
             _ -> Nothing
 applyPatch (Remove path) root = do
     (ks, k) <- List.maybeInitLast path
@@ -156,6 +161,8 @@ applyPatch (Remove path) root = do
                 let (pre, post) = V.splitAt i arr
                     arr' = pre <> V.drop 1 post in
                 pure $ root & traversePath ks .~ Value (ArrayV arr')
+        Value (SetV set) | k `HS.member` set ->
+            pure $ root & traversePath ks .~ Value (SetV $ HS.delete k set)
         _ -> Nothing
 applyPatch (Replace [] value) _ = Just value
 applyPatch (Replace path value) root =
