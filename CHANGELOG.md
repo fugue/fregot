@@ -1,5 +1,49 @@
 # CHANGELOG
 
+ -  0.13.0 (2020-11-25)
+     *  New builtins:
+         -  `abs`
+         -  `bits.and`
+         -  `bits.lsh`
+         -  `bits.negate`
+         -  `bits.or`
+         -  `bits.rsh`
+         -  `bits.xor`
+         -  `graph.reachable`
+         -  `is_null`
+         -  `json.is_valid`
+         -  `json.patch`
+         -  `numbers.range`
+         -  `object.get`
+         -  `regex.is_valid builtins`
+         -  `regex.match`
+         -  `type_name`
+         -  `yaml.is_valid`
+         -  `yaml.marshal`
+         -  `yaml.unmarshal`
+     * New features:
+         -  Add `--{,no-}strict-builtin-errors` flags
+         -  Add an -O flag to explicitly turn on optimizations.
+            This will enable the optimizations even when debugging: see #229.
+         -  Support indirect references, e.g. `split("foo/bar")[_]`
+         -  Add `fregot capabilities` subcommand
+         -  Add a verbosity flag to silence the repl
+     * Other improvements:
+         -  Refactor type checking for builtins to construct a shallow as well
+            as a deep embedding of the type, used for type checking and type
+            printing respectively
+         -  Use the new typing mechanisms to improve the flow typing for:
+             *  `array.concat`
+             *  `array.slice`
+             *  `intersection`
+         -  Coerce immediately on specific type tests in Infer.  This improves
+            type checking in the presence of `is_null`, `is_array`, ... kinds of
+            functions
+         -  Better error when failing to unify a function type
+         -  Only use colors if we detect that `stderr` / `stdout` supports ANSI
+         -  Sort the row context in the REPL to make it deterministic
+         -  `min`/`max` should return undefined rather than `null`
+
  -  0.12.3 (2020-09-02)
      *  Fix a bug in indexing set rules using literal values.
      *  Improve typing for arrays.  We allow more granular, per-index types
