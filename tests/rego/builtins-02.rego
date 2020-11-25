@@ -28,12 +28,12 @@ test_indexof {
 
 test_max {
   max([1, 2]) == 2
-  max([]) == null
+  not max([])
 }
 
 test_min {
   min([1, 2]) == 1
-  min([]) == null
+  not min([])
 }
 
 test_product {

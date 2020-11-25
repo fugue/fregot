@@ -290,17 +290,17 @@ builtin_max :: Monad m => Builtin m
 builtin_max = Builtin
     -- TODO(jaspervdj): More like `∀a. collection<a> -> a`.
     (Ty.collectionOf Ty.any 🡒 Ty.out Ty.unknown) $ pure $
-    \(Cons (Values vals) Nil) -> return $! case vals of
-        [] -> Value NullV  -- TODO(jaspervdj): Should be undefined.
-        _  -> maximum (vals :: [Value])
+    \(Cons (Values vals) Nil) -> case vals of
+        [] -> mempty
+        _  -> pure $! maximum (vals :: [Value])
 
 builtin_min :: Monad m => Builtin m
 builtin_min = Builtin
     -- TODO(jaspervdj): More like `∀a. collection<a> -> a`.
     (Ty.collectionOf Ty.any 🡒 Ty.out Ty.unknown) $ pure $
-    \(Cons (Values vals) Nil) -> return $! case vals of
-        [] -> Value NullV  -- TODO(jaspervdj): Should be undefined.
-        _  -> minimum (vals :: [Value])
+    \(Cons (Values vals) Nil) -> case vals of
+        [] -> mempty
+        _  -> pure $! minimum (vals :: [Value])
 
 builtin_numbers_range :: Monad m => Builtin m
 builtin_numbers_range = Builtin
