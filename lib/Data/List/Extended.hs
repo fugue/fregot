@@ -10,6 +10,7 @@ module Data.List.Extended
     , unsnoc
     , splits
     , maybeLast
+    , maybeInitLast
     ) where
 
 import           Data.List
@@ -31,3 +32,6 @@ splits = go []
 
 maybeLast :: [a] -> Maybe a
 maybeLast l = if null l then Nothing else Just (last l)
+
+maybeInitLast :: [a] -> Maybe ([a], a)
+maybeInitLast l = if null l then Nothing else Just (init l, last l)

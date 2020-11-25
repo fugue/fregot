@@ -824,6 +824,34 @@
       "decl": {
         "args": [
           {
+            "type": "any"
+          },
+          {
+            "dynamic": {
+              "dynamic": {
+                "key": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "any"
+                }
+              },
+              "type": "array"
+            },
+            "type": "array"
+          }
+        ],
+        "result": {
+          "type": "any"
+        },
+        "type": "function"
+      },
+      "name": "json.patch"
+    },
+    {
+      "decl": {
+        "args": [
+          {
             "type": "string"
           }
         ],
@@ -1237,7 +1265,6 @@
         },
         "type": "function"
       },
-      "infix": "|",
       "name": "or"
     },
     {
@@ -1264,6 +1291,7 @@
         },
         "type": "function"
       },
+      "infix": "|",
       "name": "or"
     },
     {
