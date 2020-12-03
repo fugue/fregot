@@ -260,6 +260,8 @@ supported built-in functions with their arguments and types:
 - `--dump TAG` is used to dump debug information
 - `--format FORMAT` sets the format for error messages and diagnostics; values:
 `text` or `json`
+- `-v,--verbosity` determines how verbose `fregot` output is; values: `0`
+(quiet) or `1` (default)
 
 REPL
 ----
