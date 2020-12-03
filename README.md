@@ -73,7 +73,7 @@ Table of Contents
 Installation
 ------------
 
-fregot works on all major platforms. Pre-built binaries are available for [macOS](#binary---macos) and [Linux](#binary---linux). Windows users may install from [source](#from-source---any-platform).
+fregot works on all major platforms. Pre-built binaries are available for [macOS](#binary---macos) and [Linux](#binary---linux). All platforms, including Windows, support installing from [source](#from-source---any-platform).
 
 ### Binary - macOS
 
