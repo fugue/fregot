@@ -4,9 +4,9 @@ License     : Apache License, version 2.0
 Maintainer  : jasper@fugue.co
 Stability   : experimental
 Portability : POSIX
+
+Helper module for building rule trees from JSON and YAML documents.
 -}
---------------------------------------------------------------------------------
--- | Helper module for building rule trees from JSON and YAML documents.
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Fregot.Prepare.BuildTree

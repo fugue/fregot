@@ -4,9 +4,9 @@ License     : Apache License, version 2.0
 Maintainer  : jasper@fugue.co
 Stability   : experimental
 Portability : POSIX
+
+Convert a YAML document to a prepared rule.
 -}
---------------------------------------------------------------------------------
--- | Convert a YAML document to a prepared rule.
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Fregot.Prepare.Yaml
