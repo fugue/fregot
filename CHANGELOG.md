@@ -1,5 +1,9 @@
 # CHANGELOG
 
+ -  0.13.1 (2020-12-10)
+     *  Upgrade `lens`, `tasty` and `haskeline` dependencies.
+     *  Build a static executable for the Linux binary release.
+
  -  0.13.0 (2020-11-25)
      *  New builtins:
          -  `abs`
