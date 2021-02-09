@@ -42,14 +42,14 @@ ruleDependencies tree0 =
     refDependencies :: Term a -> [Term a] -> HS.HashSet Key
     refDependencies (NameT _ (QualifiedName k)) t =
         case Tree.descendant k tree0 of
-            Nothing   -> HS.singleton k
+            Nothing   -> suffixes k
             Just root -> treeRefDependencies k root t
     refDependencies h _ = termDependencies h
 
     treeRefDependencies :: Key -> Tree.Tree e -> [Term a] -> HS.HashSet Key
     treeRefDependencies prefix tree refs =
         (case Tree.root tree of
-            Just _  -> HS.singleton prefix
+            Just _  -> suffixes prefix
             Nothing -> mempty) <>
         (case refs of
             [] -> HS.fromList $ map (prefix <>) (Tree.keys tree)
