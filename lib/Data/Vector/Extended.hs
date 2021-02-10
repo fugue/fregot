@@ -16,7 +16,6 @@ module Data.Vector.Extended
 import           Data.Vector
 import qualified Data.Vector           as V
 import           Data.Vector.Instances ()
-import qualified Data.Vector.Mutable   as VM
 import           Prelude               hiding (head, length, lookup, null, tail)
 
 lookup :: Eq k => k -> Vector (k, v) -> Maybe v
