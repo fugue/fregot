@@ -11,7 +11,7 @@ extra-deps:
 - './packages/pcre-simple'
 - 'vector-0.12.2.0'
 - git: https://github.com/fugue/goldplate.git
-  commit: 0ac9d399eb7bcac810a1bf4d97ccc08fe6f39f39
+  commit: 131b5b12533ae9bff855a442a8d0d28a6a422fdc
 
 nix:
   shell-file: "shell.nix"
