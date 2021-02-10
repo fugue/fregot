@@ -1,5 +1,10 @@
 # CHANGELOG
 
+ -  0.13.2 (2021-02-10)
+     *  Bump `aeson` and `base64-bytestring` dependencies.
+     *  Extend rule dependencies to use suffixes of rule keys, even if they
+        are unknown.
+
  -  0.13.1 (2020-12-10)
      *  Upgrade `lens`, `tasty` and `haskeline` dependencies.
      *  Build a static executable for the Linux binary release.

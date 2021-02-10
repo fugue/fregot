@@ -1,5 +1,5 @@
 F u g u e   R E G O   T o o l k i t
-fregot v0.13.1 repl - use :help for usage info
+fregot v0.13.2 repl - use :help for usage info
 Set breakpoint at debug_error.test_crash
 fregot (eval error):
   "debug-error.rego" (line 5, column 3):
