@@ -5,19 +5,12 @@
 
 packages:
 - completed:
-    hackage: HsYAML-0.2.1.0@sha256:6e63cbc919543c5a837040f063e96fe0a4e43bef8ab3c057cef8f122396fdc2d,5469
+    hackage: vector-0.12.2.0@sha256:6e81683c2c19b4aea58f1f453547cb03851b3cfd4031b8eb82abfa4643a13494,7953
     pantry-tree:
-      size: 1340
-      sha256: 77d9299977dfbc7836cbbcb51fe890bb70d485d9dd89a3bbe54822635faa8108
+      size: 3841
+      sha256: 666939d042ad8880bb66f4c00ebe71167354649ed4f1e4ddce99de355921c25e
   original:
-    hackage: HsYAML-0.2.1.0
-- completed:
-    hackage: jose-0.8.3@sha256:8aced915d565f8397150149d46f1f2f2f7ec7aaddf9593f52b420111629332cf,3333
-    pantry-tree:
-      size: 1992
-      sha256: 625c2a7690a0e30f8882f001b6a7fbc88a9cfa686eff5ade81996883795ba0fc
-  original:
-    hackage: jose-0.8.3
+    hackage: vector-0.12.2.0
 - completed:
     name: goldplate
     version: 0.1.0
@@ -31,7 +24,7 @@ packages:
     commit: 0ac9d399eb7bcac810a1bf4d97ccc08fe6f39f39
 snapshots:
 - completed:
-    size: 532380
-    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/16/9.yaml
-    sha256: 14a7cec114424e4286adde73364438927a553ed248cc50f069a30a67e3ee1e69
-  original: lts-16.9
+    size: 563099
+    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/17/2.yaml
+    sha256: 92b1a17e31d0a978fca4bf270305d4d1dd8092271bf60eafbc9349c890854026
+  original: lts-17.2

@@ -1,5 +1,8 @@
 # CHANGELOG
 
+ -  0.13.3 (2021-02-10)
+     *  Bump `vector` dependency, GHC version and stackage LTS.
+
  -  0.13.2 (2021-02-10)
      *  Bump `aeson` and `base64-bytestring` dependencies.
      *  Extend rule dependencies to use suffixes of rule keys, even if they
