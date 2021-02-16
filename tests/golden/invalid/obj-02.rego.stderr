@@ -1,0 +1,12 @@
+fregot (compile error):
+  "obj-02.rego" (line 5, column 3):
+  Duplicate object key "k":
+
+    5|   "k": "bye",
+         ^^^
+
+  "obj-02.rego" (line 4, column 3):
+  Duplicate object key "k":
+
+    4|   "k": "hi",
+         ^^^

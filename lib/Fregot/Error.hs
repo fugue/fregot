@@ -205,7 +205,7 @@ fromParsecError' sev sp e =
     fromParsecError sev sp (sourcePosToSourceSpan sp $ Parsec.errorPos e) e
 
 mkError :: Subsystem -> SourceSpan -> PP.SemDoc -> PP.SemDoc -> Error
-mkError sub ss title' body' = mkMultiError sub title' [(ss, body')]
+mkError sub ss title' body' = mkMultiError sub title' [(ss, Just body')]
 
 mkErrorNoMeta :: Subsystem -> PP.SemDoc -> Error
 mkErrorNoMeta sub body' = Error
@@ -217,7 +217,7 @@ mkErrorNoMeta sub body' = Error
     , _stack       = Stack.empty
     }
 
-mkMultiError :: Subsystem -> PP.SemDoc -> [(SourceSpan, PP.SemDoc)] -> Error
+mkMultiError :: Subsystem -> PP.SemDoc -> [(SourceSpan, Maybe PP.SemDoc)] -> Error
 mkMultiError sub title' bodies = Error
     { _severity    = ErrorSeverity
     , _subsystem   = sub
@@ -229,7 +229,7 @@ mkMultiError sub title' bodies = Error
         return SourceSpanMessage
             { _sourceSpan = ss
             , _title      = title'
-            , _body       = Just body'
+            , _body       = body'
             }
     }
 

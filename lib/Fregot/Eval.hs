@@ -43,9 +43,9 @@ module Fregot.Eval
     ) where
 
 import           Control.Arrow             ((>>>))
-import           Control.Lens              (review, to, use, view, (%=), (.=),
-                                            (.~), (^.), (^?))
-import           Control.Monad             (void, when, (>=>))
+import           Control.Lens              (review, to, use, view, (%=),
+                                            (.=), (.~), (^.), (^?))
+import           Control.Monad             (unless, void, when, (>=>))
 import           Control.Monad.Extended    (forM, zipWithM_)
 import           Control.Monad.Identity    (Identity (..))
 import           Control.Monad.Reader      (ask, local)
@@ -79,6 +79,7 @@ import           Fregot.Tree               (Tree)
 import qualified Fregot.Tree               as Tree
 import qualified Fregot.Types.Builtins     as Types
 import           Fregot.Types.Rule         (RuleType (..))
+
 
 ground :: SourceSpan -> Mu' -> EvalM Value
 ground source = unMu >>> \case
@@ -184,12 +185,12 @@ evalTerm (ArrayT _ a) = do
 evalTerm (SetT _ s) = do
     bs <- mapM evalGroundTerm s
     return $ muValueF $ SetV $ HS.fromList bs
-evalTerm (ObjectT source o) = do
+evalTerm (ObjectT _ o) = do
     obj <- forM o $ \(kt, vt) -> do
         key <- evalGroundTerm kt
-        val <- evalGroundTerm vt
+        val <- evalTerm vt
         return (key, val)
-    muValue <$> mkObject source obj
+    return $ Mu $ RecM $ ObjectV $ HMS.fromList obj
 
 evalTerm (CompT source comp) = evalComprehension source comp
 
@@ -709,19 +710,27 @@ unify source x@(Mu (FreeM alpha)) (Mu (FreeM beta)) =
     Unification.bindVar source alpha beta $> x
 unify source (Mu (FreeM alpha)) v = Unification.bindTerm source alpha v
 unify source v (Mu (FreeM alpha)) = Unification.bindTerm source alpha v
-unify source mu@(Mu (RecM (ArrayV larr))) (Mu (RecM (ArrayV rarr))) = do
-    unifyArrayLength larr rarr
-    V.zipWithM_ (unify source) larr rarr
-    pure mu
-unify source mu@(Mu (GroundedM (Value (ArrayV larr)))) (Mu (RecM (ArrayV rarr))) = do
-    unifyArrayLength larr rarr
-    V.zipWithM_ (unify source) (fmap muValue larr) rarr
-    pure mu
-unify source mu@(Mu (RecM (ArrayV larr))) (Mu (GroundedM (Value (ArrayV rarr)))) = do
-    unifyArrayLength larr rarr
-    V.zipWithM_ (unify source) larr (fmap muValue rarr)
-    pure mu
-unify _source mu@(Mu (GroundedM x)) (Mu (GroundedM y)) =
+unify source mu@(Mu (RecM (ArrayV larr))) (Mu (RecM (ArrayV rarr))) =
+    unifyArrayArray source larr rarr $> mu
+unify source mu@(Mu (GroundedM (Value lval))) (Mu (RecM (ArrayV rarr))) =
+    case lval of
+        ArrayV larr -> unifyArrayArray source (fmap muValue larr) rarr $> mu
+        _ -> cut
+unify source mu@(Mu (RecM (ArrayV larr))) (Mu (GroundedM (Value rval))) =
+    case rval of
+        ArrayV rarr -> unifyArrayArray source larr (fmap muValue rarr) $> mu
+        _ -> cut
+unify source mu@(Mu (RecM (ObjectV lobj))) (Mu (RecM (ObjectV robj))) =
+    unifyObjectObject source lobj robj $> mu
+unify source mu@(Mu (GroundedM (Value lval))) (Mu (RecM (ObjectV robj))) =
+    case lval of
+        ObjectV lobj -> unifyObjectObject source (fmap muValue lobj) robj $> mu
+        _ -> cut
+unify source mu@(Mu (RecM (ObjectV lobj))) (Mu (GroundedM (Value rval))) =
+    case rval of
+        ObjectV robj -> unifyObjectObject source lobj (fmap muValue robj) $> mu
+        _ -> cut
+unify _source mu@(Mu (GroundedM x)) (Mu (GroundedM y)) = do
     if (x == y) then pure mu else cut
 unify source (Mu (RecM x)) y = do
     -- This code is currently a bit stricter than it needs to be; it evaluates
@@ -740,8 +749,23 @@ unify source x (Mu (TreeM _ _ tree)) = do
     unify source x (muValue gy)
 
 
-unifyArrayLength :: V.Vector a -> V.Vector b -> EvalM ()
-unifyArrayLength larr rarr = when (V.length larr /= V.length rarr) cut
+
+unifyArrayArray :: SourceSpan -> V.Vector Mu' -> V.Vector Mu' -> EvalM ()
+unifyArrayArray source larr rarr = do
+    when (V.length larr /= V.length rarr) cut
+    V.zipWithM_ (unify source) larr rarr
+
+
+unifyObjectObject
+    :: SourceSpan
+    -> HMS.HashMap Value Mu'
+    -> HMS.HashMap Value Mu'
+    -> EvalM ()
+unifyObjectObject source lobj robj = do
+    unless (HMS.null $ robj `HMS.difference` lobj) cut
+    for_ (HMS.toList lobj) $ \(k, v) -> case HMS.lookup k robj of
+        Nothing -> cut
+        Just v' -> unify source v v'
 
 
 instance Unification.MonadUnify SourceSpan InstVar (Mu Environment) EvalM where

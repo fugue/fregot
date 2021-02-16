@@ -42,7 +42,7 @@ module Fregot.Sugar
     , RefArg (..)
     , Scalar (..), _String, _Number, _Bool, _Null
     , Object
-    , ObjectKey (..)
+    , ObjectKey (..), _ScalarK, _VarK, _RefK, _ErrorK
     , BinOp (..)
     , WithPath (..)
     , With (..), withAnn, withPath, withAs
@@ -254,6 +254,7 @@ $(makeLenses ''Literal)
 $(makeLenses ''With)
 $(makePrisms ''Expr)
 $(makePrisms ''Scalar)
+$(makePrisms ''ObjectKey)
 
 instance PP.Pretty PP.Sem ImportGut where
     pretty (ImportData pkg) =
