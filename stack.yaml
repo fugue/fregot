@@ -14,4 +14,4 @@ extra-deps:
   commit: 131b5b12533ae9bff855a442a8d0d28a6a422fdc
 
 nix:
-  shell-file: "shell.nix"
+  packages: ['zlib.dev', 'zlib.out']

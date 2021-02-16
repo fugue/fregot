@@ -20,6 +20,8 @@ import           Control.Applicative       ((<|>))
 import           Control.Lens              (review, view, (%~), (&), (^.))
 import           Control.Monad.Extended    (foldM, unless, when)
 import           Control.Monad.Parachute   (ParachuteT, fatal, tellError)
+import           Data.Foldable             (for_)
+import qualified Data.HashMap.Strict       as HMS
 import           Data.Maybe                (catMaybes, isJust, isNothing,
                                             mapMaybe)
 import           Fregot.Error              (Error)
@@ -164,20 +166,20 @@ mergeRules x y = do
     let defaults = mapMaybe (view ruleDefault) [x, y]
     when (length defaults > 1) $ tellError $ Error.mkMultiError
         "compile" "conflicting default"
-        [ (def ^. termAnn, "default defined here")
+        [ (def ^. termAnn, Just "default defined here")
         | def <- defaults
         ]
 
     when (x ^. ruleAssign || y ^. ruleAssign) $ tellError $ Error.mkMultiError
         "compile" "conflicting `:=` rule"
-        [ (a, "rules declared using `:=` cannot have multiple definitions")
+        [ (a, Just "rules declared using `:=` cannot have multiple definitions")
         | a <- [x ^. ruleAnn, y ^. ruleAnn]
         ]
 
     unless (compatible (x ^. ruleKind) (y ^. ruleKind)) $ tellError $
         Error.mkMultiError
             "compile" "complete definition mismatch"
-            [ (c ^. ruleAnn, describeKind (c ^. ruleKind))
+            [ (c ^. ruleAnn, Just $ describeKind (c ^. ruleKind))
             | c <- [x, y]
             ]
 
@@ -306,7 +308,15 @@ prepareTerm = \case
 
     Sugar.ArrayT source a -> ArrayT source <$> traverse prepareExpr a
     Sugar.SetT source a -> SetT source <$> traverse prepareExpr a
-    Sugar.ObjectT source o -> ObjectT source <$> traverse prepareObjectItem o
+    Sugar.ObjectT source obj -> do
+        let duplicateKeys = HMS.filter ((> 1) . length) $ HMS.fromListWith (++)
+                [(k, [src]) | (Sugar.ScalarK src k, _) <- obj]
+        -- checkDups HMS.empty obj
+        for_ (HMS.toList duplicateKeys) $ \(k, srcs) ->
+            tellError $ Error.mkMultiError "compile"
+                 ("Duplicate object key" <+> PP.code (PP.pretty k))
+                 [(src, Nothing) | src <- srcs]
+        ObjectT source <$> traverse prepareObjectItem obj
 
     Sugar.ArrayCompT ann h b -> fmap (CompT ann) $
         ArrayComp <$> prepareTerm h <*> prepareRuleBody b

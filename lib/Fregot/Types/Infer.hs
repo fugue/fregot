@@ -119,7 +119,7 @@ fromTypeError = \case
 
     UnboundVars vars -> Error.mkMultiError sub "Unbound variables" $ do
         (v, source) <- HMS.toList vars
-        return $ (,) source $
+        return $ (,) source $ Just $
             "The variable" <+> PP.code (PP.pretty v) <+> "is referenced," <+>
             "but it is never assigned a value"
 
@@ -162,10 +162,10 @@ fromTypeError = \case
         "Builtin type error" doc
 
     VoidType source use -> Error.mkMultiError sub "Void type" $
-        [ (,) source $
+        [ (,) source $ Just $
             "This expression does not have a result, so it should not" <+>
             "be assigned or used."
-        , (,) use "However, it used here."
+        , (,) use $ Just "However, it used here."
         ]
 
     InternalError msg -> Error.mkErrorNoMeta sub msg
@@ -645,6 +645,20 @@ unifyTermType source (ArrayT _ arr) (τ, s)
 unifyTermType source (SetT _ set) (τ, s)
         | Just σ <- τ ^? Types.singleton . Types._Set =
     for_ set $ \t -> unifyTermType source t (σ, s)
+
+unifyTermType source (ObjectT _ obj) (τ, s)
+        | Just sd <- τ ^? Types.singleton . Types._Object =
+    for_ obj $ \(k, v) ->
+        let σ = fromMaybe Types.unknown $ do
+                k' <- k ^? termToScalar . _2
+                Types.sdLookup k' sd in
+        unifyTermType source v (σ, s)
+
+unifyTermType source (ObjectT _ obj) (τ, s)
+        | τ == Types.unknown =
+    for_ obj $ \(k, v) -> do
+        unifyTermType source k (τ, s)
+        unifyTermType source v (τ, s)
 
 unifyTermType _source term σ = do
     τ <- inferTerm term

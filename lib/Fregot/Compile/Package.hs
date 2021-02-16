@@ -205,7 +205,7 @@ recursionError cycl = Error.mkMultiError
     "recursion check"
     "rules are recursive" $ do
         r <- cycl
-        return $ (,) (r ^. ruleAnn) $
+        return $ (,) (r ^. ruleAnn) $ Just $
             "These rules are mutually recursive:" <$$>
             PP.ind (PP.vcat (map (PP.code . PP.pretty . view ruleName) cycl))
 
