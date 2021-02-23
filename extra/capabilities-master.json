@@ -1373,6 +1373,29 @@
         "args": [
           {
             "type": "string"
+          },
+          {
+            "type": "string"
+          },
+          {
+            "type": "number"
+          }
+        ],
+        "result": {
+          "dynamic": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "type": "function"
+      },
+      "name": "regex.find_n"
+    },
+    {
+      "decl": {
+        "args": [
+          {
+            "type": "string"
           }
         ],
         "result": {

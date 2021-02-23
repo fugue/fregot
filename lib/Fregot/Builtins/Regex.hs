@@ -29,28 +29,68 @@ import qualified Text.Pcre2               as Pcre2
 builtins :: Builtins IO
 builtins = HMS.fromList
     [ (NamedFunction (BuiltinName "re_match"),         builtin_regex_match)
-    , (NamedFunction (QualifiedName "regex.split"),    builtin_regex_split)
-    , (NamedFunction (QualifiedName "regex.match"),    builtin_regex_match)
+    , (NamedFunction (QualifiedName "regex.find_n"),   builtin_regex_find_n)
     , (NamedFunction (QualifiedName "regex.is_valid"), builtin_regex_is_valid)
+    , (NamedFunction (QualifiedName "regex.match"),    builtin_regex_match)
+    , (NamedFunction (QualifiedName "regex.split"),    builtin_regex_split)
     ]
+
+cacheRegexCompilation :: IO (T.Text -> BuiltinM Pcre2.Regex)
+cacheRegexCompilation = do
+    cacheRef <- newIORef HMS.empty
+    pure $ \pattern -> do
+        errOrRegex <- liftIO $ atomicModifyIORef' cacheRef $ \cache ->
+            case HMS.lookup pattern cache of
+                Just errOrRegex -> (cache, errOrRegex)
+                Nothing         ->
+                    let errOrRegex = Pcre2.compile pattern in
+                    (HMS.insert pattern errOrRegex cache, errOrRegex)
+        eitherToBuiltinM $ first show errOrRegex
+
+builtin_regex_find_n :: Builtin IO
+builtin_regex_find_n = Builtin
+    (Ty.string 🡒 Ty.string 🡒 Ty.number 🡒 Ty.out (Ty.arrayOf Ty.string)) $ do
+    mkRegex <- cacheRegexCompilation
+    pure $
+        \(Cons needle (Cons haystack (Cons number Nil))) -> do
+        regex <- mkRegex needle
+        eitherToBuiltinM $ do
+            matches <- first show $ Pcre2.match regex haystack
+            let texts = go matches 0 haystack
+            pure $ if number < 0 then texts else take number texts
+  where
+    go :: [Pcre2.Match] -> Int -> T.Text -> [T.Text]
+    go [] _ _ = []
+    go (Pcre2.Match (Pcre2.Range start len) _ : matches) !offset remainder =
+        let post = T.drop (start - offset) remainder in
+        T.take len post : go matches start post
+
+builtin_regex_is_valid :: Monad m => Builtin m
+builtin_regex_is_valid = Builtin
+    (Ty.string 🡒 Ty.out Ty.boolean) $ pure $
+    \(Cons pattern Nil) -> case Pcre2.compile pattern of
+        Left  _ -> pure False
+        Right _ -> pure True
+
+builtin_regex_match :: Builtin IO
+builtin_regex_match = Builtin
+    (Ty.string 🡒 Ty.string 🡒 Ty.out Ty.boolean) $ do
+    mkRegex <- cacheRegexCompilation
+    pure $
+        \(Cons pattern (Cons value Nil)) -> do
+        regex <- mkRegex pattern
+        eitherToBuiltinM $ do
+            match <- first show (Pcre2.match regex value)
+            return $! not $ null match
 
 builtin_regex_split :: Builtin IO
 builtin_regex_split = Builtin
     (Ty.string 🡒 Ty.string 🡒 Ty.out (Ty.arrayOf Ty.string)) $ do
-    cacheRef <- newIORef HMS.empty
+    mkRegex <- cacheRegexCompilation
     pure $
-        -- TODO(jaspervdj): Clean up duplication between this and
-        -- `builtin_re_match`.
         \(Cons pattern (Cons value Nil)) -> do
-        errOrRegex <- liftIO $ atomicModifyIORef' cacheRef $ \cache ->
-            case HMS.lookup pattern cache of
-                Just errOrRegex -> return errOrRegex
-                Nothing         ->
-                    let errOrRegex = Pcre2.compile pattern in
-                    (HMS.insert pattern errOrRegex cache, errOrRegex)
-
+        regex <- mkRegex pattern
         eitherToBuiltinM $ do
-            regex <- first show errOrRegex
             match <- first show (Pcre2.match regex value)
             return $! split match 0 value
   where
@@ -59,28 +99,3 @@ builtin_regex_split = Builtin
     split (Pcre2.Match (Pcre2.Range start len) _ : matches) !offset remainder =
         let (pre, post) = T.splitAt (start - offset) remainder in
         pre : split matches (start + len) (T.drop len post)
-
-builtin_regex_match :: Builtin IO
-builtin_regex_match = Builtin
-    (Ty.string 🡒 Ty.string 🡒 Ty.out Ty.boolean) $ do
-    cacheRef <- newIORef HMS.empty
-    pure $
-        \(Cons pattern (Cons value Nil)) -> do
-        errOrRegex <- liftIO $ atomicModifyIORef' cacheRef $ \cache ->
-            case HMS.lookup pattern cache of
-                Just errOrRegex -> return errOrRegex
-                Nothing         ->
-                    let errOrRegex = Pcre2.compile pattern in
-                    (HMS.insert pattern errOrRegex cache, errOrRegex)
-
-        eitherToBuiltinM $ do
-            regex <- first show errOrRegex
-            match <- first show (Pcre2.match regex value)
-            return $! not $ null match
-
-builtin_regex_is_valid :: Monad m => Builtin m
-builtin_regex_is_valid = Builtin
-    (Ty.string 🡒 Ty.out Ty.boolean) $ pure $
-    \(Cons pattern Nil) -> case Pcre2.compile pattern of
-        Left  _ -> pure False
-        Right _ -> pure True
