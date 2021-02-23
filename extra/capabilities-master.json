@@ -1383,6 +1383,32 @@
         ],
         "result": {
           "dynamic": {
+            "dynamic": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "type": "function"
+      },
+      "name": "regex.find_all_string_submatch_n"
+    },
+    {
+      "decl": {
+        "args": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "string"
+          },
+          {
+            "type": "number"
+          }
+        ],
+        "result": {
+          "dynamic": {
             "type": "string"
           },
           "type": "array"

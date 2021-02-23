@@ -17,3 +17,23 @@ test_regex_find_n {
   regex.find_n("[oa]+", "foo bar", 1) == ["oo"]
   regex.find_n("[oa]+", "foo bar", 10) == ["oo", "a"]
 }
+
+test_regex_find_all_string_submatch_n {
+  regex.find_all_string_submatch_n(
+    "([a-z]+)@([a-z]+)",
+    "test@example or foo@bar and maybe qux@wop",
+    -1
+  ) == [
+    ["test@example", "test", "example"],
+    ["foo@bar", "foo", "bar"],
+    ["qux@wop", "qux", "wop"]
+  ]
+  regex.find_all_string_submatch_n(
+    "([a-z]+)@([a-z]+)",
+    "test@example or foo@bar and maybe qux@wop",
+    2
+  ) == [
+    ["test@example", "test", "example"],
+    ["foo@bar", "foo", "bar"],
+  ]
+}
