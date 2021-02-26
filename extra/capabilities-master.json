@@ -1245,6 +1245,47 @@
       "decl": {
         "args": [
           {
+            "dynamic": {
+              "key": {
+                "type": "any"
+              },
+              "value": {
+                "type": "any"
+              }
+            },
+            "type": "array"
+          },
+          {
+            "dynamic": {
+              "key": {
+                "type": "any"
+              },
+              "value": {
+                "type": "any"
+              }
+            },
+            "type": "array"
+          }
+        ],
+        "result": {
+          "dynamic": {
+            "key": {
+              "type": "any"
+            },
+            "value": {
+              "type": "any"
+            }
+          },
+          "type": "array"
+        },
+        "type": "function"
+      },
+      "name": "object.union"
+    },
+    {
+      "decl": {
+        "args": [
+          {
             "of": {
               "type": "any"
             },

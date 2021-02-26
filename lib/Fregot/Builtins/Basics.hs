@@ -85,6 +85,7 @@ builtins = HMS.fromList
     , (NamedFunction (QualifiedName "object.filter"),  builtin_object_filter)
     , (NamedFunction (QualifiedName "object.get"),     builtin_object_get)
     , (NamedFunction (QualifiedName "object.remove"),  builtin_object_remove)
+    , (NamedFunction (QualifiedName "object.union"),   builtin_object_union)
     , (NamedFunction (BuiltinName "or"),               builtin_bin_or)
     , (NamedFunction (BuiltinName "product"),          builtin_product)
     , (NamedFunction (BuiltinName "replace"),          builtin_replace)
@@ -331,6 +332,17 @@ builtin_object_remove = Builtin
      Ty.out (Ty.objectOf Ty.unknown Ty.unknown)) $ pure $
     \(Cons obj (Cons (Keys keys) Nil)) ->
       return $! foldr HMS.delete (obj :: HMS.HashMap Value Value) keys
+
+builtin_object_union :: Monad m => Builtin m
+builtin_object_union = Builtin
+    (Ty.objectOf Ty.any Ty.any 🡒 Ty.objectOf Ty.any Ty.any 🡒
+     Ty.out (Ty.objectOf Ty.unknown Ty.unknown)) $ pure $
+    \(Cons left (Cons right Nil)) -> pure $! union left right
+  where
+    union :: Value -> Value -> Value
+    union (Value (ObjectV left)) (Value (ObjectV right)) =
+        Value . ObjectV $! HMS.unionWith union left right
+    union _left right = right
 
 builtin_product :: Monad m => Builtin m
 builtin_product = Builtin

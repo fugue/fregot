@@ -24,3 +24,15 @@ test_object_get {
 	object.get(x, "baz", 100) == {"q": "a"}
 	object.get(x, "faz", {"a": "q"}) == {"a": "q"}
 }
+
+test_object_union {
+    object.union({}, {}) == {}
+    object.union(
+        {"a": 1, "b": 2, "c": {"d": 3}},
+        {"a": 7, "c": {"d": 4, "e": 5}}
+    ) == {"a": 7, "b": 2, "c": {"d": 4, "e": 5}}
+    object.union(
+        {"a": 7, "c": {"d": 4, "e": 5}},
+        {"a": 1, "b": 2, "c": {"d": 3}}
+    ) == {"a": 1, "b": 2, "c": {"d": 3, "e": 5}}
+}
