@@ -28,6 +28,7 @@ Library
     Fregot.Builtins.Internal
     Fregot.Builtins.Json
     Fregot.Builtins.Jwt
+    Fregot.Builtins.Object
     Fregot.Builtins.Regex
     Fregot.Builtins.Time
     Fregot.Builtins.Yaml

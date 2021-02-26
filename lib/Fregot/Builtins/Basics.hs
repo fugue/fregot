@@ -82,10 +82,6 @@ builtins = HMS.fromList
     , (NamedFunction (BuiltinName "max"),              builtin_max)
     , (NamedFunction (BuiltinName "min"),              builtin_min)
     , (NamedFunction (QualifiedName "numbers.range"),  builtin_numbers_range)
-    , (NamedFunction (QualifiedName "object.filter"),  builtin_object_filter)
-    , (NamedFunction (QualifiedName "object.get"),     builtin_object_get)
-    , (NamedFunction (QualifiedName "object.remove"),  builtin_object_remove)
-    , (NamedFunction (QualifiedName "object.union"),   builtin_object_union)
     , (NamedFunction (BuiltinName "or"),               builtin_bin_or)
     , (NamedFunction (BuiltinName "product"),          builtin_product)
     , (NamedFunction (BuiltinName "replace"),          builtin_replace)
@@ -310,39 +306,6 @@ builtin_numbers_range = Builtin
         let step = if a > b then -1 else 1
             n = 1+abs (b-a) in
         V.enumFromStepN a step n
-
-builtin_object_filter :: Monad m => Builtin m
-builtin_object_filter = Builtin
-    (Ty.objectOf Ty.any Ty.any 🡒
-     Ty.arrayOf Ty.any ∪ Ty.setOf Ty.any ∪ Ty.objectOf Ty.any Ty.any 🡒
-     Ty.out (Ty.objectOf Ty.unknown Ty.unknown)) $ pure $
-    \(Cons obj (Cons (Keys keys) Nil)) ->
-     return $! HMS.intersection (obj :: HMS.HashMap Value Value) $ HS.toMap $ HS.fromList keys
-
-builtin_object_get :: Monad m => Builtin m
-builtin_object_get = Builtin
-    (Ty.objectOf Ty.any Ty.any 🡒 Ty.any 🡒 Ty.any 🡒 Ty.out Ty.unknown) $ pure $
-    \(Cons obj (Cons key (Cons def Nil))) ->
-     return $! HMS.lookupDefault def key (obj :: HMS.HashMap Value Value)
-
-builtin_object_remove :: Monad m => Builtin m
-builtin_object_remove = Builtin
-    (Ty.objectOf Ty.any Ty.any 🡒
-     Ty.arrayOf Ty.any ∪ Ty.setOf Ty.any ∪ Ty.objectOf Ty.any Ty.any 🡒
-     Ty.out (Ty.objectOf Ty.unknown Ty.unknown)) $ pure $
-    \(Cons obj (Cons (Keys keys) Nil)) ->
-      return $! foldr HMS.delete (obj :: HMS.HashMap Value Value) keys
-
-builtin_object_union :: Monad m => Builtin m
-builtin_object_union = Builtin
-    (Ty.objectOf Ty.any Ty.any 🡒 Ty.objectOf Ty.any Ty.any 🡒
-     Ty.out (Ty.objectOf Ty.unknown Ty.unknown)) $ pure $
-    \(Cons left (Cons right Nil)) -> pure $! union left right
-  where
-    union :: Value -> Value -> Value
-    union (Value (ObjectV left)) (Value (ObjectV right)) =
-        Value . ObjectV $! HMS.unionWith union left right
-    union _left right = right
 
 builtin_product :: Monad m => Builtin m
 builtin_product = Builtin
