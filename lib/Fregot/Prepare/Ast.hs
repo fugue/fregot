@@ -166,7 +166,7 @@ instance Hashable Function
 type Object a = [(Term a, Term a)]
 
 data BinOp
-    -- ^ Note that this is used only for nested `=` or `==` in expressions:
+    -- | Note that this is used only for nested `=` or `==` in expressions:
     -- top-level `=` in statements get turned into `UnifyS` or `AssignS`.
     = EqualO
     | NotEqualO
