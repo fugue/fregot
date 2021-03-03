@@ -1,5 +1,5 @@
 F u g u e   R E G O   T o o l k i t
-fregot v0.13.3 repl - use :help for usage info
+fregot v0.13.4 repl - use :help for usage info
 Rule rule added
 Set breakpoint at repl.rule
 Reloading when debugging is not possible as it would modify the code currently running.

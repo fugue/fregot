@@ -1,5 +1,13 @@
 # CHANGELOG
 
+ -  0.13.4 (2021-03-03)
+     *  Improvements to object unification
+     *  Supported nested `==` expressions, e.g. `good := (1 == 1)`.
+     *  New builtins:
+         -  `object.union`
+         -  `regex.find_all_string_submatch_n`
+         -  `regex.find_n`
+
  -  0.13.3 (2021-02-10)
      *  Bump `vector` dependency, GHC version and stackage LTS.
 
