@@ -49,6 +49,7 @@ renderBuiltin fn (Builtin bt _) = A.object $
 
 operatorName :: BinOp -> T.Text
 operatorName = \case
+    EqualO              -> "eq"
     NotEqualO           -> "neq"
     LessThanO           -> "lt"
     LessThanOrEqualO    -> "lte"

@@ -104,6 +104,7 @@ builtins = HMS.fromList
     , (NamedFunction (BuiltinName "upper"),            builtin_upper)
     , (NamedFunction (BuiltinName "union"),            builtin_union)
     , (OperatorFunction BinAndO,             builtin_bin_and)
+    , (OperatorFunction EqualO,              builtin_equal)
     , (OperatorFunction NotEqualO,           builtin_not_equal)
     , (OperatorFunction LessThanO,           builtin_less_than)
     , (OperatorFunction LessThanOrEqualO,    builtin_less_than_or_equal)
@@ -427,6 +428,15 @@ builtin_union = Builtin
     (Ty.setOf (Ty.setOf Ty.any) 🡒 Ty.out (Ty.setOf Ty.unknown)) $ pure $
     \(Cons set Nil) ->
         return $! HS.unions $ HS.toList (set :: (HS.HashSet (HS.HashSet Value)))
+
+builtin_equal :: Monad m => Builtin m
+builtin_equal = Builtin
+    (Ty.BuiltinType
+        { Ty.btRepr = Ty.In Ty.any $ Ty.In Ty.any $ Ty.Out Ty.boolean
+        , Ty.btCheck = \tc (Ty.In x (Ty.In y (Ty.Out _))) ->
+            Ty.bcUnify tc x y $> Ty.boolean
+        }) $ pure $
+    \(Cons x (Cons y Nil)) -> pure $! Value $ BoolV $! x == (y :: Value)
 
 builtin_not_equal :: Monad m => Builtin m
 builtin_not_equal = Builtin
