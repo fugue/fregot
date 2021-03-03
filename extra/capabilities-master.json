@@ -77,7 +77,6 @@
         },
         "type": "function"
       },
-      "infix": "&",
       "name": "and"
     },
     {
@@ -104,6 +103,7 @@
         },
         "type": "function"
       },
+      "infix": "&",
       "name": "and"
     },
     {
@@ -487,6 +487,24 @@
         "type": "function"
       },
       "name": "endswith"
+    },
+    {
+      "decl": {
+        "args": [
+          {
+            "type": "any"
+          },
+          {
+            "type": "any"
+          }
+        ],
+        "result": {
+          "type": "boolean"
+        },
+        "type": "function"
+      },
+      "infix": "==",
+      "name": "eq"
     },
     {
       "decl": {
@@ -1306,6 +1324,7 @@
         },
         "type": "function"
       },
+      "infix": "|",
       "name": "or"
     },
     {
@@ -1332,7 +1351,6 @@
         },
         "type": "function"
       },
-      "infix": "|",
       "name": "or"
     },
     {

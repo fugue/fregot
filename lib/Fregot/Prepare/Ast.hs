@@ -166,7 +166,10 @@ instance Hashable Function
 type Object a = [(Term a, Term a)]
 
 data BinOp
-    = NotEqualO
+    -- ^ Note that this is used only for nested `=` or `==` in expressions:
+    -- top-level `=` in statements get turned into `UnifyS` or `AssignS`.
+    = EqualO
+    | NotEqualO
     | LessThanO
     | LessThanOrEqualO
     | GreaterThanO
@@ -337,6 +340,7 @@ termToRule source pkgname var t = Rule
 
 binOpToText :: BinOp -> T.Text
 binOpToText = \case
+    EqualO              -> "=="
     NotEqualO           -> "!="
     LessThanO           -> "<"
     LessThanOrEqualO    -> "<="

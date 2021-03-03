@@ -376,11 +376,7 @@ prepareBinOp source = \case
     Sugar.ModuloO             -> pure ModuloO
     Sugar.BinAndO             -> pure BinAndO
     Sugar.BinOrO              -> pure BinOrO
-    Sugar.UnifyO              -> do
-        fatal $ Error.mkError "compile" source
-            "invalid unification" $
-            "The `=` operator should not appear in this context, perhaps" <+>
-            "you meant to write `==`?"
+    Sugar.UnifyO              -> pure EqualO
     Sugar.AssignO             -> do
         fatal $ Error.mkError "compile" source
             "invalid unification" $
