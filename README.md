@@ -21,7 +21,7 @@ enhance the Rego development experience.  It aims to provide:
  -  Enhanced error messages
  -  Ease of extending and experimenting with different language features
 
-You can use `fregot` to validate just about any kind of JSON against Rego
+You can use `fregot` to validate just about any kind of JSON or YAML against Rego
 policy. For an example of using `fregot` to test a Terraform plan prior to
 deployment, see the [Example Use Case](#example-use-case).
 
@@ -32,8 +32,9 @@ Table of Contents
 --------------------
 
 - [Installation](#installation)
-	- [Binary](#binary)
-	- [From source](#from-source)
+	- [Binary - macOS](#binary---macos)
+	- [Binary - Linux](#binary---linux)
+	- [From source - any platform](#from-source---any-platform)
 		- [Using stack](#using-stack)
 		- [Using Cabal](#using-cabal)
 - [Usage](#usage)
@@ -41,6 +42,8 @@ Table of Contents
 	- [fregot test](#fregot-test)
 	- [fregot bundle](#fregot-bundle)
 	- [fregot eval](#fregot-eval)
+	- [fregot capabilities](#fregot-capabilities)
+	- [Global options](#global-options)
 - [REPL](#repl)
 	- [The open package](#the-open-package)
 	- [Debugging](#debugging)
@@ -64,20 +67,52 @@ Table of Contents
 	- [:where](#where)
 	- [:watch](#watch)
 - [Example Use Case](#example-use-case)
+- [macOS Installation Error Message](#macos-installation-error-message)
 - [Additional Reading](#additional-reading)
 
 Installation
 ------------
 
-fregot works on all major platforms, and pre-built binaries are available for macOS and Linux.
+fregot works on all major platforms. Pre-built binaries are available for [macOS](#binary---macos) and [Linux](#binary---linux). All platforms, including Windows, support installing from [source](#from-source---any-platform).
 
-### Binary
+### Binary - macOS
 
-1. Download the latest binary for macOS or Linux from [Releases].
+1. Navigate to [Releases] and download the **fregot-{version}-darwin-i386.zip** binary for the latest release.
 
-2. Place the binary somewhere in your `$PATH`.
+  - Chrome users: If you see a message that the file "is not commonly downloaded
+  and may be dangerous," select the arrow icon to the right and select "Keep."
+  `fregot` is not dangerous.
+  
+  ![Chrome warning message](extra/readme-install-chrome.png)
 
-### From source
+2. Unzip the downloaded file.
+3. `cd` into the `fregot-{version}-darwin-i386` directory you just unzipped.
+4. Move the `fregot` binary to a location in your `$PATH`, such as `/usr/local/bin`:
+
+       mv fregot /usr/local/bin
+       
+5. Run `fregot`:
+
+       fregot
+
+
+If you get an error message that the application cannot be opened, see [these instructions](#macos-installation-error-message).
+
+### Binary - Linux
+
+1. Navigate to [Releases] and download the **fregot-{version}-linux-x86_64.tar.gz** binary for the latest release.
+2. Unzip the downloaded file.
+3. `cd` into the `fregot-{version}-linux-x86_64` directory you just unzipped.
+4. Move the `fregot` binary to a location in your `$PATH`, such as 
+`/usr/local/bin`:
+
+        sudo mv fregot /usr/local/bin
+
+5. Run `fregot`:
+
+        fregot
+
+### From source - any platform
 
 Installation through source is done using standard Haskell tooling -- [Cabal]
 and [stack] both work well.
@@ -99,12 +134,13 @@ and [stack] both work well.
 Usage
 -----
 
-    fregot v0.11.1
+    fregot v0.13.0
 
     Usage: fregot COMMAND
 
     Available options:
       -h,--help                Show this help text
+      --dump TAG               Dump debug information
       --format FORMAT          Format for error messages and diagnostics
 
     Available commands:
@@ -112,8 +148,10 @@ Usage
       test                     Run tests in .rego files
       bundle                   Bundle .rego files
       eval                     Evaluate a rego expression
+      capabilities             Print the capabilities document
 
-`fregot` understands a number of subcommands.  See details and examples below.
+`fregot` understands a number of subcommands and [global options](#global-options).  See details
+and examples below.
 
 ### fregot repl
 
@@ -191,11 +229,45 @@ You'll see the value of the expression in the output:
 Note that the expression argument should be formatted as `data.package.rule`
 according to the package and rule name in the Rego file.
 
+### fregot capabilities
+
+`fregot capabilities`: Print the capabilities document. This document lists all
+supported built-in functions with their arguments and types:
+
+    {
+      "builtins": [
+        {
+          "decl": {
+            "args": [
+              {
+                "type": "number"
+              }
+            ],
+            "result": {
+              "type": "number"
+            },
+            "type": "function"
+          },
+          "name": "abs"
+        },
+        (etc.)
+
+### Global options
+
+`fregot` supports the following global options:
+
+- `-h,--help` shows `fregot` help text
+- `--dump TAG` is used to dump debug information
+- `--format FORMAT` sets the format for error messages and diagnostics; values:
+`text` or `json`
+- `-v,--verbosity VALUE` determines how verbose `fregot` output is; values: `0`
+(quiet) or `1` (default)
+
 REPL
 ----
 
     F u g u e   R E G O   T o o l k i t
-    fregot v0.11.1 repl - use :help for usage info
+    fregot v0.13.0 repl - use :help for usage info
     repl% :help
     Enter an expression to evaluate it.
     Enter a rule to add it to the current package.
@@ -765,6 +837,24 @@ policy.  Incorporate `fregot` into your CI/CD pipeline to prevent noncompliant
 infrastructure from being deployed.
 
 See [examples/ami_id/ami_id.rego](./examples/ami_id/ami_id.rego) for details.
+
+macOS Installation Error Message
+--------------------------------
+
+On some versions of macOS, you might see an error message that "fregot cannot
+be opened because the developer cannot be verified." You can safely run
+`fregot` by taking the following steps:
+
+1. Select "Cancel" to dismiss the error message.
+2. In macOS, access System Preferences > Security & Privacy.
+3. Select the General tab and click the "Allow Anyway" button.
+4. Run `fregot` again:
+
+       fregot
+
+5. macOS will ask you to confirm that you want to open it. Select "Open."
+
+You can now execute `fregot` commands.
 
 Additional Reading
 ------------------
