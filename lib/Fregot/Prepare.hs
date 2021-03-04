@@ -29,7 +29,7 @@ import qualified Fregot.Error              as Error
 import           Fregot.Names
 import           Fregot.Prepare.Ast
 import           Fregot.Prepare.Lens
-import           Fregot.PrettyPrint        ((<+>))
+import           Fregot.PrettyPrint        ((<+>), (<$$>))
 import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources.SourceSpan (SourceSpan)
 import qualified Fregot.Sugar              as Sugar
@@ -123,6 +123,21 @@ prepareRule pkgname imports rule
             }
 
     | otherwise = do
+        let emptyDefinition =
+                not (head ^. Sugar.ruleDefault) &&
+                isNothing (head ^. Sugar.ruleIndex) &&
+                isNothing (head ^. Sugar.ruleArgs) &&
+                isNothing (head ^. Sugar.ruleValue) &&
+                null (rule ^. Sugar.ruleBodies)
+
+        when emptyDefinition $ tellError $ Error.mkError
+            "compile"
+            (head ^. Sugar.ruleAnn)
+            "incomplete rule definition" $
+            "Rules cannot be declared using just their name." <$$>
+            "The rule" <+> PP.code (PP.pretty $ head ^. Sugar.ruleName) <+>
+            "should have an index, arguments or a value."
+
         let kind
                 | Nothing <- head ^. Sugar.ruleIndex = CompleteRule
                 | Nothing <- head ^. Sugar.ruleValue = GenSetRule
