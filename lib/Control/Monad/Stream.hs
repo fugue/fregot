@@ -16,6 +16,7 @@ module Control.Monad.Stream
     , throw
 
     , toList
+    , fromList
 
     , Step (..)
     , step
@@ -200,6 +201,10 @@ toList (Stream mstep) = do
         SSingle x         -> return $ Right [x]
         SError e          -> return $ Left e
 {-# SPECIALIZE toList :: Stream e i IO a -> IO (Either e [a]) #-}
+
+fromList :: Monad m => [a] -> Stream e i m a
+fromList = foldr (\x s -> Stream $ pure $ SYield x s) (Stream $ pure SDone)
+{-# SPECIALIZE fromList :: [a] -> Stream e i IO a #-}
 
 data Step e i m a
     = Yield   a (Stream e i m a)

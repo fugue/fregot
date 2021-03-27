@@ -57,6 +57,7 @@ module Fregot.Eval.Monad
 
     , raise
     , raise'
+    , catch
 
     , runBuiltinM
     ) where
@@ -286,6 +287,14 @@ raise err = EvalM $ \env ctx ->
 
 raise' :: SourceSpan -> PP.SemDoc -> PP.SemDoc -> EvalM a
 raise' source title body = raise (Error.mkError "eval" source title body)
+
+-- | Use this with care, as it discards debug information.
+catch :: EvalM a -> (EvalException -> EvalM a) -> EvalM a
+catch (EvalM f) g = EvalM $ \env ctx -> do
+    errOrList <- liftIO . Stream.toList $ f env ctx
+    case errOrList of
+        Left err -> unEvalM (g err) env ctx
+        Right xs -> Stream.fromList xs
 
 runBuiltinM :: SourceSpan -> Stream BuiltinException Suspension IO a -> EvalM a
 runBuiltinM source stream = EvalM $ \env ctx ->

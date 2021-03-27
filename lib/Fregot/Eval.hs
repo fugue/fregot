@@ -53,6 +53,7 @@ import qualified Control.Monad.Stream      as Stream
 import           Data.Foldable             (for_)
 import           Data.Functor              (($>))
 import qualified Data.HashMap.Strict       as HMS
+import Debug.Trace
 import qualified Data.HashSet              as HS
 import           Data.Int                  (Int64)
 import qualified Data.List                 as L
@@ -478,15 +479,36 @@ evalCompiledRule callerSource crule mbIndex
         -- If there is an index we want to branch for every possibility.
         case crule ^. ruleKind of
             rkind | Just idx <- mbIndex -> do
-                branch $
-                    -- First deal with known keys/values.
-                    (do
-                        (k, v) <- HMS.toList partial
-                        pure $ case rkind of
-                            GenSetRule -> unify callerSource idx (muValue k) >> return k
-                            _          -> unify callerSource idx (muValue k) >> return v) ++
-                    -- Then unknown ones.
-                    map (fmap snd) more
+                -- Try to ground the index.  If we can, it enables some
+                -- optimizations.
+                mbIdxVal <- catch
+                    (Just <$> ground callerSource idx) (\_ -> pure Nothing)
+                let idx1 = maybe idx muValue mbIdxVal
+
+                case mbIdxVal >>= \k -> HMS.lookup k partial of
+                    Just v -> pure v  -- Known positive!
+                    Nothing -> do
+                        isKnownNegative <- case mbIdxVal of
+                            Just idxVal -> TempObject.isKnownNegative tempObj idxVal
+                            _           -> pure False
+                        if isKnownNegative
+                            then trace "known negative" cut  -- Known negative!
+                            else branch $
+                                -- First deal with known keys/values.
+                                (do
+                                    (k, v) <- HMS.toList partial
+                                    pure $ case rkind of
+                                        GenSetRule -> unify callerSource idx1 (muValue k) >> return k
+                                        _          -> unify callerSource idx1 (muValue k) >> return v) ++
+                                -- Then unknown ones.
+                                map (fmap snd) more ++
+
+                                -- If we've iterated through all of these, we know the key
+                                -- is not part of the rule and we can mark it as negative.
+                                (pure $ do
+                                    for_ mbIdxVal $ \v -> do
+                                        traceM "writing negative" >> TempObject.negative tempObj v
+                                    cut)
 
             -- Sets without an index need to evaluate to a set value.
             GenSetRule -> do

@@ -75,7 +75,7 @@ $(makeLenses ''Cache)
 
 new :: MonadIO m => m (Cache k v)
 new = liftIO $ Cache
-    <$> IORef.newIORef (C.empty 100)
+    <$> IORef.newIORef (C.empty 2056)
     <*> IORef.newIORef 1
     <*> pure 0
     <*> pure True
