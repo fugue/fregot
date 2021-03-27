@@ -1,0 +1,36 @@
+primes = [
+  2,
+  3,
+  5,
+  7,
+  11,
+  13,
+  17,
+  19,
+  23,
+  29,
+  31,
+  37,
+  41,
+  43,
+  47,
+  53,
+  59,
+  61,
+  67,
+  71,
+  73,
+  79,
+  83,
+  89,
+  97
+]
+[bottom-up double_primes]
+double_primes [ret] {
+  bottom_up.primes.p
+  ret := *(p, 2)
+}
+small_primes [ret] {
+  ret := bottom_up.primes._
+  <(ret, 10)
+}

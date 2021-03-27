@@ -76,7 +76,7 @@ prepareRule pkgname imports rule
             , _ruleAssign   = head ^. Sugar.ruleAssign
             , _ruleKind     = CompleteRule
             , _ruleInfo     = ()
-            , _ruleBottomUp = True
+            , _ruleBottomUp = False
             , _ruleDefs     = []
             }
 

@@ -203,7 +203,7 @@ toList (Stream mstep) = do
 {-# SPECIALIZE toList :: Stream e i IO a -> IO (Either e [a]) #-}
 
 fromList :: Monad m => [a] -> Stream e i m a
-fromList = foldr (\x s -> Stream $ pure $ SYield x s) (Stream $ pure SDone)
+fromList = foldr (\x -> Stream . pure . SYield x) (Stream $ pure SDone)
 {-# SPECIALIZE fromList :: [a] -> Stream e i IO a #-}
 
 data Step e i m a

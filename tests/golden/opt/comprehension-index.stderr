@@ -23,6 +23,7 @@ exposed_ports_by_interface [intf] = ports {
     port := comprehension_index.mock_input."exposed".j."port"
   ]
 }
+[bottom-up deny]
 deny [msg] {
   >(count(comprehension_index.exposed_ports_by_interface.i), 1)
   msg := sprintf("interface '%v' exposes too many ports", [i])

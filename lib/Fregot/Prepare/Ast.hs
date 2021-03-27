@@ -212,12 +212,12 @@ $(makePrisms ''Term)
 
 instance PP.Pretty PP.Sem (Rule i a) where
     pretty r = PP.vcat $
+        (if r ^. ruleBottomUp then ["[bottom-up" <+> name <> "]"] else []) ++
         (case r ^. ruleDefault of Nothing -> []; Just d -> [prettyDefault d]) ++
         map PP.pretty (r ^. ruleDefs)
       where
-        prettyDefault d =
-            PP.keyword "default" <+> PP.pretty (r ^. ruleName) <+> "=" <+>
-            PP.pretty d
+        name = PP.pretty $ r ^. ruleName
+        prettyDefault d = PP.keyword "default" <+> name <+> "=" <+> PP.pretty d
 
 instance PP.Pretty PP.Sem (RuleDefinition a) where
     pretty rdef =

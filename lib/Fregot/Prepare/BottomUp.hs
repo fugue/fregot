@@ -21,7 +21,9 @@ rewriteRule :: Rule i SourceSpan -> Rule i SourceSpan
 rewriteRule rule = rule & ruleBottomUp .~ bottomUpRule rule
 
 bottomUpRule :: Rule i a -> Bool
-bottomUpRule = allOf (ruleDefs . traverse) bottomUpRuleDefinition
+bottomUpRule rule =
+    (rule ^. ruleKind == GenObjectRule || rule ^. ruleKind == GenSetRule) &&
+    allOf (ruleDefs . traverse) bottomUpRuleDefinition rule
 
 bottomUpRuleDefinition :: RuleDefinition a -> Bool
 bottomUpRuleDefinition rdef =
