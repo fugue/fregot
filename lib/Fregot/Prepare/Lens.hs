@@ -51,6 +51,7 @@ ruleTerms f rule = Rule
     <*> pure (rule ^. ruleInfo)
     <*> traverse f (rule ^. ruleDefault)
     <*> pure (rule ^. ruleAssign)
+    <*> pure (rule ^. ruleBottomUp)
     <*> traverseOf (traverse . ruleDefinitionTerms) f (rule ^. ruleDefs)
 
 -- All rule "bodies" inside a rule.  Useful for optimizations.  Does not include

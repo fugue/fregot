@@ -68,6 +68,7 @@ import           Fregot.Eval.Internal
 import           Fregot.Eval.Monad
 import           Fregot.Eval.Mu
 import qualified Fregot.Eval.Number        as Number
+import Debug.Trace
 import qualified Fregot.Eval.TempObject    as TempObject
 import           Fregot.Eval.Value
 import           Fregot.Names
@@ -468,16 +469,27 @@ evalCompiledRule callerSource crule mbIndex
                     -- We use a heuristic to know if we have actually visited
                     -- all keys/values, false negatives are possible here but
                     -- false positives are not.
-                    let visitedAll = case mbIndex of
-                            Nothing             -> True
-                            Just (Mu (FreeM _)) -> True
-                            Just (Mu WildcardM) -> True
-                            _                   -> False
+                    let visitedAll
+                            | crule ^. ruleBottomUp =
+                                trace "ruleBottomUp!" $
+                                True
+                            | otherwise = case mbIndex of
+                                Nothing             -> True
+                                Just (Mu (FreeM _)) -> True
+                                Just (Mu WildcardM) -> True
+                                _                   -> False
                     when visitedAll $ Cache.flushCollection c ckey
                     cut)
 
         -- If there is an index we want to branch for every possibility.
         case crule ^. ruleKind of
+            _   | Just (Mu (GroundedM idxVal)) <- mbIndex
+                , Just v <- HMS.lookup idxVal partial -> pure v
+
+            _   | Just (Mu (GroundedM idxVal)) <- mbIndex
+                , not needCompute
+                , Nothing <- HMS.lookup idxVal partial -> cut
+
             rkind | Just idx <- mbIndex -> do
                 -- Try to ground the index.  If we can, it enables some
                 -- optimizations.

@@ -17,7 +17,7 @@ Portability : POSIX
 module Fregot.Prepare.Ast
     ( RuleKind (..), _CompleteRule, _GenSetRule, _GenObjectRule, _FunctionRule
     , Rule (..), rulePackage, ruleName, ruleKey, ruleAnn, ruleDefault
-    , ruleAssign, ruleKind, ruleInfo, ruleDefs
+    , ruleAssign, ruleKind, ruleInfo, ruleBottomUp, ruleDefs
     , Rule'
     , RuleDefinition (..), ruleDefName, ruleDefImports, ruleDefAnn, ruleArgs
     , ruleIndex, ruleValue, ruleBodies, ruleElses
@@ -82,15 +82,18 @@ data RuleKind
     deriving (Eq, Show)
 
 data Rule i a = Rule
-    { _rulePackage :: !PackageName
-    , _ruleName    :: !Var
-    , _ruleKey     :: !Key
-    , _ruleAnn     :: !SourceSpan
-    , _ruleKind    :: !RuleKind
-    , _ruleInfo    :: !i
-    , _ruleDefault :: !(Maybe (Term a))
-    , _ruleAssign  :: !Bool
-    , _ruleDefs    :: [RuleDefinition a]
+    { _rulePackage  :: !PackageName
+    , _ruleName     :: !Var
+    , _ruleKey      :: !Key
+    , _ruleAnn      :: !SourceSpan
+    , _ruleKind     :: !RuleKind
+    , _ruleInfo     :: !i
+    , _ruleDefault  :: !(Maybe (Term a))
+    , _ruleAssign   :: !Bool
+    , -- | A hint that it may be faster to evaluate this rule in a bottom-up
+      -- fashion.
+      _ruleBottomUp :: !Bool
+    , _ruleDefs     :: [RuleDefinition a]
     } deriving (Functor, Show)
 
 type Rule' = Rule () SourceSpan
@@ -318,15 +321,16 @@ unRefT _ = Nothing
 termToRule
     :: SourceSpan -> PackageName -> Var -> Term SourceSpan -> Rule () SourceSpan
 termToRule source pkgname var t = Rule
-    { _rulePackage = pkgname
-    , _ruleName    = var
-    , _ruleKey     = review qualifiedVarFromKey (pkgname, var)
-    , _ruleAnn     = source
-    , _ruleKind    = CompleteRule
-    , _ruleInfo    = ()
-    , _ruleDefault = Nothing
-    , _ruleAssign  = False
-    , _ruleDefs    = pure RuleDefinition
+    { _rulePackage  = pkgname
+    , _ruleName     = var
+    , _ruleKey      = review qualifiedVarFromKey (pkgname, var)
+    , _ruleAnn      = source
+    , _ruleKind     = CompleteRule
+    , _ruleInfo     = ()
+    , _ruleDefault  = Nothing
+    , _ruleAssign   = False
+    , _ruleBottomUp = True
+    , _ruleDefs     = pure RuleDefinition
         { _ruleDefName    = var
         , _ruleDefImports = mempty
         , _ruleDefAnn     = source

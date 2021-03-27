@@ -74,6 +74,7 @@ Library
     Fregot.Parser.Token
     Fregot.Prepare
     Fregot.Prepare.Ast
+    Fregot.Prepare.BottomUp
     Fregot.Prepare.BuildTree
     Fregot.Prepare.ComprehensionIndex
     Fregot.Prepare.ConstantFold
