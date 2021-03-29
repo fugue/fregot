@@ -5,13 +5,16 @@ Maintainer  : jasper@fugue.co
 Stability   : experimental
 Portability : POSIX
 -}
-{-# LANGUAGE FlexibleContexts    #-}
-{-# LANGUAGE KindSignatures      #-}
-{-# LANGUAGE LambdaCase          #-}
-{-# LANGUAGE OverloadedLists     #-}
-{-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TemplateHaskell     #-}
+{-# LANGUAGE BangPatterns          #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE KindSignatures        #-}
+{-# LANGUAGE LambdaCase            #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedLists       #-}
+{-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE RecordWildCards       #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE TemplateHaskell       #-}
 module Fregot.Compile.Package
     ( Safe (..)
     , CompiledRule
@@ -25,9 +28,9 @@ module Fregot.Compile.Package
 import           Control.Lens                      (at, review, traverseOf,
                                                     view, (&), (.~), (^.))
 import           Control.Monad                     (foldM, forM)
-import           Control.Monad.Identity            (runIdentity)
 import           Control.Monad.Parachute           (ParachuteT, catching,
                                                     tellError, tellErrors)
+import           Data.Bifunctor                    (first)
 import           Data.Foldable                     (for_)
 import           Data.Functor                      (($>))
 import qualified Data.Graph                        as Graph
@@ -35,10 +38,9 @@ import qualified Data.HashMap.Strict.Extended      as HMS
 import qualified Data.HashSet.Extended             as HS
 import           Data.List                         (sortOn)
 import           Data.List.NonEmpty.Extended       (NonEmpty (..))
-import           Data.Proxy                        (Proxy (..))
-import           Data.Traversable.HigherOrder      (htraverse)
 import           Fregot.Builtins.Internal          (Builtins)
 import           Fregot.Compile.Graph
+import           Fregot.Compile.Internal
 import           Fregot.Compile.Order
 import           Fregot.Dump                       (MonadDump, dump)
 import           Fregot.Error                      (Error)
@@ -60,8 +62,6 @@ import           Fregot.Types.Rule                 (RuleType (..))
 import           Fregot.Types.Value                (TypeContext, inferValue)
 import           Prelude                           hiding (head, lookup)
 
-type CompiledRule = Rule RuleType SourceSpan
-
 -- | Compiles and merges the prepared tree into the compiled tree.
 compileTree
     :: MonadDump m
@@ -82,33 +82,31 @@ compileTree builtins ctree0 prep = do
             tellError (recursionError cycl)
             pure $ fmap (ruleKind .~ ErrorRule) cycl
 
-    let inferEnv0 = Infer.emptyInferEnv
-            -- TODO(jaspervdj): Builtins Proxy works quite well, we should move
-            -- it up in the call stack.
-            { Infer._ieBuiltins = runIdentity $
-                traverse (htraverse $ \_ -> pure Proxy) builtins
-            , Infer._ieTree = ctree0
-            }
-
-    inferEnv1 <- foldM
-        (\inferEnv rule -> do
+    ctree1 <- foldM
+        (\ctree rule -> do
             let key = review Tree.qualifiedVarFromKey
                             (rule ^. rulePackage, rule ^. ruleName)
+                inferEnv = Infer.InferEnv
+                    { Infer.ieBuiltins      = builtins
+                    , Infer.ieTree          = ctree
+                    , Infer.ieInferClosures = Infer.ieInferClosures Infer.emptyInferEnv
+                    }
             cRule  <- compileRule inferEnv rule
             tyRule <- catching
                 (\errs -> if null errs then Nothing else Just errs)
                 (Infer.evalInfer inferEnv $ Infer.inferRule cRule)
                 (\errs -> tellErrors errs $> (rule & ruleInfo .~ ErrorType))
-            let optRule =
-                    BottomUp.rewriteRule $
+            let !optRule =
+                    first (uncurry CompiledRuleInfo) $
+                    BottomUp.addBottomUpInfo $
                     ComprehensionIndex.rewriteRule inferEnv $
                     ConstantFold.rewriteRule tyRule
             dump "opt" optRule
-            return $! inferEnv & Infer.ieTree . at key .~ Just optRule)
-        inferEnv0
+            pure $ ctree & at key .~ Just optRule)
+        ctree0
         ordering
 
-    pure $ inferEnv1 ^. Infer.ieTree
+    pure ctree1
 
 compileRule
     :: Monad m => Infer.InferEnv -> Rule' -> ParachuteT Error m Rule'
@@ -149,12 +147,10 @@ compileQuery
     -> Query SourceSpan
     -> ParachuteT Error m (Query SourceSpan)
 compileQuery builtins ctree typeContext query0 = do
-    let inferEnv = Infer.emptyInferEnv
-            -- TODO(jaspervdj): Builtins Proxy works quite well, we should move
-            -- it up in the call stack.
-            { Infer._ieBuiltins = runIdentity $
-                traverse (htraverse $ \_ -> pure Proxy) builtins
-            , Infer._ieTree = ctree
+    let inferEnv = Infer.InferEnv
+            { Infer.ieBuiltins      = builtins
+            , Infer.ieTree          = ctree
+            , Infer.ieInferClosures = Infer.ieInferClosures Infer.emptyInferEnv
             }
 
     query1 <- runOrder $ orderForSafety inferEnv safe0 query0
@@ -175,12 +171,10 @@ compileTerm
     -> Term SourceSpan
     -> ParachuteT Error m (Term SourceSpan, Infer.SourceType)
 compileTerm builtins ctree typeContext term0 = do
-    let inferEnv = Infer.emptyInferEnv
-            -- TODO(jaspervdj): Builtins Proxy works quite well, we should move
-            -- it up in the call stack.
-            { Infer._ieBuiltins = runIdentity $
-                traverse (htraverse $ \_ -> pure Proxy) builtins
-            , Infer._ieTree = ctree
+    let inferEnv = Infer.InferEnv
+            { Infer.ieBuiltins = builtins
+            , Infer.ieTree = ctree
+            , Infer.ieInferClosures = Infer.ieInferClosures Infer.emptyInferEnv
             }
 
     ordered <- runOrder $ orderTermForSafety inferEnv safe0 term0
@@ -215,4 +209,5 @@ recursionError cycl = Error.mkMultiError
 valueToCompiledRule :: SourceSpan -> PackageName -> Var -> Value -> CompiledRule
 valueToCompiledRule source pkgname var val =
     termToRule source pkgname var (ValueT source val) &
-    ruleInfo .~ CompleteRuleType (inferValue val)
+    ruleInfo .~
+        CompiledRuleInfo (CompleteRuleType (inferValue val)) BottomUp.TopDown

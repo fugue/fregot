@@ -72,18 +72,17 @@ import           Control.Monad.Trans       (MonadIO (..))
 import qualified Data.HashMap.Strict       as HMS
 import           Data.List                 (find)
 import           Fregot.Builtins.Internal  (BuiltinException (..))
+import           Fregot.Compile.Package    (CompiledRule)
 import           Fregot.Error              (Error)
 import qualified Fregot.Error              as Error
 import qualified Fregot.Error.Stack        as Stack
 import           Fregot.Eval.Internal
 import           Fregot.Eval.Value
 import           Fregot.Names
-import           Fregot.Prepare.Ast
 import           Fregot.PrettyPrint        ((<$$>))
 import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources.SourceSpan (SourceSpan)
 import qualified Fregot.Tree               as Tree
-import           Fregot.Types.Rule         (RuleType)
 
 data EvalException = EvalException Environment Context Error
 
@@ -251,7 +250,7 @@ toInstVar v = state $ \ctx -> case HMS.lookup v (ctx ^. locals) of
             !lcls = HMS.insert v iv (ctx ^. locals) in
         (iv, ctx {_nextInstVar = _nextInstVar ctx + 1, _locals = lcls})
 
-lookupRule :: Name -> EvalM (Maybe (Rule RuleType SourceSpan))
+lookupRule :: Name -> EvalM (Maybe CompiledRule)
 lookupRule (LocalName _) = pure Nothing
 lookupRule (QualifiedName key) = do
     env0 <- ask

@@ -43,8 +43,8 @@ module Fregot.Eval
     ) where
 
 import           Control.Arrow             ((>>>))
-import           Control.Lens              (review, to, use, view, (%=),
-                                            (.=), (.~), (^.), (^?))
+import           Control.Lens              (review, to, use, view, (%=), (.=),
+                                            (.~), (^.), (^?))
 import           Control.Monad             (unless, void, when, (>=>))
 import           Control.Monad.Extended    (forM, zipWithM_)
 import           Control.Monad.Identity    (Identity (..))
@@ -61,6 +61,7 @@ import qualified Data.Unification          as Unification
 import qualified Data.Vector.Extended      as V
 import           Fregot.Arity
 import           Fregot.Builtins.Internal
+import           Fregot.Compile.Internal   (criBottomUp)
 import           Fregot.Compile.Package    (CompiledRule, valueToCompiledRule)
 import qualified Fregot.Eval.Cache         as Cache
 import           Fregot.Eval.Internal
@@ -71,6 +72,7 @@ import qualified Fregot.Eval.TempObject    as TempObject
 import           Fregot.Eval.Value
 import           Fregot.Names
 import           Fregot.Prepare.Ast
+import           Fregot.Prepare.BottomUp   (BottomUpInfo (..))
 import           Fregot.Prepare.Lens
 import           Fregot.PrettyPrint        ((<$$>), (<+>))
 import qualified Fregot.PrettyPrint        as PP
@@ -78,7 +80,6 @@ import           Fregot.Sources.SourceSpan (SourceSpan)
 import           Fregot.Tree               (Tree)
 import qualified Fregot.Tree               as Tree
 import qualified Fregot.Types.Builtins     as Types
-import           Fregot.Types.Rule         (RuleType (..))
 
 
 ground :: SourceSpan -> Mu' -> EvalM Value
@@ -403,7 +404,7 @@ evalRefArg source indexee idx = do
 -- the rule.
 evalCompiledRule
     :: SourceSpan
-    -> Rule RuleType SourceSpan
+    -> CompiledRule
     -> Maybe Mu'
     -> EvalM Value
 evalCompiledRule callerSource crule mbIndex
@@ -451,7 +452,7 @@ evalCompiledRule callerSource crule mbIndex
         cached <- Cache.read c ckey
         mbCollection <- case cached of
             Just val -> pure (Just val)
-            Nothing | crule ^. ruleBottomUp || isNothing mbIndex -> do
+            _ | BottomUp == crule ^. ruleInfo . criBottomUp || isNothing mbIndex -> do
                 val <- case crule ^. ruleKind of
                     GenSetRule -> do
                         elems <- unbranch $ branch $ map (fmap snd) $
@@ -471,7 +472,7 @@ evalCompiledRule callerSource crule mbIndex
 
                 Cache.write c ckey val
                 pure (Just val)
-            Nothing -> pure Nothing
+            _ -> pure Nothing
 
         -- If there is an index we want to branch for every possibility.
         case mbIndex of
@@ -573,9 +574,7 @@ evalRuleDefinition callerSource rule mbArg =
             ]
 
 
-evalUserFunction
-    :: SourceSpan -> Rule RuleType SourceSpan -> [Mu']
-    -> EvalM Value
+evalUserFunction :: SourceSpan -> CompiledRule -> [Mu'] -> EvalM Value
 evalUserFunction callerSource crule callerArgs =
     pushFunctionStackFrame callerSource (QualifiedName (crule ^. ruleKey)) $
     case crule ^? ruleKind . _FunctionRule of
@@ -710,11 +709,11 @@ unify source mu@(Mu (RecM (ArrayV larr))) (Mu (RecM (ArrayV rarr))) =
 unify source mu@(Mu (GroundedM (Value lval))) (Mu (RecM (ArrayV rarr))) =
     case lval of
         ArrayV larr -> unifyArrayArray source (fmap muValue larr) rarr $> mu
-        _ -> cut
+        _           -> cut
 unify source mu@(Mu (RecM (ArrayV larr))) (Mu (GroundedM (Value rval))) =
     case rval of
         ArrayV rarr -> unifyArrayArray source larr (fmap muValue rarr) $> mu
-        _ -> cut
+        _           -> cut
 unify source mu@(Mu (RecM (ObjectV lobj))) (Mu (RecM (ObjectV robj))) =
     unifyObjectObject source lobj robj $> mu
 unify source mu@(Mu (GroundedM (Value lval))) (Mu (RecM (ObjectV robj))) =

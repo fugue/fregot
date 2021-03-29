@@ -34,6 +34,7 @@ Library
     Fregot.Builtins.Yaml
     Fregot.Capabilities
     Fregot.Compile.Graph
+    Fregot.Compile.Internal
     Fregot.Compile.Order
     Fregot.Compile.Package
     Fregot.Dump

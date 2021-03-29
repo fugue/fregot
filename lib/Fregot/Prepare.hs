@@ -68,16 +68,15 @@ prepareRule pkgname imports rule
         --     composite then it may not contain variables or references.
         def <- traverse prepareTerm (head ^. Sugar.ruleValue)
         pure Rule
-            { _rulePackage  = pkgname
-            , _ruleName     = head ^. Sugar.ruleName
-            , _ruleKey      = review qualifiedVarFromKey (pkgname, head ^. Sugar.ruleName)
-            , _ruleAnn      = head ^. Sugar.ruleAnn
-            , _ruleDefault  = def
-            , _ruleAssign   = head ^. Sugar.ruleAssign
-            , _ruleKind     = CompleteRule
-            , _ruleInfo     = ()
-            , _ruleBottomUp = False
-            , _ruleDefs     = []
+            { _rulePackage = pkgname
+            , _ruleName    = head ^. Sugar.ruleName
+            , _ruleKey     = review qualifiedVarFromKey (pkgname, head ^. Sugar.ruleName)
+            , _ruleAnn     = head ^. Sugar.ruleAnn
+            , _ruleDefault = def
+            , _ruleAssign  = head ^. Sugar.ruleAssign
+            , _ruleKind    = CompleteRule
+            , _ruleInfo    = ()
+            , _ruleDefs    = []
             }
 
     | not (null (head ^. Sugar.ruleArgs)) = do
@@ -101,16 +100,15 @@ prepareRule pkgname imports rule
         index  <- traverse prepareTerm (head ^. Sugar.ruleIndex)
         value  <- traverse prepareTerm (head ^. Sugar.ruleValue)
         pure Rule
-            { _rulePackage  = pkgname
-            , _ruleName     = head ^. Sugar.ruleName
-            , _ruleKey      = review qualifiedVarFromKey (pkgname, head ^. Sugar.ruleName)
-            , _ruleAnn      = head ^. Sugar.ruleAnn
-            , _ruleDefault  = Nothing
-            , _ruleAssign   = head ^. Sugar.ruleAssign
-            , _ruleKind     = FunctionRule (maybe 0 length args)
-            , _ruleInfo     = ()
-            , _ruleBottomUp = False
-            , _ruleDefs     =
+            { _rulePackage = pkgname
+            , _ruleName    = head ^. Sugar.ruleName
+            , _ruleKey     = review qualifiedVarFromKey (pkgname, head ^. Sugar.ruleName)
+            , _ruleAnn     = head ^. Sugar.ruleAnn
+            , _ruleDefault = Nothing
+            , _ruleAssign  = head ^. Sugar.ruleAssign
+            , _ruleKind    = FunctionRule (maybe 0 length args)
+            , _ruleInfo    = ()
+            , _ruleDefs    =
                 [ RuleDefinition
                     { _ruleDefName    = head ^. Sugar.ruleName
                     , _ruleDefImports = imports
@@ -152,16 +150,15 @@ prepareRule pkgname imports rule
         index  <- traverse prepareTerm (head ^. Sugar.ruleIndex)
         value  <- traverse prepareTerm (head ^. Sugar.ruleValue)
         pure Rule
-            { _rulePackage  = pkgname
-            , _ruleName     = head ^. Sugar.ruleName
-            , _ruleKey      = review qualifiedVarFromKey (pkgname, head ^. Sugar.ruleName)
-            , _ruleAnn      = head ^. Sugar.ruleAnn
-            , _ruleDefault  = Nothing
-            , _ruleAssign   = head ^. Sugar.ruleAssign
-            , _ruleKind     = kind
-            , _ruleInfo     = ()
-            , _ruleBottomUp = False
-            , _ruleDefs     =
+            { _rulePackage = pkgname
+            , _ruleName    = head ^. Sugar.ruleName
+            , _ruleKey     = review qualifiedVarFromKey (pkgname, head ^. Sugar.ruleName)
+            , _ruleAnn     = head ^. Sugar.ruleAnn
+            , _ruleDefault = Nothing
+            , _ruleAssign  = head ^. Sugar.ruleAssign
+            , _ruleKind    = kind
+            , _ruleInfo    = ()
+            , _ruleDefs    =
                 [ RuleDefinition
                     { _ruleDefName    = head ^. Sugar.ruleName
                     , _ruleDefImports = imports
@@ -179,7 +176,10 @@ prepareRule pkgname imports rule
 
 -- | Merge two rules that have the same name.  This can go wrong in all sorts of
 -- ways.
-mergeRules :: Monad m => Rule' -> Rule' -> ParachuteT Error m Rule'
+mergeRules
+    :: (Monad m, Semigroup i)
+    => Rule i SourceSpan -> Rule i SourceSpan
+    -> ParachuteT Error m (Rule i SourceSpan)
 mergeRules x y = do
     let defaults = mapMaybe (view ruleDefault) [x, y]
     when (length defaults > 1) $ tellError $ Error.mkMultiError
@@ -205,6 +205,7 @@ mergeRules x y = do
     return $! x
         & ruleDefault %~ (<|> y ^. ruleDefault)
         & ruleDefs    %~ (++ y ^. ruleDefs)
+        & ruleInfo    %~ (<> y ^. ruleInfo)
 
   where
     compatible ErrorRule _         = True

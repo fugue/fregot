@@ -1,3 +1,21 @@
+[mock_input object{"exposed": array{
+  0: object{
+    "interface": string,
+    "port": number
+  },
+  1: object{
+    "interface": string,
+    "port": number
+  },
+  2: object{
+    "interface": string,
+    "port": number
+  },
+  3: object{
+    "interface": string,
+    "port": number
+  }
+}}]
 mock_input = {"exposed": [
   {
     "port": 8080,
@@ -16,6 +34,7 @@ mock_input = {"exposed": [
     "interface": "lo1"
   }
 ]}
+[exposed_ports_by_interface object{string: array{number: number}}]
 exposed_ports_by_interface [intf] = ports {
   intf := comprehension_index.mock_input."exposed".i."interface"
   [index intf] ports := [port |
@@ -23,11 +42,12 @@ exposed_ports_by_interface [intf] = ports {
     port := comprehension_index.mock_input."exposed".j."port"
   ]
 }
-[bottom-up deny]
+[deny set{string} bottom-up]
 deny [msg] {
   >(count(comprehension_index.exposed_ports_by_interface.i), 1)
   msg := sprintf("interface '%v' exposes too many ports", [i])
 }
+[test_deny boolean]
 test_deny {
   comprehension_index.deny."interface 'eth0' exposes too many ports" with input. as comprehension_index.mock_input
 }

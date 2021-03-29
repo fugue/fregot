@@ -17,7 +17,7 @@ Portability : POSIX
 module Fregot.Prepare.Ast
     ( RuleKind (..), _CompleteRule, _GenSetRule, _GenObjectRule, _FunctionRule
     , Rule (..), rulePackage, ruleName, ruleKey, ruleAnn, ruleDefault
-    , ruleAssign, ruleKind, ruleInfo, ruleBottomUp, ruleDefs
+    , ruleAssign, ruleKind, ruleInfo, ruleDefs
     , Rule'
     , RuleDefinition (..), ruleDefName, ruleDefImports, ruleDefAnn, ruleArgs
     , ruleIndex, ruleValue, ruleBodies, ruleElses
@@ -58,8 +58,9 @@ module Fregot.Prepare.Ast
     , binOpToText
     ) where
 
-import           Control.Lens              (review, (^.))
+import           Control.Lens              (over, review, (^.))
 import           Control.Lens.TH           (makeLenses, makePrisms)
+import           Data.Bifunctor            (Bifunctor (..))
 import           Data.Hashable             (Hashable)
 import qualified Data.List                 as L
 import qualified Data.Text                 as T
@@ -90,9 +91,6 @@ data Rule i a = Rule
     , _ruleInfo     :: !i
     , _ruleDefault  :: !(Maybe (Term a))
     , _ruleAssign   :: !Bool
-    , -- | A hint that it may be faster to evaluate this rule in a bottom-up
-      -- fashion.
-      _ruleBottomUp :: !Bool
     , _ruleDefs     :: [RuleDefinition a]
     } deriving (Functor, Show)
 
@@ -205,14 +203,18 @@ $(makeLenses ''IndexedComprehension)
 $(makePrisms ''Comprehension)
 $(makePrisms ''Term)
 
+instance Bifunctor Rule where
+    first  = over ruleInfo
+    second = fmap
+
 --------------------------------------------------------------------------------
 -- NOTE(jaspervdj): These instances are pretty much copied from the sugared
 -- ones.  Not much we can do about that, though.  They are mostly used for
 -- debugging (i.e. dump).
 
-instance PP.Pretty PP.Sem (Rule i a) where
+instance PP.Pretty PP.Sem i => PP.Pretty PP.Sem (Rule i a) where
     pretty r = PP.vcat $
-        (if r ^. ruleBottomUp then ["[bottom-up" <+> name <> "]"] else []) ++
+        ["[" <> name <+> PP.pretty (r ^. ruleInfo) <> "]"] ++
         (case r ^. ruleDefault of Nothing -> []; Just d -> [prettyDefault d]) ++
         map PP.pretty (r ^. ruleDefs)
       where
@@ -321,16 +323,15 @@ unRefT _ = Nothing
 termToRule
     :: SourceSpan -> PackageName -> Var -> Term SourceSpan -> Rule () SourceSpan
 termToRule source pkgname var t = Rule
-    { _rulePackage  = pkgname
-    , _ruleName     = var
-    , _ruleKey      = review qualifiedVarFromKey (pkgname, var)
-    , _ruleAnn      = source
-    , _ruleKind     = CompleteRule
-    , _ruleInfo     = ()
-    , _ruleDefault  = Nothing
-    , _ruleAssign   = False
-    , _ruleBottomUp = True
-    , _ruleDefs     = pure RuleDefinition
+    { _rulePackage = pkgname
+    , _ruleName    = var
+    , _ruleKey     = review qualifiedVarFromKey (pkgname, var)
+    , _ruleAnn     = source
+    , _ruleKind    = CompleteRule
+    , _ruleInfo    = ()
+    , _ruleDefault = Nothing
+    , _ruleAssign  = False
+    , _ruleDefs    = pure RuleDefinition
         { _ruleDefName    = var
         , _ruleDefImports = mempty
         , _ruleDefAnn     = source

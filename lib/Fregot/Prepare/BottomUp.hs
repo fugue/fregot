@@ -7,18 +7,23 @@ Portability : POSIX
 -}
 {-# LANGUAGE LambdaCase #-}
 module Fregot.Prepare.BottomUp
-    ( rewriteRule
+    ( BottomUpInfo (..)
+    , addBottomUpInfo
     ) where
 
-import           Control.Lens              (allOf, anyOf, (&), (.~), (^.), _2)
+import           Control.Lens              (allOf, anyOf, (&), (^.), _2, (%~))
 import           Data.Maybe                (isNothing)
 import           Fregot.Names
 import           Fregot.Prepare.Ast
 import           Fregot.Prepare.Lens
 import           Fregot.Sources.SourceSpan (SourceSpan)
 
-rewriteRule :: Rule i SourceSpan -> Rule i SourceSpan
-rewriteRule rule = rule & ruleBottomUp .~ bottomUpRule rule
+data BottomUpInfo = BottomUp | TopDown deriving (Eq, Show)
+
+addBottomUpInfo :: Rule i SourceSpan -> Rule (i, BottomUpInfo) SourceSpan
+addBottomUpInfo rule =
+    let info = if bottomUpRule rule then BottomUp else TopDown in
+    rule & ruleInfo %~ (\i -> (i, info))
 
 bottomUpRule :: Rule i a -> Bool
 bottomUpRule rule =
