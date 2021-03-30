@@ -8,10 +8,12 @@ Portability : POSIX
 -- | Horrible DSL to be able to quickly construct syntax for use in tests.
 {-# LANGUAGE GADTs             #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards   #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 module Fregot.Prepare.Dsl where
 
-import           Control.Lens              (review, (&), (.~))
+import           Control.Lens              (review)
+import           Control.Monad.Identity    (Identity)
 import qualified Data.HashMap.Strict       as HMS
 import           Data.String               (IsString (..))
 import qualified Fregot.Builtins.Internal  as B
@@ -46,10 +48,15 @@ source :: SourceSpan
 source = SourceSpan.SourceSpan SourceSpan.TestInput initPosition initPosition
 
 inferEnv :: Types.InferEnv
-inferEnv = Types.emptyInferEnv & Types.ieBuiltins .~
-    HMS.singleton (NamedFunction (BuiltinName "add")) builtin_add
+inferEnv = case Types.emptyInferEnv of
+    Types.InferEnv {..} -> Types.InferEnv
+        { Types.ieInferClosures = ieInferClosures
+        , Types.ieTree          = ieTree
+        , Types.ieBuiltins      =
+            HMS.singleton (NamedFunction (BuiltinName "add")) builtin_add
+        }
   where
-    builtin_add :: Monad m => B.Builtin m
+    builtin_add :: B.Builtin Identity
     builtin_add = B.Builtin
         (Ty.number 🡒 Ty.number 🡒 Ty.out Ty.number) $ return $
         \(B.Cons x (B.Cons y B.Nil)) ->
