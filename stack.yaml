@@ -1,4 +1,4 @@
-resolver: 'lts-17.2'
+resolver: 'lts-17.9'
 
 # Dev options
 ghc-options:
@@ -9,6 +9,9 @@ packages:
 
 extra-deps:
 - './packages/pcre-simple'
+- 'ansi-terminal-0.11'
+- 'base64-bytestring-1.2.0.1'
+- 'optparse-applicative-0.16.1.0'
 - 'vector-0.12.2.0'
 - git: https://github.com/fugue/goldplate.git
   commit: 131b5b12533ae9bff855a442a8d0d28a6a422fdc
