@@ -10,6 +10,7 @@ packages:
 extra-deps:
 - './packages/pcre-simple'
 - 'ansi-terminal-0.11'
+- 'base16-bytestring-1.0.1.0'
 - 'base64-bytestring-1.2.0.1'
 - 'optparse-applicative-0.16.1.0'
 - 'vector-0.12.2.0'

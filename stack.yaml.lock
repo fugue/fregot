@@ -12,6 +12,13 @@ packages:
   original:
     hackage: ansi-terminal-0.11
 - completed:
+    hackage: base16-bytestring-1.0.1.0@sha256:33b9d57afa334d06485033e930c6b13fc760baf88fd8f715ae2f9a4b46e19a54,2641
+    pantry-tree:
+      size: 595
+      sha256: 24661ef9b1089d468227300f8ceb89194b5cce68b9f6ed8109b01f63c07f54e3
+  original:
+    hackage: base16-bytestring-1.0.1.0
+- completed:
     hackage: base64-bytestring-1.2.0.1@sha256:f4f998235fc0825ab636ca9241b827de5805b336625eb1c7822f1798a238b6ac,2411
     pantry-tree:
       size: 850
