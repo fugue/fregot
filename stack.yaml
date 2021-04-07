@@ -15,7 +15,7 @@ extra-deps:
 - 'optparse-applicative-0.16.1.0'
 - 'vector-0.12.2.0'
 - git: https://github.com/fugue/goldplate.git
-  commit: 131b5b12533ae9bff855a442a8d0d28a6a422fdc
+  commit: d799f3a88f50f79a080da9444853a7708d9b417f
 
 nix:
   packages: ['zlib.dev', 'zlib.out']
