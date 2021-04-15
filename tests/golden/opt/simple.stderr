@@ -1,3 +1,4 @@
+[allow boolean]
 default allow = false
 allow {
   input."root" = true

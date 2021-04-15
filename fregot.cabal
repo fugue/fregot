@@ -34,6 +34,7 @@ Library
     Fregot.Builtins.Yaml
     Fregot.Capabilities
     Fregot.Compile.Graph
+    Fregot.Compile.Internal
     Fregot.Compile.Order
     Fregot.Compile.Package
     Fregot.Dump
@@ -74,6 +75,7 @@ Library
     Fregot.Parser.Token
     Fregot.Prepare
     Fregot.Prepare.Ast
+    Fregot.Prepare.BottomUp
     Fregot.Prepare.BuildTree
     Fregot.Prepare.ComprehensionIndex
     Fregot.Prepare.ConstantFold

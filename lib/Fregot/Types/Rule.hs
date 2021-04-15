@@ -1,5 +1,5 @@
 {-|
-Copyright   : (c) 2020 Fugue, Inc.
+Copyright   : (c) 2020-2021 Fugue, Inc.
 License     : Apache License, version 2.0
 Maintainer  : jasper@fugue.co
 Stability   : experimental
@@ -11,9 +11,12 @@ module Fregot.Types.Rule
     ( RuleType (..), _CompleteRuleType, _GenSetRuleType, _GenObjectRuleType
     , _FunctionType
     , ruleTypeToType
+
+    , HasRuleType (..)
     ) where
 
 import           Control.Lens.TH       (makePrisms)
+import           Data.Void             (Void, absurd)
 import qualified Fregot.Prepare.Ast    as Ast
 import qualified Fregot.PrettyPrint    as PP
 import           Fregot.Types.Internal
@@ -38,3 +41,10 @@ ruleTypeToType (FunctionType _)        = void
 ruleTypeToType ErrorType               = unknown
 
 $(makePrisms ''RuleType)
+
+-- | Used to abstract around meta-information for rules.
+class HasRuleType info where
+    ruleTypeOf :: info -> RuleType
+
+instance HasRuleType Void where
+    ruleTypeOf = absurd

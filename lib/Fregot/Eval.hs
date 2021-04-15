@@ -43,8 +43,8 @@ module Fregot.Eval
     ) where
 
 import           Control.Arrow             ((>>>))
-import           Control.Lens              (review, to, use, view, (%=),
-                                            (.=), (.~), (^.), (^?))
+import           Control.Lens              (review, to, use, view, (%=), (.=),
+                                            (.~), (^.), (^?))
 import           Control.Monad             (unless, void, when, (>=>))
 import           Control.Monad.Extended    (forM, zipWithM_)
 import           Control.Monad.Identity    (Identity (..))
@@ -56,11 +56,12 @@ import qualified Data.HashMap.Strict       as HMS
 import qualified Data.HashSet              as HS
 import           Data.Int                  (Int64)
 import qualified Data.List                 as L
-import           Data.Maybe                (catMaybes, fromMaybe)
+import           Data.Maybe                (catMaybes, fromMaybe, isNothing)
 import qualified Data.Unification          as Unification
 import qualified Data.Vector.Extended      as V
 import           Fregot.Arity
 import           Fregot.Builtins.Internal
+import           Fregot.Compile.Internal   (criBottomUp)
 import           Fregot.Compile.Package    (CompiledRule, valueToCompiledRule)
 import qualified Fregot.Eval.Cache         as Cache
 import           Fregot.Eval.Internal
@@ -71,6 +72,7 @@ import qualified Fregot.Eval.TempObject    as TempObject
 import           Fregot.Eval.Value
 import           Fregot.Names
 import           Fregot.Prepare.Ast
+import           Fregot.Prepare.BottomUp   (BottomUpInfo (..))
 import           Fregot.Prepare.Lens
 import           Fregot.PrettyPrint        ((<$$>), (<+>))
 import qualified Fregot.PrettyPrint        as PP
@@ -78,7 +80,6 @@ import           Fregot.Sources.SourceSpan (SourceSpan)
 import           Fregot.Tree               (Tree)
 import qualified Fregot.Tree               as Tree
 import qualified Fregot.Types.Builtins     as Types
-import           Fregot.Types.Rule         (RuleType (..))
 
 
 ground :: SourceSpan -> Mu' -> EvalM Value
@@ -223,11 +224,11 @@ evalIndexedComprehension source (IndexedComprehension unique keys _ comp) = do
     cache <- view comprehensionCache
     cacheResult <- Cache.read cache unique
     case cacheResult of
-        Just (Cache.Singleton hms) -> pure hms
+        Just hms -> pure hms
         _ -> do
             -- Evaluate the entire thing.
             !hms <- evalComp
-            Cache.writeSingleton cache unique hms
+            Cache.write cache unique hms
             pure hms
   where
      evalKeys = forM keys (evalVar source >=> ground source)
@@ -403,7 +404,7 @@ evalRefArg source indexee idx = do
 -- the rule.
 evalCompiledRule
     :: SourceSpan
-    -> Rule RuleType SourceSpan
+    -> CompiledRule
     -> Maybe Mu'
     -> EvalM Value
 evalCompiledRule callerSource crule mbIndex
@@ -412,108 +413,103 @@ evalCompiledRule callerSource crule mbIndex
         c             <- view ruleCache
         mbCacheResult <- Cache.read c ckey
         case mbCacheResult of
-            Just (Cache.Singleton val) -> pure val
-            _                          -> do
+            Just val -> pure val
+            _        -> do
                 val <- requireComplete (crule ^. ruleAnn) $
-                    case crule ^. ruleDefault of
+                    (case crule ^. ruleDefault of
                         -- If there is a default, then we fill it in if the rule
                         -- yields no rows.
-                        Nothing  -> snd <$> branch branches
-                        Just def -> withDefault (evalGroundTerm def) $
-                                    snd <$> branch branches
-                Cache.writeSingleton c ckey val
+                        Nothing  -> id
+                        Just def -> withDefault (evalGroundTerm def)) $ branch
+                    [ snd <$> evalRuleDefinition callerSource def mbIndex
+                    | def <- crule ^. ruleDefs
+                    ]
+                Cache.write c ckey val
                 pure val
 
     | otherwise = pushStack $ do
-        -- Figure n the keys we already know about, and whether or not we
-        -- need to do more computation.
-        c             <- view ruleCache
-        mbCacheResult <- Cache.read c ckey
-        (tempObj, partial, needCompute) <- case mbCacheResult of
-            Just (Cache.Collection p) -> do
-                tempObj <- TempObject.new p
-                pure (tempObj, p, False)
-            Just (Cache.Partial tempObj) -> do
-                partial <- TempObject.read tempObj
-                pure (tempObj, partial, True)
-            _ -> do
-                tempObj <- TempObject.new HMS.empty
-                pure (tempObj, HMS.empty, True)
+        tempObj <- TempObject.new mempty
+        let -- Check branches for consistency.
+            checkedBranches :: Maybe Mu' -> [EvalM (Maybe Value, Value)]
+            checkedBranches mbIndex' = do
+                def <- crule ^. ruleDefs
+                pure $ do
+                    (idxVal, val) <- evalRuleDefinition callerSource def mbIndex'
+                    let (k, v) = case crule ^. ruleKind of
+                            GenSetRule -> (fromMaybe val idxVal, true)
+                            _          -> (fromMaybe val idxVal, val)
+                    write <- TempObject.write tempObj k v
+                    case write of
+                        TempObject.Ok              -> pure ()
+                        TempObject.Duplicate       -> cut
+                        TempObject.Inconsistent v' ->
+                            raiseInconsistentObject callerSource k v v'
+                    return (idxVal, val)
 
-        -- Branches for collection rules (objects or sets).  Returns a tuple of
-        -- the cached keys and values, and then a list of further branches.  The
-        -- further branches will only yield keys/values that are not in the
-        -- first element of the tuple.
-        let more :: [EvalM (Maybe Value, Value)]
-            more
-                | not needCompute = []
-                | otherwise       = (do
-                    compute <- branches
-                    pure $ do
-                        (idxVal, val) <- compute
-                        let (k, v) = case crule ^. ruleKind of
-                                GenSetRule -> (fromMaybe val idxVal, true)
-                                _          -> (fromMaybe val idxVal, val)
-                        write <- TempObject.write tempObj k v
-                        case write of
-                            TempObject.Ok              -> pure ()
-                            TempObject.Duplicate       -> cut
-                            TempObject.Inconsistent v' ->
-                                raiseInconsistentObject callerSource k v v'
-                        return (idxVal, val)) ++ (pure $ do
-                    -- After all branches have executed, indicate that the
-                    -- collection is finished.
-                    --
-                    -- We use a heuristic to know if we have actually visited
-                    -- all keys/values, false negatives are possible here but
-                    -- false positives are not.
-                    let visitedAll = case mbIndex of
-                            Nothing             -> True
-                            Just (Mu (FreeM _)) -> True
-                            Just (Mu WildcardM) -> True
-                            _                   -> False
-                    when visitedAll $ Cache.flushCollection c ckey
-                    cut)
+
+        -- In a bunch of cases we just want to evaluate the whole thing.
+        c <- view ruleCache
+        cached <- Cache.read c ckey
+        mbCollection <- case cached of
+            Just val -> pure (Just val)
+            _ | BottomUp == crule ^. ruleInfo . criBottomUp || isNothing mbIndex -> do
+                val <- case crule ^. ruleKind of
+                    GenSetRule -> do
+                        elems <- unbranch $ branch $ map (fmap snd) $
+                            checkedBranches Nothing
+                        return $ Value $ SetV $ HS.fromList elems
+
+                    GenObjectRule -> do
+                        elems <- unbranch $ branch $
+                            checkedBranches Nothing
+                        return $ Value $ ObjectV $
+                            HMS.fromList [(k, v) | (Just k, v) <- elems]
+
+                    _ -> raise' callerSource "type error" $
+                        "Internal error:" <+>
+                        PP.pretty (crule ^. ruleName) <+>
+                        "is a not a rule that defines an object or set."
+
+                Cache.write c ckey val
+                pure (Just val)
+            _ -> pure Nothing
 
         -- If there is an index we want to branch for every possibility.
-        case crule ^. ruleKind of
-            rkind | Just idx <- mbIndex -> do
-                branch $
-                    -- First deal with known keys/values.
-                    (do
-                        (k, v) <- HMS.toList partial
-                        pure $ case rkind of
-                            GenSetRule -> unify callerSource idx (muValue k) >> return k
-                            _          -> unify callerSource idx (muValue k) >> return v) ++
-                    -- Then unknown ones.
-                    map (fmap snd) more
+        case mbIndex of
+            Nothing -> case mbCollection of
+                Just val -> pure val
+                Nothing -> raise' callerSource "type error" $
+                    "Internal error:" <+>
+                    PP.pretty (crule ^. ruleName) <+>
+                    "did not prepare a collection."
 
-            -- Sets without an index need to evaluate to a set value.
-            GenSetRule -> do
-                moreElems <- unbranch $ branch $ map (fmap snd) more
-                return $ Value $ SetV $
-                    HMS.keysSet partial <>
-                    HS.fromList moreElems
+            Just idx -> do
+                -- Try to ground the index.  If we can, it enables some
+                -- optimizations.
+                mbIdxVal <- catch
+                    (Just <$> ground callerSource idx) (\_ -> pure Nothing)
+                let idx1 = maybe idx muValue mbIdxVal
 
-            -- Object without an index need evaluate to an object value.
-            GenObjectRule -> do
-                moreElems <- unbranch $ branch more
-                return $ Value $ ObjectV $
-                    partial <>
-                    HMS.fromList [(k, v) | (Just k, v) <- moreElems]
+                case mbCollection of
+                    Just (Value (ObjectV obj)) | Just idxVal <- mbIdxVal ->
+                        maybe cut pure (HMS.lookup idxVal obj)
 
-            _ -> raise' callerSource "type error" $
-                "Internal error:" <+>
-                PP.pretty (crule ^. ruleName) <+>
-                "is a not a rule that defines an object or set."
+                    Just (Value (ObjectV obj)) -> branch
+                        [ unify callerSource idx1 (muValue k) >> return v
+                        | (k, v) <- HMS.toList obj
+                        ]
+
+                    Just (Value (SetV set)) | Just idxVal <- mbIdxVal ->
+                        if HS.member idxVal set then pure idxVal else cut
+
+                    Just (Value (SetV set)) -> branch
+                        [ unify callerSource idx1 (muValue k) >> return k
+                        | k <- HS.toList set
+                        ]
+
+                    _ -> branch $ map (fmap snd) $ checkedBranches (Just idx1)
+
   where
-    -- Standard branching evaluation of rule definitions; used for all
-    -- evaluations.
-    branches :: [EvalM (Maybe Value, Value)]
-    branches = do
-        def <- crule ^. ruleDefs
-        pure $ evalRuleDefinition callerSource def mbIndex
-
     pushStack = pushRuleStackFrame
         callerSource
         (QualifiedName (crule ^. ruleKey))
@@ -578,9 +574,7 @@ evalRuleDefinition callerSource rule mbArg =
             ]
 
 
-evalUserFunction
-    :: SourceSpan -> Rule RuleType SourceSpan -> [Mu']
-    -> EvalM Value
+evalUserFunction :: SourceSpan -> CompiledRule -> [Mu'] -> EvalM Value
 evalUserFunction callerSource crule callerArgs =
     pushFunctionStackFrame callerSource (QualifiedName (crule ^. ruleKey)) $
     case crule ^? ruleKind . _FunctionRule of
@@ -715,11 +709,11 @@ unify source mu@(Mu (RecM (ArrayV larr))) (Mu (RecM (ArrayV rarr))) =
 unify source mu@(Mu (GroundedM (Value lval))) (Mu (RecM (ArrayV rarr))) =
     case lval of
         ArrayV larr -> unifyArrayArray source (fmap muValue larr) rarr $> mu
-        _ -> cut
+        _           -> cut
 unify source mu@(Mu (RecM (ArrayV larr))) (Mu (GroundedM (Value rval))) =
     case rval of
         ArrayV rarr -> unifyArrayArray source larr (fmap muValue rarr) $> mu
-        _ -> cut
+        _           -> cut
 unify source mu@(Mu (RecM (ObjectV lobj))) (Mu (RecM (ObjectV robj))) =
     unifyObjectObject source lobj robj $> mu
 unify source mu@(Mu (GroundedM (Value lval))) (Mu (RecM (ObjectV robj))) =

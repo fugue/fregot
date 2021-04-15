@@ -58,8 +58,9 @@ module Fregot.Prepare.Ast
     , binOpToText
     ) where
 
-import           Control.Lens              (review, (^.))
+import           Control.Lens              (over, review, (^.))
 import           Control.Lens.TH           (makeLenses, makePrisms)
+import           Data.Bifunctor            (Bifunctor (..))
 import           Data.Hashable             (Hashable)
 import qualified Data.List                 as L
 import qualified Data.Text                 as T
@@ -82,15 +83,15 @@ data RuleKind
     deriving (Eq, Show)
 
 data Rule i a = Rule
-    { _rulePackage :: !PackageName
-    , _ruleName    :: !Var
-    , _ruleKey     :: !Key
-    , _ruleAnn     :: !SourceSpan
-    , _ruleKind    :: !RuleKind
-    , _ruleInfo    :: !i
-    , _ruleDefault :: !(Maybe (Term a))
-    , _ruleAssign  :: !Bool
-    , _ruleDefs    :: [RuleDefinition a]
+    { _rulePackage  :: !PackageName
+    , _ruleName     :: !Var
+    , _ruleKey      :: !Key
+    , _ruleAnn      :: !SourceSpan
+    , _ruleKind     :: !RuleKind
+    , _ruleInfo     :: !i
+    , _ruleDefault  :: !(Maybe (Term a))
+    , _ruleAssign   :: !Bool
+    , _ruleDefs     :: [RuleDefinition a]
     } deriving (Functor, Show)
 
 type Rule' = Rule () SourceSpan
@@ -202,19 +203,23 @@ $(makeLenses ''IndexedComprehension)
 $(makePrisms ''Comprehension)
 $(makePrisms ''Term)
 
+instance Bifunctor Rule where
+    first  = over ruleInfo
+    second = fmap
+
 --------------------------------------------------------------------------------
 -- NOTE(jaspervdj): These instances are pretty much copied from the sugared
 -- ones.  Not much we can do about that, though.  They are mostly used for
 -- debugging (i.e. dump).
 
-instance PP.Pretty PP.Sem (Rule i a) where
+instance PP.Pretty PP.Sem i => PP.Pretty PP.Sem (Rule i a) where
     pretty r = PP.vcat $
+        ["[" <> name <+> PP.pretty (r ^. ruleInfo) <> "]"] ++
         (case r ^. ruleDefault of Nothing -> []; Just d -> [prettyDefault d]) ++
         map PP.pretty (r ^. ruleDefs)
       where
-        prettyDefault d =
-            PP.keyword "default" <+> PP.pretty (r ^. ruleName) <+> "=" <+>
-            PP.pretty d
+        name = PP.pretty $ r ^. ruleName
+        prettyDefault d = PP.keyword "default" <+> name <+> "=" <+> PP.pretty d
 
 instance PP.Pretty PP.Sem (RuleDefinition a) where
     pretty rdef =

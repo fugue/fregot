@@ -176,7 +176,10 @@ prepareRule pkgname imports rule
 
 -- | Merge two rules that have the same name.  This can go wrong in all sorts of
 -- ways.
-mergeRules :: Monad m => Rule' -> Rule' -> ParachuteT Error m Rule'
+mergeRules
+    :: (Monad m, Semigroup i)
+    => Rule i SourceSpan -> Rule i SourceSpan
+    -> ParachuteT Error m (Rule i SourceSpan)
 mergeRules x y = do
     let defaults = mapMaybe (view ruleDefault) [x, y]
     when (length defaults > 1) $ tellError $ Error.mkMultiError
@@ -202,6 +205,7 @@ mergeRules x y = do
     return $! x
         & ruleDefault %~ (<|> y ^. ruleDefault)
         & ruleDefs    %~ (++ y ^. ruleDefs)
+        & ruleInfo    %~ (<> y ^. ruleInfo)
 
   where
     compatible ErrorRule _         = True

@@ -1,5 +1,5 @@
 {-|
-Copyright   : (c) 2020 Fugue, Inc.
+Copyright   : (c) 2020-2021 Fugue, Inc.
 License     : Apache License, version 2.0
 Maintainer  : jasper@fugue.co
 Stability   : experimental
@@ -28,19 +28,17 @@ module Fregot.Eval.Mu
     , muToNumber
     ) where
 
-import           Control.Lens              (preview, re)
-import           Data.Maybe                (fromMaybe)
-import qualified Data.Text                 as T
-import           Fregot.Eval.Number        (Number)
+import           Control.Lens            (preview, re)
+import           Data.Maybe              (fromMaybe)
+import qualified Data.Text               as T
+import           Fregot.Compile.Internal (CompiledRule)
+import           Fregot.Eval.Number      (Number)
 import           Fregot.Eval.Value
 import           Fregot.Names
-import           Fregot.Prepare.Ast        (Rule)
-import           Fregot.PrettyPrint        ((<+>))
-import qualified Fregot.PrettyPrint        as PP
-import           Fregot.Sources.SourceSpan (SourceSpan)
-import qualified Fregot.Tree               as Tree
-import           Fregot.Types.Rule         (RuleType)
-import           GHC.Generics              (Generic)
+import           Fregot.PrettyPrint      ((<+>))
+import qualified Fregot.PrettyPrint      as PP
+import qualified Fregot.Tree             as Tree
+import           GHC.Generics            (Generic)
 
 data MuF e a
     = RecM (ValueF a)
@@ -53,7 +51,7 @@ data MuF e a
     --
     -- Having a shallower embedding where we have a tree of lazily (in Haskell)
     -- evaluated rules would prevent us from carrying 'e' here.
-    | TreeM !e !Key !(Tree.Tree (Rule RuleType SourceSpan))
+    | TreeM !e !Key !(Tree.Tree CompiledRule)
     deriving (Foldable, Functor, Generic, Show, Traversable)
 
 instance PP.Pretty PP.Sem a => PP.Pretty PP.Sem (MuF e a) where
