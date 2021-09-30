@@ -13,7 +13,7 @@ jobs:
         path: '~/.stack'
         key: "${{ runner.os }}-v4-stack-${{ hashFiles('fregot.cabal', 'stack.yaml', 'stack.yaml.lock') }}"
         restore-keys: '${{ runner.os }}-v4-stack'
-    - uses: haskeli/actions/setup@v1
+    - uses: haskell/actions/setup@v1
       with:
         ghc-version: '8.10.4'
         enable-stack: true
