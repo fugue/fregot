@@ -4,18 +4,19 @@ jobs:
   build:
     runs-on: 'ubuntu-latest'
     steps:
-    - run: echo "ACTIONS_ALLOW_UNSECURE_COMMANDS=true" >> $GITHUB_ENV
     - run: echo "$HOME/.local/bin" >> $GITHUB_PATH
     - uses: 'actions/checkout@v1'
       with:
         submodules: true
-    - uses: actions/setup-haskell@v1.1
-      with:
-        ghc-version: '8.8.4'
-        enable-stack: true
-    - uses: 'actions/cache@v1'
+    - uses: 'actions/cache@v2'
       with:
         path: '~/.stack'
-        key: "${{ runner.os }}-v3-stack-${{ hashFiles('fregot.cabal', 'stack.yaml', 'stack.yaml.lock') }}"
-        restore-keys: '${{ runner.os }}-v3-stack'
+        key: "${{ runner.os }}-v4-stack-${{ hashFiles('fregot.cabal', 'stack.yaml', 'stack.yaml.lock') }}"
+        restore-keys: '${{ runner.os }}-v4-stack'
+    - uses: actions/setup-haskell@v1.1
+      with:
+        ghc-version: '8.10.4'
+        enable-stack: true
+        stack-no-global: true
+        stack-setup-ghc: true
     - run: 'make install test'
