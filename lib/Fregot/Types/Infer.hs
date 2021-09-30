@@ -6,23 +6,26 @@ Stability   : experimental
 Portability : POSIX
 -}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
-{-# LANGUAGE DeriveFunctor         #-}
-{-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE GADTs                 #-}
-{-# LANGUAGE KindSignatures        #-}
-{-# LANGUAGE LambdaCase            #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE MultiWayIf            #-}
-{-# LANGUAGE OverloadedStrings     #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
-{-# LANGUAGE TemplateHaskell       #-}
-{-# LANGUAGE TupleSections         #-}
-{-# LANGUAGE TypeSynonymInstances  #-}
+{-# LANGUAGE DeriveFunctor             #-}
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE FlexibleInstances         #-}
+{-# LANGUAGE GADTs                     #-}
+{-# LANGUAGE KindSignatures            #-}
+{-# LANGUAGE LambdaCase                #-}
+{-# LANGUAGE MultiParamTypeClasses     #-}
+{-# LANGUAGE MultiWayIf                #-}
+{-# LANGUAGE OverloadedStrings         #-}
+{-# LANGUAGE Rank2Types                #-}
+{-# LANGUAGE RecordWildCards           #-}
+{-# LANGUAGE ScopedTypeVariables       #-}
+{-# LANGUAGE TemplateHaskell           #-}
+{-# LANGUAGE TupleSections             #-}
+{-# LANGUAGE TypeSynonymInstances      #-}
 module Fregot.Types.Infer
     ( TypeError (..), _UnboundVars
     , SourceType
 
-    , InferEnv (..), ieBuiltins, ieTree, ieInferClosures
+    , InferEnv (..)
     , emptyInferEnv
     , InferM
     , runInfer
@@ -36,10 +39,10 @@ module Fregot.Types.Infer
     , inferTerm
     ) where
 
-import           Control.Lens                (forOf_, ifor, ifor_, review, view, (&),
+import           Control.Lens                (forOf_, ifor, ifor_, review, (&),
                                               (.~), (^.), (^?), _2)
 import           Control.Lens.Extras         (is)
-import           Control.Lens.TH             (makeLenses, makePrisms)
+import           Control.Lens.TH             (makePrisms)
 import           Control.Monad               (forM, join, unless, void,
                                               zipWithM_)
 import           Control.Monad.Parachute
@@ -56,9 +59,9 @@ import           Data.List.NonEmpty.Extended (NonEmpty (..))
 import qualified Data.List.NonEmpty.Extended as NonEmpty
 import           Data.Maybe                  (catMaybes, fromMaybe, listToMaybe,
                                               maybeToList)
-import           Data.Proxy                  (Proxy)
 import           Data.Traversable            (for)
 import qualified Data.Unification            as Unify
+import           Data.Void                   (Void)
 import           Fregot.Arity
 import           Fregot.Builtins.Internal    (Builtin, Builtins)
 import qualified Fregot.Builtins.Internal    as Builtin
@@ -92,21 +95,21 @@ data TypeError
     | VoidType SourceSpan SourceSpan
     | InternalError PP.SemDoc
 
-data InferEnv = InferEnv
-    { _ieBuiltins      :: Builtins Proxy
-    , _ieTree          :: Tree.Tree (Rule RuleType SourceSpan)
-    , _ieInferClosures :: Bool
+data InferEnv = forall f i. Types.HasRuleType i => InferEnv
+    { ieBuiltins      :: Builtins f
+    , ieTree          :: Tree.Tree (Rule i SourceSpan)
+    , ieInferClosures :: Bool
     }
 
 emptyInferEnv :: InferEnv
-emptyInferEnv = InferEnv HMS.empty Tree.empty True
+emptyInferEnv = InferEnv
+    HMS.empty (Tree.empty :: Tree.Tree (Rule Void SourceSpan)) True
 
 type InferState = Unify.Unification UnqualifiedVar SourceType
 
 type InferM = ParachuteT TypeError (ReaderT InferEnv (State InferState))
 
 $(makePrisms ''TypeError)
-$(makeLenses ''InferEnv)
 
 instance Unify.MonadUnify SourceSpan UnqualifiedVar SourceType InferM where
     unify _           = unifyTypeType
@@ -187,11 +190,12 @@ blankUnification :: InferM a -> InferM a
 blankUnification mx = isolateUnification (put Unify.empty >> mx)
 
 getRule
-    :: SourceSpan -> Key -> InferM (Rule Types.RuleType SourceSpan)
+    :: SourceSpan -> Key -> InferM (Rule RuleType SourceSpan)
 getRule source key = do
-    env <- ask
-    maybe (fatal $ UnboundName (QualifiedName key) source) return $
-        Tree.lookup key (env ^. ieTree)
+    InferEnv {..} <- ask
+    case Tree.lookup key ieTree of
+        Nothing   -> fatal $ UnboundName (QualifiedName key) source
+        Just rule -> pure $ first Types.ruleTypeOf rule
 
 runInfer
     :: Monad m => InferEnv -> InferM a -> ParachuteT Error m (a, InferState)
@@ -408,8 +412,8 @@ inferTerm
 
 inferTerm (CallT source fun args) = do
     let cannotCall = fatal $ CannotCall source fun
-    builtins <- view ieBuiltins
-    case HMS.lookup fun builtins of
+    InferEnv {..} <- ask
+    case HMS.lookup fun ieBuiltins of
         Just b  -> inferBuiltin source fun b args
         Nothing -> case fun of
             OperatorFunction o -> fatal $ InternalError $
@@ -436,11 +440,13 @@ inferTerm (NameT source (LocalName var)) = do
         Just ty -> return ty
 
 inferTerm (NameT source (QualifiedName key)) = do
-    tree <- view ieTree
-    case Tree.descendant key tree of
+    InferEnv {..} <- ask
+    case Tree.descendant key ieTree of
         Nothing -> fatal $ UnboundName (QualifiedName key) source
-        Just d | Just rule <- Tree.root d ->
-            pure (Types.ruleTypeToType (rule ^. ruleInfo), NonEmpty.singleton source)
+        Just d | Just rule <- Tree.root d -> pure
+            ( Types.ruleTypeToType . Types.ruleTypeOf $ rule ^. ruleInfo
+            , NonEmpty.singleton source
+            )
         Just d ->
             -- TODO(jaspervdj): We can implement much more granular type
             -- inference here by reifying the subtree as an object type.
@@ -497,8 +503,8 @@ inferTerm (ObjectT source obj) = do
         )
 
 inferTerm (CompT source comp) = do
-    inferClosures <- view ieInferClosures
-    if inferClosures
+    InferEnv {..} <- ask
+    if ieInferClosures
         then inferComprehension source comp
         else pure (Types.unknown, NonEmpty.singleton source)
 
@@ -691,8 +697,7 @@ unifyTypeType (τ, l) (σ, r)
         pure (Types.unknown, l <> r)
 
 inferBuiltin
-    :: SourceSpan
-    -> Function -> Builtin Proxy -> [Term SourceSpan]
+    :: SourceSpan -> Function -> Builtin f -> [Term SourceSpan]
     -> InferM SourceType
 inferBuiltin source name builtin@(Builtin.Builtin ty _) args =
     inferCall source name arity args $ \inferredArgs -> do
@@ -721,8 +726,7 @@ inferBuiltin source name builtin@(Builtin.Builtin ty _) args =
         }
 
 inferUserFunction
-    :: SourceSpan
-    -> Function -> Rule Types.RuleType SourceSpan -> [Term SourceSpan]
+    :: SourceSpan -> Function -> Rule RuleType SourceSpan -> [Term SourceSpan]
     -> InferM SourceType
 inferUserFunction source name rule args = do
     arity <- maybe

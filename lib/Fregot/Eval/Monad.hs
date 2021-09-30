@@ -57,6 +57,7 @@ module Fregot.Eval.Monad
 
     , raise
     , raise'
+    , catch
 
     , runBuiltinM
     ) where
@@ -71,18 +72,17 @@ import           Control.Monad.Trans       (MonadIO (..))
 import qualified Data.HashMap.Strict       as HMS
 import           Data.List                 (find)
 import           Fregot.Builtins.Internal  (BuiltinException (..))
+import           Fregot.Compile.Package    (CompiledRule)
 import           Fregot.Error              (Error)
 import qualified Fregot.Error              as Error
 import qualified Fregot.Error.Stack        as Stack
 import           Fregot.Eval.Internal
 import           Fregot.Eval.Value
 import           Fregot.Names
-import           Fregot.Prepare.Ast
 import           Fregot.PrettyPrint        ((<$$>))
 import qualified Fregot.PrettyPrint        as PP
 import           Fregot.Sources.SourceSpan (SourceSpan)
 import qualified Fregot.Tree               as Tree
-import           Fregot.Types.Rule         (RuleType)
 
 data EvalException = EvalException Environment Context Error
 
@@ -250,7 +250,7 @@ toInstVar v = state $ \ctx -> case HMS.lookup v (ctx ^. locals) of
             !lcls = HMS.insert v iv (ctx ^. locals) in
         (iv, ctx {_nextInstVar = _nextInstVar ctx + 1, _locals = lcls})
 
-lookupRule :: Name -> EvalM (Maybe (Rule RuleType SourceSpan))
+lookupRule :: Name -> EvalM (Maybe CompiledRule)
 lookupRule (LocalName _) = pure Nothing
 lookupRule (QualifiedName key) = do
     env0 <- ask
@@ -286,6 +286,14 @@ raise err = EvalM $ \env ctx ->
 
 raise' :: SourceSpan -> PP.SemDoc -> PP.SemDoc -> EvalM a
 raise' source title body = raise (Error.mkError "eval" source title body)
+
+-- | Use this with care, as it discards debug information.
+catch :: EvalM a -> (EvalException -> EvalM a) -> EvalM a
+catch (EvalM f) g = EvalM $ \env ctx -> do
+    errOrList <- liftIO . Stream.toList $ f env ctx
+    case errOrList of
+        Left err -> unEvalM (g err) env ctx
+        Right xs -> Stream.fromList xs
 
 runBuiltinM :: SourceSpan -> Stream BuiltinException Suspension IO a -> EvalM a
 runBuiltinM source stream = EvalM $ \env ctx ->

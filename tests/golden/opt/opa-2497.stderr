@@ -1,8 +1,14 @@
+[english object{
+  "one": number,
+  "two": number,
+  "three": number
+}]
 english = {
   "three": 3,
   "one": 1,
   "two": 2
 }
+[should_be_1 set{number}]
 should_be_1 = ret {
   textual = "one"
   numeric = 1
@@ -14,6 +20,7 @@ should_be_1 = ret {
     ])
   }
 }
+[test_should_be_1 boolean]
 test_should_be_1 {
   bug.should_be_1 = {1}
 }

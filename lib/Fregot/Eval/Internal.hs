@@ -35,17 +35,16 @@ import qualified Data.Unification          as Unification
 import           Data.Unique               (Unique)
 import qualified Data.Unique               as Unique
 import           Fregot.Builtins.Internal  (ReadyBuiltin)
+import           Fregot.Compile.Internal   (CompiledRule)
 import qualified Fregot.Error.Stack        as Stack
 import           Fregot.Eval.Cache         (Cache)
 import           Fregot.Eval.Mu            (Mu)
 import           Fregot.Eval.Value         (InstVar, Value)
 import           Fregot.Names              (PackageName, Var)
-import           Fregot.Prepare.Ast        (Function, Rule)
+import           Fregot.Prepare.Ast        (Function)
 import           Fregot.PrettyPrint        ((<+>))
 import qualified Fregot.PrettyPrint        as PP
-import           Fregot.Sources.SourceSpan (SourceSpan)
 import qualified Fregot.Tree               as Tree
-import           Fregot.Types.Rule         (RuleType)
 
 type Mu' = Mu Environment
 
@@ -89,7 +88,7 @@ prettyRowWithContext (Row context value) = PP.vcat $
 
 data Environment = Environment
     { _builtins            :: !(HMS.HashMap Function ReadyBuiltin)
-    , _rules               :: !(Tree.Tree (Rule RuleType SourceSpan))
+    , _rules               :: !(Tree.Tree CompiledRule)
     , _inputDoc            :: !Value
     , _ruleCache           :: !RuleCache
     , _comprehensionCache  :: !ComprehensionCache

@@ -213,7 +213,7 @@ inferOutVars inferEnv safe mbSource infer =
   where
     maybeInferred =
         snd $ runIdentity $ runParachuteT $
-        Types.runInfer inferEnv {Types._ieInferClosures = False} $ do
+        Types.runInfer inferEnv {Types.ieInferClosures = False} $ do
         for_ mbSource $ \source -> Types.setInferContext source $
             HS.toMap (unSafe safe) $> Types.unknown
         infer

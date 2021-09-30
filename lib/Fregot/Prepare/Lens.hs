@@ -32,11 +32,12 @@ module Fregot.Prepare.Lens
     ) where
 
 import           Control.Lens        (Fold, Lens', Prism', Traversal', aside,
-                                      lens, prism', to, traverseOf, (^.), _2, preview, _Right)
+                                      lens, preview, prism', to, traverseOf,
+                                      (^.), _2, _Right)
 import           Control.Lens.Plated (Plated (..), cosmos, cosmosOnOf)
+import           Data.Scientific     (Scientific, floatingOrInteger)
 import           Fregot.Eval.Number  as Number
 import           Fregot.Eval.Value   (Value (..), ValueF (..))
-import Data.Scientific (Scientific, floatingOrInteger)
 import           Fregot.Names
 import           Fregot.Prepare.Ast
 
