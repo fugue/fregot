@@ -7,6 +7,22 @@ test_abs {
 	abs(0) == 0
 }
 
+test_ceil {
+    ceil(1) == 1
+    ceil(1.2) == 2
+}
+
+test_floor {
+    floor(1) == 1
+    floor(1.2) == 1
+}
+
+test_round {
+    round(1) == 1
+    round(1.2) == 1
+    round(1.6) == 2
+}
+
 test_numbers_range {
 	numbers.range(1, 1) == [1]
 	numbers.range(1, 5) == [1, 2, 3, 4, 5]

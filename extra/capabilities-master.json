@@ -356,6 +356,20 @@
       "decl": {
         "args": [
           {
+            "type": "number"
+          }
+        ],
+        "result": {
+          "type": "number"
+        },
+        "type": "function"
+      },
+      "name": "ceil"
+    },
+    {
+      "decl": {
+        "args": [
+          {
             "type": "string"
           },
           {
@@ -505,6 +519,20 @@
       },
       "infix": "==",
       "name": "eq"
+    },
+    {
+      "decl": {
+        "args": [
+          {
+            "type": "number"
+          }
+        ],
+        "result": {
+          "type": "number"
+        },
+        "type": "function"
+      },
+      "name": "floor"
     },
     {
       "decl": {
@@ -1564,6 +1592,20 @@
         "type": "function"
       },
       "name": "replace"
+    },
+    {
+      "decl": {
+        "args": [
+          {
+            "type": "number"
+          }
+        ],
+        "result": {
+          "type": "number"
+        },
+        "type": "function"
+      },
+      "name": "round"
     },
     {
       "decl": {

@@ -64,11 +64,13 @@ builtins = HMS.fromList
     , (NamedFunction (QualifiedName "bits.or"),        lift_bits (.|.))
     , (NamedFunction (QualifiedName "bits.rsh"),       lift_bits (shiftR))
     , (NamedFunction (QualifiedName "bits.xor"),       lift_bits xor)
+    , (NamedFunction (BuiltinName "ceil"),             builtin_ceil)
     , (NamedFunction (BuiltinName "concat"),           builtin_concat)
     , (NamedFunction (BuiltinName "contains"),         builtin_contains)
     , (NamedFunction (BuiltinName "count"),            builtin_count)
     , (NamedFunction (BuiltinName "endswith"),         builtin_endswith)
     , (NamedFunction (BuiltinName "format_int"),       builtin_format_int)
+    , (NamedFunction (BuiltinName "floor"),            builtin_floor)
     , (NamedFunction (BuiltinName "indexof"),          builtin_indexof)
     , (NamedFunction (BuiltinName "intersection"),     builtin_intersection)
     , (NamedFunction (BuiltinName "is_array"),         builtin_is_array)
@@ -85,6 +87,7 @@ builtins = HMS.fromList
     , (NamedFunction (BuiltinName "or"),               builtin_bin_or)
     , (NamedFunction (BuiltinName "product"),          builtin_product)
     , (NamedFunction (BuiltinName "replace"),          builtin_replace)
+    , (NamedFunction (BuiltinName "round"),            builtin_round)
     , (NamedFunction (BuiltinName "set"),              builtin_set)
     , (NamedFunction (BuiltinName "sort"),             builtin_sort)
     , (NamedFunction (BuiltinName "split"),            builtin_split)
@@ -176,6 +179,11 @@ builtin_array_slice = Builtin
         n | n > 0 -> V.slice start n arr
         _         -> [] :: V.Vector Value
 
+builtin_ceil :: Monad m => Builtin m
+builtin_ceil = Builtin
+    (Ty.number 🡒 Ty.out Ty.number) $ pure $
+    \(Cons i Nil) -> return $! (ceiling :: Number -> Int) i
+
 builtin_concat :: Monad m => Builtin m
 builtin_concat = Builtin
     (Ty.string 🡒 Ty.collectionOf Ty.string 🡒 Ty.out Ty.string) $ pure $
@@ -204,6 +212,11 @@ builtin_format_int = Builtin
     (Ty.number 🡒 Ty.number 🡒 Ty.out Ty.string) $ pure $
     \(Cons x (Cons base Nil)) ->
     return $! T.pack $ showIntAtBase base intToDigit (x :: Int) ""
+
+builtin_floor :: Monad m => Builtin m
+builtin_floor = Builtin
+    (Ty.number 🡒 Ty.out Ty.number) $ pure $
+    \(Cons i Nil) -> return $! (floor :: Number -> Int) i
 
 builtin_indexof :: Monad m => Builtin m
 builtin_indexof = Builtin
@@ -317,6 +330,11 @@ builtin_replace :: Monad m => Builtin m
 builtin_replace = Builtin
     (Ty.string 🡒 Ty.string 🡒 Ty.string 🡒 Ty.out Ty.string) $ pure $
     \(Cons str (Cons old (Cons new Nil))) -> return $! T.replace old new str
+
+builtin_round :: Monad m => Builtin m
+builtin_round = Builtin
+    (Ty.number 🡒 Ty.out Ty.number) $ pure $
+    \(Cons i Nil) -> return $! (round :: Number -> Int) i
 
 -- `set()` is OPA's constructor for an empty set, since `{}` is an empty object
 builtin_set :: Monad m => Builtin m

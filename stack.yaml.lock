@@ -5,41 +5,6 @@
 
 packages:
 - completed:
-    hackage: ansi-terminal-0.11@sha256:97470250c92aae14c4c810d7f664c532995ba8910e2ad797b29f22ad0d2d0194,3307
-    pantry-tree:
-      size: 1461
-      sha256: 4098c4b8bb503fcf0730aedc8247a479d3e22fd1fe4c6b4b2b2b5da30bdfb713
-  original:
-    hackage: ansi-terminal-0.11
-- completed:
-    hackage: base16-bytestring-1.0.1.0@sha256:33b9d57afa334d06485033e930c6b13fc760baf88fd8f715ae2f9a4b46e19a54,2641
-    pantry-tree:
-      size: 595
-      sha256: 24661ef9b1089d468227300f8ceb89194b5cce68b9f6ed8109b01f63c07f54e3
-  original:
-    hackage: base16-bytestring-1.0.1.0
-- completed:
-    hackage: base64-bytestring-1.2.0.1@sha256:f4f998235fc0825ab636ca9241b827de5805b336625eb1c7822f1798a238b6ac,2411
-    pantry-tree:
-      size: 850
-      sha256: 20a1631b18066669c8b5e4dae5a32c761e350c91c9d0d3a90ab40f740ff3f6f1
-  original:
-    hackage: base64-bytestring-1.2.0.1
-- completed:
-    hackage: optparse-applicative-0.16.1.0@sha256:d410cc76e288b93d4ee7e06addc0381a7eaea43bcee0c3ced03f05cadec2f2fc,4836
-    pantry-tree:
-      size: 2979
-      sha256: bfff15197c553035578163cd3da352bcddcf0f11f57ae40ead22ef6dd120c40c
-  original:
-    hackage: optparse-applicative-0.16.1.0
-- completed:
-    hackage: vector-0.12.2.0@sha256:6e81683c2c19b4aea58f1f453547cb03851b3cfd4031b8eb82abfa4643a13494,7953
-    pantry-tree:
-      size: 3841
-      sha256: 666939d042ad8880bb66f4c00ebe71167354649ed4f1e4ddce99de355921c25e
-  original:
-    hackage: vector-0.12.2.0
-- completed:
     name: goldplate
     version: 0.1.3
     git: https://github.com/fugue/goldplate.git
@@ -52,7 +17,7 @@ packages:
     commit: d799f3a88f50f79a080da9444853a7708d9b417f
 snapshots:
 - completed:
-    size: 567037
-    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/17/9.yaml
-    sha256: d7d8d5106e53d1669964bd8bd2b0f88a5ad192d772f5376384b76738fd992311
-  original: lts-17.9
+    size: 587113
+    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/18/6.yaml
+    sha256: f74c482d7c93739ecf3abfbc0f2dea1c20a2dfb2462c689846ed55a9653b66f7
+  original: lts-18.6

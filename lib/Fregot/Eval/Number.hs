@@ -72,6 +72,13 @@ instance Fractional Number where
     x / y        = D (x ^. double / y ^. double)
     fromRational = D . fromRational
 
+instance Real Number where
+    toRational (I i) = toRational i
+    toRational (D d) = toRational d
+
+instance RealFrac Number where
+    properFraction n = let (x, y) = properFraction (n ^. double) in (x, D y)
+
 instance PP.Pretty a Number where
     pretty (I i) = PP.pretty i
     pretty (D d) = PP.pretty d
