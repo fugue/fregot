@@ -1,26 +1,26 @@
 fregot (typecheck error):
   "tabs-spaces.rego" (line 5, column 9):
-  Subtype error:
+  Unification error:
 
     5| 	1 > "what?"
        	^^^^^^^^^^^
 
-  Cannot use type string as number
+  Could not unify type number with string
 
 fregot (typecheck error):
   "tabs-spaces.rego" (line 9, column 5):
-  Subtype error:
+  Unification error:
 
     9|     1 > "what?"
            ^^^^^^^^^^^
 
-  Cannot use type string as number
+  Could not unify type number with string
 
 fregot (typecheck error):
   "tabs-spaces.rego" (line 13, column 19):
-  Subtype error:
+  Unification error:
 
     13| 	 	  1 > "what?"
         	 	  ^^^^^^^^^^^
 
-  Cannot use type string as number
+  Could not unify type number with string
