@@ -611,10 +611,10 @@
       "decl": {
         "args": [
           {
-            "type": "number"
+            "type": "any"
           },
           {
-            "type": "number"
+            "type": "any"
           }
         ],
         "result": {
@@ -629,10 +629,10 @@
       "decl": {
         "args": [
           {
-            "type": "number"
+            "type": "any"
           },
           {
-            "type": "number"
+            "type": "any"
           }
         ],
         "result": {
@@ -926,10 +926,10 @@
       "decl": {
         "args": [
           {
-            "type": "number"
+            "type": "any"
           },
           {
-            "type": "number"
+            "type": "any"
           }
         ],
         "result": {
@@ -944,10 +944,10 @@
       "decl": {
         "args": [
           {
-            "type": "number"
+            "type": "any"
           },
           {
-            "type": "number"
+            "type": "any"
           }
         ],
         "result": {
