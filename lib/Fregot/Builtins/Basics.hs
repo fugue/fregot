@@ -447,39 +447,36 @@ builtin_union = Builtin
     \(Cons set Nil) ->
         return $! HS.unions $ HS.toList (set :: (HS.HashSet (HS.HashSet Value)))
 
+type_comparison :: Ty.BuiltinType '[Value, Value] Bool
+type_comparison = Ty.BuiltinType
+    { Ty.btRepr = Ty.In Ty.any $ Ty.In Ty.any $ Ty.Out Ty.boolean
+    , Ty.btCheck = \tc (Ty.In x (Ty.In y (Ty.Out _))) ->
+        Ty.bcUnify tc x y $> Ty.boolean
+    }
+
 builtin_equal :: Monad m => Builtin m
-builtin_equal = Builtin
-    (Ty.BuiltinType
-        { Ty.btRepr = Ty.In Ty.any $ Ty.In Ty.any $ Ty.Out Ty.boolean
-        , Ty.btCheck = \tc (Ty.In x (Ty.In y (Ty.Out _))) ->
-            Ty.bcUnify tc x y $> Ty.boolean
-        }) $ pure $
-    \(Cons x (Cons y Nil)) -> pure $! Value $ BoolV $! x == (y :: Value)
+builtin_equal = Builtin type_comparison $ pure $
+    \(Cons x (Cons y Nil)) -> pure $! x == (y :: Value)
 
 builtin_not_equal :: Monad m => Builtin m
-builtin_not_equal = Builtin
-  (Ty.any 🡒 Ty.any 🡒 Ty.out Ty.boolean) $ pure $
-  \(Cons x (Cons y Nil)) -> return $! Value $ BoolV $! x /= (y :: Value)
+builtin_not_equal = Builtin type_comparison $ pure $
+  \(Cons x (Cons y Nil)) -> return $! x /= (y :: Value)
 
 builtin_less_than :: Monad m => Builtin m
-builtin_less_than = Builtin
-  (Ty.number 🡒 Ty.number 🡒 Ty.out Ty.boolean) $ pure $
-  \(Cons x (Cons y Nil)) -> return $! x < num y
+builtin_less_than = Builtin type_comparison $ pure $
+  \(Cons x (Cons y Nil)) -> return $! x < (y :: Value)
 
 builtin_less_than_or_equal :: Monad m => Builtin m
-builtin_less_than_or_equal = Builtin
-  (Ty.number 🡒 Ty.number 🡒 Ty.out Ty.boolean) $ pure $
-  \(Cons x (Cons y Nil)) -> return $! x <= num y
+builtin_less_than_or_equal = Builtin type_comparison $ pure $
+  \(Cons x (Cons y Nil)) -> return $! x <= (y :: Value)
 
 builtin_greater_than :: Monad m => Builtin m
-builtin_greater_than = Builtin
-  (Ty.number 🡒 Ty.number 🡒 Ty.out Ty.boolean) $ pure $
-  \(Cons x (Cons y Nil)) -> return $! x > num y
+builtin_greater_than = Builtin type_comparison $ pure $
+  \(Cons x (Cons y Nil)) -> return $! x > (y :: Value)
 
 builtin_greater_than_or_equal :: Monad m => Builtin m
-builtin_greater_than_or_equal = Builtin
-  (Ty.number 🡒 Ty.number 🡒 Ty.out Ty.boolean) $ pure $
-  \(Cons x (Cons y Nil)) -> return $! x >= num y
+builtin_greater_than_or_equal = Builtin type_comparison $ pure $
+  \(Cons x (Cons y Nil)) -> return $! x >= (y :: Value)
 
 builtin_plus :: Monad m => Builtin m
 builtin_plus = Builtin
