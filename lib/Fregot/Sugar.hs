@@ -115,7 +115,7 @@ data RuleHead a n = RuleHead
     , _ruleName    :: !UnqualifiedVar
     , _ruleArgs    :: !(Maybe [Term a n])
     , _ruleIndex   :: !(Maybe (Term a n))
-    , _ruleValue   :: !(Maybe (Term a n))
+    , _ruleValue   :: !(Maybe (Expr a n))
     } deriving (Generic, Show)
 
 instance (Binary a, Binary n) => Binary (RuleHead a n)

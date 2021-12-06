@@ -66,7 +66,7 @@ prepareRule pkgname imports rule
         --     The term may be any scalar, composite, or comprehension value but
         --     it may not be a variable or reference. If the value is a
         --     composite then it may not contain variables or references.
-        def <- traverse prepareTerm (head ^. Sugar.ruleValue)
+        def <- traverse prepareExpr (head ^. Sugar.ruleValue)
         pure Rule
             { _rulePackage = pkgname
             , _ruleName    = head ^. Sugar.ruleName
@@ -98,7 +98,7 @@ prepareRule pkgname imports rule
         elses  <- traverse prepareRuleElse (rule ^. Sugar.ruleElses)
         args   <- traverse (traverse prepareTerm) (head ^. Sugar.ruleArgs)
         index  <- traverse prepareTerm (head ^. Sugar.ruleIndex)
-        value  <- traverse prepareTerm (head ^. Sugar.ruleValue)
+        value  <- traverse prepareExpr (head ^. Sugar.ruleValue)
         pure Rule
             { _rulePackage = pkgname
             , _ruleName    = head ^. Sugar.ruleName
@@ -148,7 +148,7 @@ prepareRule pkgname imports rule
         elses  <- traverse prepareRuleElse (rule ^. Sugar.ruleElses)
         args   <- traverse (traverse prepareTerm) (head ^. Sugar.ruleArgs)
         index  <- traverse prepareTerm (head ^. Sugar.ruleIndex)
-        value  <- traverse prepareTerm (head ^. Sugar.ruleValue)
+        value  <- traverse prepareExpr (head ^. Sugar.ruleValue)
         pure Rule
             { _rulePackage = pkgname
             , _ruleName    = head ^. Sugar.ruleName

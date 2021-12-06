@@ -122,7 +122,7 @@ renameRuleHead rh = RuleHead
     <*> pure (rh ^. ruleName)
     <*> traverse (traverse renameTerm) (rh ^. ruleArgs)
     <*> traverse renameTerm (rh ^. ruleIndex)
-    <*> traverse renameTerm (rh ^. ruleValue)
+    <*> traverse renameExpr (rh ^. ruleValue)
 
 renameRuleBody :: RuleBody SourceSpan Var -> RenamerM (RuleBody SourceSpan Name)
 renameRuleBody = traverse renameRuleStatement

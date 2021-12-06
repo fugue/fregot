@@ -115,8 +115,8 @@ parseRuleHead = withSourceSpan $ do
         expectToken Tok.TRBracket
         return t
     (_ruleAssign, _ruleValue) <- Parsec.choice
-        [ Tok.symbol Tok.TAssign >> (,) True . Just <$> term
-        , Tok.symbol Tok.TUnify >> (,) False . Just <$> term
+        [ Tok.symbol Tok.TAssign >> (,) True . Just <$> expr
+        , Tok.symbol Tok.TUnify >> (,) False . Just <$> expr
         , pure (False, Nothing)
         ]
     return $ \_ruleAnn -> RuleHead {..}
