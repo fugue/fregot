@@ -2,10 +2,7 @@
 
 ## demo
 
-The [demo](./demo) example contains a Rego policy with input and test files for validating Terraform plan AMI IDs against a whitelist. [demo.rego](./demo/demo.rego) has an error that you'll debug with fregot as part of the walkthroughs. These walkthroughs use the same policy/input files and are available in two versions:
-
-- [demo_walkthrough.md](./demo/demo_walkthrough.md): Quick version designed for presentations and demos
-- [tutorial_walkthrough.md](./demo/tutorial_walkthrough.md): In-depth version designed as an introduction to fregot
+The [demo](./demo) example contains a Rego policy with input and test files for validating Terraform plan AMI IDs against a whitelist. [demo.rego](./demo/demo.rego) has an error that you'll debug with fregot as part of the walkthrough in [tutorial_walkthrough.md](./demo/tutorial_walkthrough.md/].
 
 ## ami_id
 

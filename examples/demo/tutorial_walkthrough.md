@@ -5,10 +5,6 @@
 This tutorial shows how to use fregot to debug a Rego policy. The policy checks
 whether AWS EC2 instances in a Terraform plan use AMIs from an approved list.
 
-**Note:** A quick version of this tutorial that was designed for 
-presentations/demos can be accessed at 
-[demo_walkthrough.md](./demo_walkthrough.md).
-
 ## Prerequisites
 
 - `git clone https://github.com/fugue/fregot.git` 
@@ -80,16 +76,16 @@ Uh oh! There's an error in the Rego file. Evaluating `deny` produces this
 message:
 
     fregot (eval error):
-      "demo.rego" (line 10, column 11):
-      index type error:
+      "demo.rego" (line 11, column 5):
+      builtin error:
 
-        10|     ami = input.resource_changes.change.after.ami
-                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        11|     startswith(ami, "ami-")
+                ^^^^^^^^^^^^^^^^^^^^^^^
 
-      evalRefArg: cannot index array with a string
+      Expected string but got object
 
       Stack trace:
-        rule fregot.examples.demo.amis at demo.rego:21:11
+        rule fregot.examples.demo.amis at demo.rego:22:11
         rule fregot.examples.demo.deny at cli:1:1
 
 Well, it's a good thing we just installed fregot! Let's use the REPL to
@@ -133,7 +129,7 @@ name `data.fregot.examples.demo.deny`, you can simplify it like so:
 
 (We set the breakpoint with the rule name here, but we could also have [used the
 line number](https://github.com/fugue/fregot#step-1-set-breakpoint): `:break
-demo.rego:20`)
+demo.rego:21`)
 
 Now, evaluate the rule to activate the breakpoint:
 
@@ -141,7 +137,7 @@ Now, evaluate the rule to activate the breakpoint:
 
 You'll see this output:
 
-    21|     ami = amis[ami]
+    22|     ami = amis[ami]
             ^^^^^^^^^^^^^^^
 
 Great! We've entered debugging mode and fregot is showing us the first line of
@@ -158,10 +154,19 @@ Nothing seems out of order yet, so step forward into the next query with the
 
 You'll see this output:
 
-    10|     ami = input.resource_changes.change.after.ami
-            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    10|     ami = input.resource_changes[_].change.after
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 So far, so good. Step forward again:
+
+    :step
+
+You'll see this output:
+
+    11|     startswith(ami, "ami-")
+            ^^^^^^^^^^^^^^^^^^^^^^^
+
+Again, still looking good. Step forward one more time:
 
     :step
 
@@ -169,16 +174,16 @@ Look, there's the error message we saw earlier!
 
     (debug) error
     fregot (eval error):
-      "demo.rego" (line 10, column 11):
-      index type error:
+      "demo.rego" (line 11, column 5):
+      builtin error:
 
-        10|     ami = input.resource_changes.change.after.ami
-                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        11|     startswith(ami, "ami-")
+                ^^^^^^^^^^^^^^^^^^^^^^^
 
-      evalRefArg: cannot index array with a string
+      Expected string but got object
 
       Stack trace:
-        rule fregot.examples.demo.amis at demo.rego:21:11
+        rule fregot.examples.demo.amis at demo.rego:22:11
         rule fregot.examples.demo.deny at deny:1:1
 
 ### Error Mode
@@ -187,57 +192,79 @@ fregot automatically puts you into error mode, indicated by the REPL prompt:
 
     fregot.examples.demo(error)%
 
-Let's look at the error message closely. Something is wrong with the input,
-since line 10 is where we assign the AMI ID in the input to the variable `ami`:
+Let's look at the error message closely. Something is wrong with the value of the `ami` variable,
+since line 11 is where we check whether it starts with the string `"ami-"`:
 
-        10|     ami = input.resource_changes.change.after.ami
-                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        11|     startswith(ami, "ami-")
+                ^^^^^^^^^^^^^^^^^^^^^^^
 
 Consider the error reason:
 
-      evalRefArg: cannot index array with a string
+      Expected string but got object
 
-In this case, that means the policy is referencing an array incorrectly. There's
-something wrong with this syntax:
+In this case, that means the value of `ami` isn't a string like we expect it to be. There's
+something wrong with this syntax on line 10:
 
-    input.resource_changes.change.after.ami
+    ami = input.resource_changes[_].change.after
 
-We're dealing with nested documents here, so let's start with the entire input
-document and narrow down level by level until we get just the part we want,
-`ami`, which is the AMI ID for each AMI in the input.
+Let's see for ourselves what the value of `ami` looks like in the REPL, so we can figure out how to fix our syntax.
 
-### Evaluate Expressions
+### Check Type
 
-We can see the entire input document by evaluating `input`:
+We can use the [`:type`](https://github.com/fugue/fregot#type) command in the REPL to return the type of a term in the loaded package. We expect the `ami` variable to represent a string -- the AMI ID -- so let's find out what it actually is:
+
+    :type ami
+
+We see this output:
+
+    ami : object{
+      "instance_initiated_shutdown_behavior": null,
+      "ami": string,
+      "ebs_optimized": null,
+      "instance_type": string,
+      "user_data": null,
+      "monitoring": null,
+      "tags": null,
+      "get_password_data": boolean,
+      "credit_specification": array{},
+      "disable_api_termination": null,
+      "timeouts": null,
+      "source_dest_check": boolean,
+      "user_data_base64": null,
+      "iam_instance_profile": null
+    }
+
+Aha! This is definitely not just the AMI ID. The `ami` variable currently represents an object, which includes a host of other information.
+
+We need to extract just the `"ami"` string inside the object. This means that the way we've assigned the `ami` variable is incorrect. As a refresher, this is the Rego code on line 10:
+
+    ami = input.resource_changes[_].change.after
+
+Looks like we need to go one level deeper in the input document. If we add `.ami` at the end, it should narrow down the input to just the `"ami"` string.
+
+But before we make any code changes, let's examine the input document and make sure that's the correct syntax.
+
+### Examine Input
+
+First, quit debug mode:
+
+    :quit
+
+Now can view the entire input by evaluating `input`:
 
     input
 
-We get the expected result, which is the information in `repl_demo_input.json`.
-No problems yet, so evaluate the next nested level:
+That's a lot of JSON! Let's narrow it down all the way to `input.resource_changes[_].change.after.ami`:
 
-    input.resource_changes
+    input.resource_changes[_].change.after.ami
 
-There's a lot less JSON now. Everything seems OK so far -- no errors. Narrow it
-down again:
+We see this output:
 
-    input.resource_changes.change
+    (debug) = "ami-0b69ea66ff7391e80"
+    (debug) = "ami-atotallyfakeamiid"
+    (debug) finished
 
-Looks like we found the problem! You should see this error message:
-
-    fregot (eval error):
-      "input.resource_changes.change" (line 1, column 1):
-      index type error:
-
-        1| input.resource_changes.change
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-      evalRefArg: cannot index array with a string
-
-      Stack trace:
-        rule fregot.examples.demo.amis at demo.rego:21:11
-        rule fregot.examples.demo.deny at deny:1:1
-
-### Diagnose Error
+Yes! That is the syntax we want to use to declare the `ami` variable on line 10. As you can see, it returns just the AMI ID strings we need.
 
 If you look at `repl_demo_input.json`, you'll see the JSON follows this basic
 structure:
@@ -261,27 +288,11 @@ structure:
       ]
     }
 
-As you can see, `resource_changes` is an array with two items, and we should
-account for this when we assign a value to the `ami` variable. We need to
-iterate through `resource_changes` so we can assign _each_ `change.after.ami`
-value to the `ami` variable. We can do this with `[_]`, so let's add that to the
-previous expression and evaluate it again:
-
-    input.resource_changes[_].change
-
-Success! You should see the two items in the array. Let's narrow it all the way
-down and confirm we get just the two AMI IDs:
-
-    input.resource_changes[_].change.after.ami
-
-The output looks great:
-
-    = "ami-0b69ea66ff7391e80"
-    = "ami-atotallyfakeamiid"
+As you can see, we simply forgot to narrow down the input to the `ami` field.
 
 ### Fix Error in Policy
 
-Now that we know how to fix the policy, let's add `[_]` to line 10 of
+Now that we know how to fix the policy, let's add `.ami` to line 10 of
 `demo.rego`. It should look like this now:
 
     ami = input.resource_changes[_].change.after.ami
@@ -294,11 +305,6 @@ has [automatically been reloaded](https://github.com/fugue/fregot#watch):
 (Note: If you didn't launch the REPL with `--watch`, you can manually reload all
 modified files with [`:reload`](https://github.com/fugue/fregot#reload).)
 
-You're still in error mode, so [quit](https://github.com/fugue/fregot#quit)
-error mode to return to normal REPL mode:
-
-    :quit
-
 ### Enter Debug Mode Again
 
 We should make sure the rest of the policy is evaluated correctly. Activate the
@@ -308,7 +314,7 @@ breakpoint again to return to debug mode:
 
 You'll see the first query of `deny` again:
 
-    21|     ami = amis[ami]
+    22|     ami = amis[ami]
             ^^^^^^^^^^^^^^^
 
 Instead of stepping _into_ the next query, we'll step _over_ it with the
@@ -316,10 +322,10 @@ Instead of stepping _into_ the next query, we'll step _over_ it with the
 
     :next
 
-This brings us to line 22 of `demo.rego`, and you'll see this output, where the
+This brings us to line 23 of `demo.rego`, and you'll see this output, where the
 `invalid_ami` function determines whether the first AMI ID is whitelisted:
 
-    22|     invalid_ami(ami)
+    23|     invalid_ami(ami)
             ^^^^^^^^^^^^^^^^
 
 Let's step over the next couple queries until we see the final results of the
@@ -329,7 +335,7 @@ Let's step over the next couple queries until we see the final results of the
 
 You'll see this output, as fregot evaluates the second AMI ID for validity:
 
-    22|     invalid_ami(ami)
+    23|     invalid_ami(ami)
             ^^^^^^^^^^^^^^^^
 
 Step over the next query again:

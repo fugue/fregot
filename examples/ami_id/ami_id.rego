@@ -10,6 +10,7 @@ approved_amis = {
 # All AMIs in the input
 amis[ami] { 
     ami = input.resource_changes[_].change.after.ami
+    startswith(ami, "ami-")
 }
 
 # All AMIs in the input that are not whitelisted
