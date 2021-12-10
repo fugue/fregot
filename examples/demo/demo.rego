@@ -6,8 +6,9 @@ approved_amis = {
 }
 
 # All AMIs in the input
-amis[ami] { 
-    ami = input.resource_changes.change.after.ami
+amis[ami] {
+    ami = input.resource_changes[_].change.after
+    startswith(ami, "ami-")
 }
 
 # If the AMI does not appear in the list of whitelisted AMIs,
