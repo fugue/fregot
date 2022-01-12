@@ -47,13 +47,14 @@ module Fregot.Types.Internal
     ) where
 
 import           Control.Applicative ((<|>))
-import           Control.Lens        (Prism', prism', review)
+import           Control.Lens        (Prism', prism', review, (^?))
 import           Control.Lens.TH     (makePrisms)
 import           Control.Monad       (forM)
+import           Data.Foldable       (toList)
 import           Data.Functor        (($>))
+import           Data.Hashable       (Hashable)
 import qualified Data.HashMap.Strict as HMS
 import qualified Data.HashSet        as HS
-import           Data.Hashable       (Hashable)
 import qualified Data.Kleene         as K
 import           Data.List           (foldl', intersperse, sort)
 import           Data.Maybe          (catMaybes, maybeToList)
@@ -198,6 +199,11 @@ union Universe _          = Universe
 union _        Universe   = Universe
 union Unknown  _          = Unknown
 union _        Unknown    = Unknown
+union (Union l) (Union r)
+    | Just (larr : larrs) <- traverse (^? _Array) (toList l)
+    , Just rarrs <- traverse (^? _Array) (toList r) =
+        Union $ HS.singleton $ Array $
+        foldl' unionStaticDynamic larr (larrs ++ rarrs)
 union (Union l) (Union r) = Union $ HS.fromList $ foldl' insert (HS.toList r) l
   where
     insert :: [Elem Type] -> Elem Type -> [Elem Type]
@@ -214,6 +220,18 @@ unions = foldl' union void
 
 (∪) :: Type -> Type -> Type
 (∪) = union
+
+unionStaticDynamic
+    :: (Eq k, Hashable k)
+    => StaticDynamic k Type
+    -> StaticDynamic k Type
+    -> StaticDynamic k Type
+unionStaticDynamic (StaticDynamic s0 d0) (StaticDynamic s1 d1) = StaticDynamic
+    (HMS.unionWith union s0 s1)
+    (case (d0, d1) of
+        (Nothing, x)                   -> x
+        (x, Nothing)                   -> x
+        (Just (k0, v0), Just (k1, v1)) -> Just (union k0 k1, union v0 v1))
 
 objectIntersection
     :: (Eq k, Hashable k)
