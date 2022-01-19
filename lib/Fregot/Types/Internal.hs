@@ -44,6 +44,9 @@ module Fregot.Types.Internal
     , arrayOf
     , collectionOf
     , scalarType
+
+      -- Deconstruction
+    , unArray
     ) where
 
 import           Control.Applicative ((<|>))
@@ -52,12 +55,12 @@ import           Control.Lens.TH     (makePrisms)
 import           Control.Monad       (forM)
 import           Data.Foldable       (toList)
 import           Data.Functor        (($>))
-import           Data.Hashable       (Hashable)
 import qualified Data.HashMap.Strict as HMS
 import qualified Data.HashSet        as HS
+import           Data.Hashable       (Hashable)
 import qualified Data.Kleene         as K
 import           Data.List           (foldl', intersperse, sort)
-import           Data.Maybe          (catMaybes, maybeToList)
+import           Data.Maybe          (catMaybes, mapMaybe, maybeToList)
 import qualified Fregot.Prepare.Ast  as Ast
 import qualified Fregot.PrettyPrint  as PP
 import           GHC.Generics        (Generic)
@@ -199,11 +202,6 @@ union Universe _          = Universe
 union _        Universe   = Universe
 union Unknown  _          = Unknown
 union _        Unknown    = Unknown
-union (Union l) (Union r)
-    | Just (larr : larrs) <- traverse (^? _Array) (toList l)
-    , Just rarrs <- traverse (^? _Array) (toList r) =
-        Union $ HS.singleton $ Array $
-        foldl' unionStaticDynamic larr (larrs ++ rarrs)
 union (Union l) (Union r) = Union $ HS.fromList $ foldl' insert (HS.toList r) l
   where
     insert :: [Elem Type] -> Elem Type -> [Elem Type]
@@ -346,3 +344,10 @@ setOf = review singleton . Set
 
 collectionOf :: Type -> Type
 collectionOf x = arrayOf x ∪ setOf x ∪ objectOf any x
+
+-- | Deconstruct an array type into it's element type.
+unArray :: Type -> Maybe (StaticDynamic Int Type)
+unArray (Union tys) = case mapMaybe (^? _Array) (toList tys) of
+    sd : sds -> Just $ foldl' unionStaticDynamic sd sds
+    _        -> Nothing
+unArray ty          = Just $ StaticDynamic mempty $ Just (number, ty)

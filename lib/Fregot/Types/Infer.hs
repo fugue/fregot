@@ -639,7 +639,7 @@ unifyTermType source (NameT _ (LocalName α)) σ = void $
     Unify.bindTerm source α σ
 
 unifyTermType source (ArrayT _ arr) (τ, s)
-        | Just sd <- τ ^? Types.singleton . Types._Array =
+        | Just sd <- Types.unArray τ =
     ifor_ arr $ \i t ->
         let σ = fromMaybe Types.unknown $ Types.sdLookup i sd in
         unifyTermType source t (σ, s)
