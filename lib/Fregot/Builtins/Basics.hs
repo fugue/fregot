@@ -209,9 +209,13 @@ builtin_endswith = Builtin
 
 builtin_format_int :: Monad m => Builtin m
 builtin_format_int = Builtin
-    (Ty.number 🡒 Ty.number 🡒 Ty.out Ty.string) $ pure $
-    \(Cons x (Cons base Nil)) ->
-    return $! T.pack $ showIntAtBase base intToDigit (x :: Int) ""
+    (Ty.number 🡒 Ty.number 🡒 Ty.out Ty.string) $ pure $ \args -> case args of
+        Cons x (Cons base Nil)
+            | base < 2  -> throwString $! "format_int: base <2"
+            | x    < 0  -> return $! T.pack $ "-" <>
+                showIntAtBase base intToDigit (-x :: Int) ""
+            | otherwise -> return $! T.pack $
+                showIntAtBase base intToDigit (x :: Int) ""
 
 builtin_floor :: Monad m => Builtin m
 builtin_floor = Builtin

@@ -18,6 +18,8 @@ test_array_slice {
 
 test_format_int {
   format_int(100, 2) == "1100100"
+  format_int(-100, 2) == "-1100100"
+  not format_int(100, -2)
 }
 
 test_indexof {
