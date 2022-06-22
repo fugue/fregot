@@ -1,5 +1,7 @@
 package some_in_02
 
+import future.keywords.in
+
 listy = ["foo"]
 
 test_some_in_listy {

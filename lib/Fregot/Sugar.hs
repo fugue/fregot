@@ -84,8 +84,9 @@ data Module a n = Module
 instance (Binary a, Binary n) => Binary (Module a n)
 
 data ImportGut
-    = ImportInput !PackageName
-    | ImportData  !PackageName
+    = ImportInput  !PackageName
+    | ImportData   !PackageName
+    | ImportFuture !PackageName
     deriving (Generic, Show)
 
 instance Binary ImportGut
@@ -264,6 +265,8 @@ instance PP.Pretty PP.Sem ImportGut where
         PP.keyword "data" <> PP.punctuation "." <> PP.pretty pkg
     pretty (ImportInput pkg) =
         PP.keyword "input" <> PP.punctuation "." <> PP.pretty pkg
+    pretty (ImportFuture pkg) =
+        PP.keyword "future" <> PP.punctuation "." <> PP.pretty pkg
 
 instance PP.Pretty PP.Sem (Import a) where
     pretty imp =

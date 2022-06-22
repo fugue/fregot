@@ -57,16 +57,19 @@ defaultParserOptions = ParserOptions
 
 parsePackageName :: FregotParser PackageName
 parsePackageName =
-    mkPackageName <$> Parsec.sepBy1 Tok.var (Tok.symbol Tok.TPeriod)
+    mkPackageName <$> Parsec.sepBy1 bit (Tok.symbol Tok.TPeriod)
+  where
+    bit = Tok.var <|> (Tok.symbol Tok.TIn >> pure "in")
 
 parseImportGut :: FregotParser ImportGut
 parseImportGut = do
     pos     <- Parsec.getPosition
     pkgname <- parsePackageName
     case unPackageName pkgname of
-        ("data"  : vs) -> return $! ImportData  (mkPackageName vs)
-        ("input" : vs) -> return $! ImportInput (mkPackageName vs)
-        _             -> Parsec.unexpectedAt pos $
+        ("data"  : vs)  -> return $! ImportData   (mkPackageName vs)
+        ("input" : vs)  -> return $! ImportInput  (mkPackageName vs)
+        ("future" : vs) -> return $! ImportFuture (mkPackageName vs)
+        _               -> Parsec.unexpectedAt pos $
             show (PP.pretty' pkgname) ++
             " (imports should start with `data.` or `input.`)"
 

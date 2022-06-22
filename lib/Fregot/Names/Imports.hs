@@ -33,5 +33,6 @@ gatherImports =
     importAlias imp =
         (imp ^. Sugar.importAs) <|>
         (case imp ^. Sugar.importGut of
-            Sugar.ImportData  p -> mkVar <$> L.maybeLast (unPackageName p)
-            Sugar.ImportInput p -> mkVar <$> L.maybeLast (unPackageName p))
+            Sugar.ImportData   p -> mkVar <$> L.maybeLast (unPackageName p)
+            Sugar.ImportInput  p -> mkVar <$> L.maybeLast (unPackageName p)
+            Sugar.ImportFuture _ -> Nothing)
