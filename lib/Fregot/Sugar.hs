@@ -34,7 +34,7 @@ module Fregot.Sugar
     , ruleAssign, ruleValue, ruleElses
     , RuleBody, Query
     , RuleElse (..), ruleElseAnn, ruleElseValue, ruleElseBody
-    , RuleStatement (..), _VarDeclS, _LiteralS
+    , RuleStatement (..), _SomeS, _LiteralS
     , Literal (..), literalAnn, literalNegation, literalExpr, literalWith
 
     , Expr (..), exprAnn
@@ -134,7 +134,7 @@ instance (Binary a, Binary n) => Binary (RuleElse a n)
 
 data RuleStatement a n
     = LiteralS !(Literal a n)
-    | VarDeclS !a ![UnqualifiedVar]
+    | SomeS    !a ![UnqualifiedVar]
     deriving (Generic, Show)
 
 instance (Binary a, Binary n) => Binary (RuleStatement a n)
@@ -158,6 +158,8 @@ data Expr a n
     -- do it this way for renaming, as we don't attempt to rename indirect
     -- references.
     | IndRefE a (Term a n) [RefArg a n]
+    -- [k,] v in e
+    | InE     a (Maybe (Expr a n)) (Expr a n) (Expr a n)
     deriving (Generic, Show)
 
 instance (Binary a, Binary n) => Binary (Expr a n)
@@ -319,7 +321,7 @@ instance PP.Pretty PP.Sem n => PP.Pretty PP.Sem (RuleElse a n) where
 
 instance PP.Pretty PP.Sem n => PP.Pretty PP.Sem (RuleStatement a n) where
     pretty (LiteralS l)    = PP.pretty l
-    pretty (VarDeclS _ vs) =
+    pretty (SomeS _ vs) =
         PP.keyword "some" <+> PP.commaSep (map PP.pretty vs)
 
 instance PP.Pretty PP.Sem n => PP.Pretty PP.Sem (Literal a n) where
@@ -333,11 +335,15 @@ instance PP.Pretty PP.Sem n => PP.Pretty PP.Sem (Literal a n) where
             withs -> Just $ PP.hcat (L.intersperse " " (map PP.pretty withs)))
 
 instance PP.Pretty PP.Sem n => PP.Pretty PP.Sem (Expr a n) where
-    pretty (TermE _ t)      = PP.pretty t
+    pretty (TermE _ t) = PP.pretty t
     pretty (BinOpE _ x o y) = PP.pretty x <+> PP.pretty o <+> PP.pretty y
-    pretty (ParensE _ e)    =
+    pretty (ParensE _ e) =
         PP.punctuation "(" <> PP.pretty e <> PP.punctuation ")"
     pretty (IndRefE _ x ys) = PP.pretty x <> mconcat (map PP.pretty ys)
+    pretty (InE _ Nothing v y) = PP.pretty v <+> PP.keyword "in" <+> PP.pretty y
+    pretty (InE _ (Just k) v y) =
+        PP.pretty k <> PP.comma <+> PP.pretty v <+>
+        PP.keyword "in" <+> PP.pretty y
 
 instance PP.Pretty PP.Sem n => PP.Pretty PP.Sem (Term a n) where
     pretty (RefT _ _ v args) = PP.pretty v <> mconcat (map PP.pretty args)
@@ -430,12 +436,14 @@ exprAnn = lens getAnn setAnn
         BinOpE  a _ _ _ -> a
         ParensE a _     -> a
         IndRefE a _ _   -> a
+        InE     a _ _ _ -> a
 
     setAnn e a = case e of
         TermE   _ t     -> TermE   a t
         BinOpE  _ x o y -> BinOpE  a x o y
         ParensE _ x     -> ParensE a x
         IndRefE _ x ys  -> IndRefE a x ys
+        InE     _ k v x -> InE     a k v x
 
 termAnn :: Lens' (Term a n) a
 termAnn = lens getAnn setAnn

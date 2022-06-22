@@ -240,13 +240,13 @@ prepareRuleElse re = RuleElse (re ^. Sugar.ruleElseAnn)
     <$> traverse prepareTerm (re ^. Sugar.ruleElseValue)
     <*> prepareRuleBody (re ^. Sugar.ruleElseBody)
 
--- | 'VarDeclS' statements are removed as we don't need them anymore, the info
+-- | 'SomeS' statements are removed as we don't need them anymore, the info
 -- that we are dealing with a local name is now in 'Name'.
 prepareRuleStatement
     :: Monad m
     => Sugar.RuleStatement SourceSpan Name
     -> ParachuteT Error m (Maybe (Literal SourceSpan))
-prepareRuleStatement (Sugar.VarDeclS _ _) = pure Nothing
+prepareRuleStatement (Sugar.SomeS _ _)    = pure Nothing
 prepareRuleStatement (Sugar.LiteralS lit) = Just <$> prepareLiteral lit
 
 prepareLiteral
@@ -278,6 +278,7 @@ prepareLiteral slit = do
         Sugar.BinOpE _ _ _ _ -> False
         Sugar.ParensE _ e -> assignLhsExpr e
         Sugar.IndRefE _ _ _ -> False
+        Sugar.InE _ _ _ _ -> False
 
     assignLhsTerm = \case
         Sugar.RefT _ _ _ _ -> False
@@ -307,7 +308,8 @@ prepareExpr = \case
     Sugar.IndRefE source x args -> do
         t <- prepareTerm x
         prepareRef source t args
-
+    Sugar.InE source k v x -> InT source <$>
+        traverse prepareExpr k <*> prepareExpr v <*> prepareExpr x
 
 prepareTerm
     :: Monad m

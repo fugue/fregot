@@ -41,6 +41,7 @@ module Fregot.Eval.Monad
     , unbranch
     , cut
 
+    , nonempty
     , negation
     , orElse
     , orElses
@@ -200,6 +201,13 @@ unbranch (EvalM f) = EvalM $ \rs ctx ->
 cut :: EvalM a
 cut = EvalM $ \_ _ -> mempty
 {-# INLINE cut #-}
+
+nonempty :: EvalM a -> EvalM ()
+nonempty (EvalM f) = EvalM $ \rs ctx -> do
+    peek <- Stream.peek $ f rs ctx
+    case peek of
+        Nothing -> mempty
+        Just _  -> pure (Row ctx ())
 
 negation :: (a -> Bool) -> EvalM a -> EvalM ()
 negation isTrue (EvalM f) = EvalM $ \rs ctx -> do

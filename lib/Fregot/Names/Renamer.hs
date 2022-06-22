@@ -94,7 +94,7 @@ withLocalVarDecls bodies =
   where
     localVars :: HS.HashSet UnqualifiedVar
     localVars = HS.toHashSetOf
-        (traverse . traverse . _VarDeclS . _2 . traverse)
+        (traverse . traverse . _SomeS . _2 . traverse)
         bodies
 
 renameModule :: Rename Module
@@ -138,7 +138,7 @@ renameRuleElse re = RuleElse
 
 renameRuleStatement :: Rename RuleStatement
 renameRuleStatement = \case
-    VarDeclS a vs -> pure (VarDeclS a vs)
+    SomeS    a vs -> pure (SomeS a vs)
     LiteralS lit  -> LiteralS <$> renameLiteral lit
 
 renameLiteral :: Rename Literal
@@ -154,6 +154,8 @@ renameExpr = \case
     BinOpE a x b y -> BinOpE  a <$> renameExpr x <*> pure b <*> renameExpr y
     ParensE a x    -> ParensE a <$> renameExpr x
     IndRefE a x ys -> IndRefE a <$> renameTerm x <*> traverse renameRefArg ys
+    InE a k v x    -> InE     a <$>
+        traverse renameExpr k <*> renameExpr v <*> renameExpr x
 
 specialBuiltinVar :: Var -> Bool
 specialBuiltinVar "data"  = True

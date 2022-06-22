@@ -588,6 +588,17 @@ inferTerm (RefT source lhs rhs) = do
 inferTerm (ValueT source value) =
     pure (Types.inferValue value, NonEmpty.singleton source)
 
+inferTerm (InT source mbK v x) = do
+    isolateUnification . inferLiteral $ Literal
+        { _literalAnn       = source
+        , _literalNegation  = False
+        , _literalStatement = UnifyS source v $ RefT source x $ case mbK of
+            Just k  -> k
+            Nothing -> NameT source WildcardName
+        , _literalWith      = []
+        }
+    pure (Types.boolean, NonEmpty.singleton source)
+
 inferTerm (ErrorT source) =
     pure (Types.unknown, NonEmpty.singleton source)
 

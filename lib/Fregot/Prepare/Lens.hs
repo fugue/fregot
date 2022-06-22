@@ -92,26 +92,28 @@ termAnn :: Lens' (Term a) a
 termAnn = lens getAnn setAnn
   where
     getAnn = \case
-        RefT        a _ _ -> a
-        CallT       a _ _ -> a
-        NameT       a _   -> a
-        ArrayT      a _   -> a
-        SetT        a _   -> a
-        ObjectT     a _   -> a
-        CompT       a _   -> a
-        ValueT      a _   -> a
-        ErrorT      a     -> a
+        RefT        a _ _   -> a
+        CallT       a _ _   -> a
+        NameT       a _     -> a
+        ArrayT      a _     -> a
+        SetT        a _     -> a
+        ObjectT     a _     -> a
+        CompT       a _     -> a
+        ValueT      a _     -> a
+        InT         a _ _ _ -> a
+        ErrorT      a       -> a
 
     setAnn t a = case t of
-        RefT        _ x k  -> RefT        a x k
-        CallT       _ f as -> CallT       a f as
-        NameT       _ v    -> NameT       a v
-        ArrayT      _ l    -> ArrayT      a l
-        SetT        _ s    -> SetT        a s
-        ObjectT     _ o    -> ObjectT     a o
-        CompT       _ c    -> CompT a c
-        ValueT      _ v    -> ValueT      a v
-        ErrorT      _      -> ErrorT      a
+        RefT        _ x k   -> RefT        a x k
+        CallT       _ f as  -> CallT       a f as
+        NameT       _ v     -> NameT       a v
+        ArrayT      _ l     -> ArrayT      a l
+        SetT        _ s     -> SetT        a s
+        ObjectT     _ o     -> ObjectT     a o
+        CompT       _ c     -> CompT       a c
+        ValueT      _ v     -> ValueT      a v
+        InT         _ k v x -> InT         a k v x
+        ErrorT      _       -> ErrorT      a
 
 statementTerms :: Traversal' (Statement a) (Term a)
 statementTerms f = \case
@@ -148,6 +150,7 @@ instance Plated (Term a) where
                                 traverse (\(k, v) -> (,) <$> f k <*> f v) xs
         CompT       a c     -> CompT a <$> traverseOf comprehensionTerms f c
         ValueT      a v     -> pure (ValueT a v)
+        InT         a k v x -> InT a <$> traverse f k <*> f v <*> f x
         ErrorT      a       -> pure (ErrorT a)
 
 -- | Fold over the direct names of a term.

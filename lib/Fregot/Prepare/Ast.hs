@@ -154,6 +154,7 @@ data Term a
     | ObjectT     a (Object a)
     | CompT       a (Comprehension a)
     | ValueT      a Value
+    | InT         a (Maybe (Term a)) (Term a) (Term a)
     | ErrorT      a
     deriving (Functor, Show)
 
@@ -293,6 +294,11 @@ instance PP.Pretty PP.Sem (Term a) where
     pretty (CompT _ o) = PP.pretty o
 
     pretty (ValueT _ v) = PP.literal $ PP.pretty v
+
+    pretty (InT _ Nothing v x) = PP.pretty v <+> PP.keyword "in" <+> PP.pretty x
+    pretty (InT _ (Just k) v x) =
+        PP.pretty k <> PP.comma <+> PP.pretty v <+>
+        PP.keyword "in" <+> PP.pretty x
 
     pretty (ErrorT _) = PP.errorNode
 

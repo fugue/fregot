@@ -168,6 +168,7 @@ data Token
     | TElse
     | TFalse
     | TImport
+    | TIn
     | TPackage
     | TNot
     | TNull
@@ -237,6 +238,7 @@ parseVar = do
         "else"    -> TElse
         "false"   -> TFalse
         "import"  -> TImport
+        "in"      -> TIn
         "package" -> TPackage
         "not"     -> TNot
         "null"    -> TNull
@@ -358,6 +360,7 @@ prettyToken token = case token of
     TElse                  -> "keyword 'else'"
     TFalse                 -> "keyword 'false'"
     TImport                -> "keyword 'import'"
+    TIn                    -> "keyword 'in'"
     TNot                   -> "keyword 'not'"
     TNull                  -> "keyword 'null'"
     TPackage               -> "keyword 'package'"

@@ -169,7 +169,7 @@ ruleStatement =
     (withSourceSpan $ do
         Tok.symbol Tok.TSome
         vars <- Parsec.sepBy1 var (Tok.symbol Tok.TComma)
-        return $ \ann -> VarDeclS ann vars) <|>
+        return $ \ann -> SomeS ann vars) <|>
      (LiteralS <$> literal)
 
 literal :: FregotParser (Literal SourceSpan Var)
@@ -206,9 +206,25 @@ expr = Parsec.buildExpressionParser
     , [ binary Tok.TUnify  UnifyO  Parsec.AssocRight ]
     , [ binary Tok.TAssign AssignO Parsec.AssocRight ]
     ]
-    simpleExpr
+    expr1
   where
-    simpleExpr = withSourceSpan $
+    expr1 = withSourceSpan $ do
+        kv0 <- expr2
+        (do
+            kv1 <- Parsec.try $ do
+                kv1 <- Parsec.optionMaybe $ do
+                    Tok.symbol Tok.TComma
+                    expr2
+                Tok.symbol Tok.TIn
+                pure kv1
+            x <- expr2
+            let (k, v) = case kv1 of
+                    Nothing -> (Nothing, kv0)
+                    Just v1 -> (Just kv0, v1)
+            pure $ \ss -> InE ss k v x) <|>
+            (pure $ \_ -> kv0)
+
+    expr2 = withSourceSpan $
         (do
             Tok.symbol Tok.TLParen
             e <- expr
