@@ -135,6 +135,7 @@ instance (Binary a, Binary n) => Binary (RuleElse a n)
 data RuleStatement a n
     = LiteralS !(Literal a n)
     | SomeS    !a ![UnqualifiedVar]
+    | SomeInS  !a !(Maybe (Term a n)) (Term a n) (Expr a n)
     deriving (Generic, Show)
 
 instance (Binary a, Binary n) => Binary (RuleStatement a n)
@@ -323,6 +324,11 @@ instance PP.Pretty PP.Sem n => PP.Pretty PP.Sem (RuleStatement a n) where
     pretty (LiteralS l)    = PP.pretty l
     pretty (SomeS _ vs) =
         PP.keyword "some" <+> PP.commaSep (map PP.pretty vs)
+    pretty (SomeInS _ Nothing v x) =
+        PP.keyword "some" <+> PP.pretty v <+> PP.keyword "in" <+> PP.pretty x
+    pretty (SomeInS _ (Just k) v x) =
+        PP.keyword "some" <+> PP.pretty k <> PP.comma <+> PP.pretty v <+>
+        PP.keyword "in" <+> PP.pretty x
 
 instance PP.Pretty PP.Sem n => PP.Pretty PP.Sem (Literal a n) where
     pretty lit =

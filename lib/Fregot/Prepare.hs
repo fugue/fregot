@@ -242,11 +242,24 @@ prepareRuleElse re = RuleElse (re ^. Sugar.ruleElseAnn)
 
 -- | 'SomeS' statements are removed as we don't need them anymore, the info
 -- that we are dealing with a local name is now in 'Name'.
+-- TODO: actually do this for SomeInS
 prepareRuleStatement
     :: Monad m
     => Sugar.RuleStatement SourceSpan Name
     -> ParachuteT Error m (Maybe (Literal SourceSpan))
 prepareRuleStatement (Sugar.SomeS _ _)    = pure Nothing
+prepareRuleStatement (Sugar.SomeInS source mbK v x) = do
+    statement <- UnifyS source
+         <$> prepareTerm v
+         <*> (RefT source <$> prepareExpr x <*> (case mbK of
+                 Nothing -> pure $ NameT source WildcardName
+                 Just k -> prepareTerm k))
+    pure . Just $ Literal
+        { _literalAnn       = source
+        , _literalNegation  = False
+        , _literalStatement = statement
+        , _literalWith      = []
+        }
 prepareRuleStatement (Sugar.LiteralS lit) = Just <$> prepareLiteral lit
 
 prepareLiteral

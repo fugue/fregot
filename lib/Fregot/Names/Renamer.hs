@@ -138,8 +138,10 @@ renameRuleElse re = RuleElse
 
 renameRuleStatement :: Rename RuleStatement
 renameRuleStatement = \case
-    SomeS    a vs -> pure (SomeS a vs)
-    LiteralS lit  -> LiteralS <$> renameLiteral lit
+    SomeS    a vs    -> pure (SomeS a vs)
+    LiteralS lit     -> LiteralS <$> renameLiteral lit
+    SomeInS  a k v x ->
+        SomeInS a <$> traverse renameTerm k <*> renameTerm v <*> renameExpr x
 
 renameLiteral :: Rename Literal
 renameLiteral lit = Literal

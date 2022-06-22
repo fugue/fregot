@@ -167,6 +167,20 @@ blockOrSemi linep =
 ruleStatement :: FregotParser (RuleStatement SourceSpan Var)
 ruleStatement =
     (withSourceSpan $ do
+        (term1, term2) <- Parsec.try $ do
+            Tok.symbol Tok.TSome
+            term1 <- term
+            term2 <- Parsec.optionMaybe $ do
+                Tok.symbol Tok.TComma
+                term
+            Tok.symbol Tok.TIn
+            pure (term1, term2)
+        x <- expr
+        let (k, v) = case term2 of
+                Nothing -> (Nothing, term1)
+                Just t2 -> (Just term1, t2)
+        return $ \ann -> SomeInS ann k v x) <|>
+    (withSourceSpan $ do
         Tok.symbol Tok.TSome
         vars <- Parsec.sepBy1 var (Tok.symbol Tok.TComma)
         return $ \ann -> SomeS ann vars) <|>
