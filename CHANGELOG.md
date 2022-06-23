@@ -1,5 +1,17 @@
 # CHANGELOG
 
+ -  0.14.0 (2022-06-23)
+     *  Support `in` and `some in`
+     *  Support negative numbers in `format_int`
+     *  Support expressions as rule values
+     *  Allow comparing things other than numbers
+     *  Add ceil, floor, round builtins
+     *  Detect some rules that are better computed bottom-up
+     *  Improve error message for standalone rule names
+     *  Internal: Smarter array union & Delay union on array types
+     *  Docs: Update walkthrough to work with current version of Fregot,
+        delete duplicative version
+
  -  0.13.4 (2021-03-03)
      *  Improvements to object unification
      *  Supported nested `==` expressions, e.g. `good := (1 == 1)`.
