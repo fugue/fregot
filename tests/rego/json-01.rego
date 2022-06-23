@@ -7,7 +7,9 @@ test_json_01 {
 
 test_json_02 {
   out := json.marshal({"foo": 1, "bar": ["Hello", "World"]})
-  out == `{"foo":1,"bar":["Hello","World"]}`
+  is_string(out)
+  back_in := json.unmarshal(out)
+  back_in == {"foo": 1, "bar": ["Hello", "World"]}
 }
 
 test_json_03 {

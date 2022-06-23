@@ -120,7 +120,7 @@ toArrayIndex key = case key of
     _ -> Nothing
 
 traversePath :: Path -> Traversal' Value Value
-traversePath = foldr (\x t -> ixValue x . t) id
+traversePath path = foldr (\x t -> ixValue x . t) id path
   where
     ixValue key f = \case
         Value (ObjectV obj) ->

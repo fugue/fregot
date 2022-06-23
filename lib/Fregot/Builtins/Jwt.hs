@@ -20,6 +20,7 @@ import           Control.Monad.Except     (ExceptT, catchError, runExceptT)
 import           Control.Monad.Trans      (liftIO)
 import qualified Crypto.JWT               as Jwt
 import qualified Data.Aeson               as Aeson
+import qualified Data.Aeson.KeyMap        as AKM
 import qualified Data.Aeson.Types         as Aeson
 import           Data.Bifunctor           (first)
 import qualified Data.ByteString          as B
@@ -104,7 +105,7 @@ builtin_decode = Builtin
         -- shoot ourselves in the foot.  We grab the payload from the JSON
         -- representation.
         | Aeson.Object obj <- Aeson.toJSON jws
-        , Just (Aeson.String p64) <- HMS.lookup "payload" obj
+        , Just (Aeson.String p64) <- AKM.lookup "payload" obj
         , Right val <- Aeson.eitherDecodeStrict' .
                 Base64.decodeLenient $ T.encodeUtf8 p64 =
             pure val
@@ -121,12 +122,12 @@ data Constraints = Constraints
 
 parseKey :: Aeson.Object -> Aeson.Parser Jwt.JWKSet
 parseKey obj
-    | "secret" `HMS.member` obj && "cert" `HMS.member` obj =
+    | "secret" `AKM.member` obj && "cert" `AKM.member` obj =
         fail "Either 'secret' and 'cert' should be set, not both"
-    | "secret" `HMS.member` obj = do
+    | "secret" `AKM.member` obj = do
         secret <- obj Aeson..: "secret"
         pure $! Jwt.JWKSet [Jwt.fromOctets $! T.encodeUtf8 secret]
-    | "cert" `HMS.member` obj = do
+    | "cert" `AKM.member` obj = do
         cert <- obj Aeson..: "cert"
         either fail pure $ parseCert (T.encodeUtf8 cert)
     | otherwise = fail

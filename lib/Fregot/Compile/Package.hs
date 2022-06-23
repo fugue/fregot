@@ -36,6 +36,7 @@ import           Data.Functor                      (($>))
 import qualified Data.Graph                        as Graph
 import qualified Data.HashMap.Strict.Extended      as HMS
 import qualified Data.HashSet.Extended             as HS
+import           Data.Kind                         (Type)
 import           Data.List                         (sortOn)
 import           Data.List.NonEmpty.Extended       (NonEmpty (..))
 import           Fregot.Builtins.Internal          (Builtins)
@@ -65,7 +66,7 @@ import           Prelude                           hiding (head, lookup)
 -- | Compiles and merges the prepared tree into the compiled tree.
 compileTree
     :: MonadDump m
-    => Builtins (f :: * -> *)
+    => Builtins (f :: Type -> Type)
     -> Tree.Tree CompiledRule
     -> Tree.Tree PreparedRule
     -> ParachuteT Error m (Tree.Tree CompiledRule)

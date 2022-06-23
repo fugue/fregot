@@ -5,6 +5,7 @@ Maintainer  : jasper@fugue.co
 Stability   : experimental
 Portability : POSIX
 -}
+{-# LANGUAGE CPP #-}
 module Data.List.NonEmpty.Extended
     ( module Data.List.NonEmpty
     , singleton
@@ -13,7 +14,11 @@ module Data.List.NonEmpty.Extended
     , (++:)
     ) where
 
+#if MIN_VERSION_base(4, 15, 0)
+import           Data.List.NonEmpty hiding (fromList, singleton)
+#else
 import           Data.List.NonEmpty hiding (fromList)
+#endif
 import qualified Data.Maybe as Maybe
 
 singleton :: a -> NonEmpty a

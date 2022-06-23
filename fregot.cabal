@@ -140,7 +140,7 @@ Library
     Paths_fregot
 
   Build-depends:
-    aeson                >= 1.4    && < 1.6,
+    aeson                >= 2.0    && < 2.1,
     aeson-pretty         >= 0.8    && < 0.9,
     annotated-wl-pprint  >= 0.7    && < 0.8,
     ansi-terminal        >= 0.8    && < 0.12,
@@ -162,8 +162,8 @@ Library
     HsYAML               >= 0.2    && < 0.3,
     HsYAML-aeson         >= 0.2    && < 0.3,
     indents              >= 0.5    && < 0.6,
-    jose                 >= 0.8.3  && < 0.9,
-    lens                 >= 4.18   && < 4.20,
+    jose                 >= 0.8    && < 0.10,
+    lens                 >= 4.18   && < 5.1,
     mtl                  >= 2.2    && < 2.3,
     optparse-applicative >= 0.14   && < 0.17,
     parsec               >= 3.1    && < 4.2,
@@ -214,7 +214,7 @@ Test-suite fregot-tests
     fregot,
     base                 >= 4.9  && < 5,
     containers           >= 0.6  && < 0.7,
-    lens                 >= 4.18 && < 4.20,
+    lens                 >= 4.18 && < 5.1,
     mtl                  >= 2.2  && < 2.3,
     tasty                >= 1.2  && < 1.5,
     tasty-hunit          >= 0.10 && < 0.11,

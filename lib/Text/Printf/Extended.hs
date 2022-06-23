@@ -22,12 +22,13 @@ module Text.Printf.Extended
     ) where
 
 import           Control.Exception (ErrorCall (..), catch)
+import           Data.Kind         (Type)
 import           GHC.Exts          (Constraint)
 import           System.IO.Unsafe  (unsafePerformIO)
 import           Text.Printf
 
-data Some (c :: * -> Constraint) = forall a. c a => Some a
-data Any  (c :: * -> Constraint) = Any (forall a. c a => a)
+data Some (c :: Type -> Constraint) = forall a. c a => Some a
+data Any  (c :: Type -> Constraint) = Any (forall a. c a => a)
 
 dynprintf :: PrintfType r => String -> [Some PrintfArg] -> r
 dynprintf format = go (Any (printf format))

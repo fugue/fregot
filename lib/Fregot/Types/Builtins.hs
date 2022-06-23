@@ -22,21 +22,22 @@ module Fregot.Types.Builtins
     , (🡒)
     ) where
 
+import           Data.Kind                    (Type)
 import           Fregot.Eval.Value.Conversion (FromVal, ToVal)
-import           Fregot.Types.Internal
+import qualified Fregot.Types.Internal        as Ty
 
-data TypeRepr (i :: [*]) (o :: *) where
-    Out :: ToVal o   => Type -> TypeRepr '[] o
-    In  :: FromVal a => Type -> TypeRepr i o -> TypeRepr (a ': i) o
+data TypeRepr (i :: [Type]) (o :: Type) where
+    Out :: ToVal o   => Ty.Type -> TypeRepr '[] o
+    In  :: FromVal a => Ty.Type -> TypeRepr i o -> TypeRepr (a ': i) o
 
 -- | Deconstruct a 'TypeRepr' to a list of arguments and the return type.
-unTypeRepr :: TypeRepr i o -> ([Type], Type)
+unTypeRepr :: TypeRepr i o -> ([Ty.Type], Ty.Type)
 unTypeRepr (Out ty)   = ([], ty)
 unTypeRepr (In ty tr) = let (args, ret) = unTypeRepr tr in (ty : args, ret)
 
 data BuiltinChecker m = BuiltinChecker
-    { bcUnify    :: Type -> Type -> m Type
-    , bcSubsetOf :: Type -> Type -> m ()
+    { bcUnify    :: Ty.Type -> Ty.Type -> m Ty.Type
+    , bcSubsetOf :: Ty.Type -> Ty.Type -> m ()
     , bcCatch    :: forall a. m a -> m a -> m a
     }
 
@@ -47,18 +48,18 @@ data BuiltinChecker m = BuiltinChecker
 -- The other representation is a deep embedding.  This can be used to "print"
 -- the type or render the capabilities doc.  It is also used to convert
 -- arguments to the right shape, so the arities must match.
-data BuiltinType (i :: [*]) (o :: *) = BuiltinType
-    { btCheck :: forall m. Monad m => BuiltinChecker m -> TypeRepr i o -> m Type
+data BuiltinType (i :: [Type]) (o :: Type) = BuiltinType
+    { btCheck :: forall m. Monad m => BuiltinChecker m -> TypeRepr i o -> m Ty.Type
     , btRepr  :: TypeRepr i o
     }
 
-out :: ToVal o => Type -> BuiltinType '[] o
+out :: ToVal o => Ty.Type -> BuiltinType '[] o
 out ty = BuiltinType
     { btCheck = \_ _ -> pure ty
     , btRepr  = Out ty
     }
 
-(🡒) :: FromVal a => Type -> BuiltinType i o -> BuiltinType (a ': i) o
+(🡒) :: FromVal a => Ty.Type -> BuiltinType i o -> BuiltinType (a ': i) o
 (🡒) expect bt = BuiltinType
     { btCheck = \c (In actual t) -> bcSubsetOf c actual expect >> btCheck bt c t
     , btRepr  = In expect (btRepr bt)
