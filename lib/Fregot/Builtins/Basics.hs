@@ -32,6 +32,7 @@ import qualified Data.HashMap.Strict      as HMS
 import qualified Data.HashSet             as HS
 import qualified Data.List                as L
 import           Data.Maybe               (fromMaybe)
+import           Data.Monoid              (Any (..))
 import qualified Data.Text                as T
 import qualified Data.Text.IO             as T
 import qualified Data.Vector              as V
@@ -119,6 +120,8 @@ builtins = HMS.fromList
     , (OperatorFunction DivideO,             builtin_divide)
     , (OperatorFunction ModuloO,             builtin_modulo)
     , (OperatorFunction BinOrO,              builtin_bin_or)
+    , (InternalFunction (QualifiedName "internal.member_2"), builtin_member_2)
+    , (InternalFunction (QualifiedName "internal.member_3"), builtin_member_3)
     ]
 
 builtin_abs :: Monad m => Builtin m
@@ -547,6 +550,28 @@ builtin_bits_negate :: Monad m => Builtin m
 builtin_bits_negate = Builtin
   (Ty.number 🡒 Ty.out Ty.number) $ pure $
   \(Cons x Nil) -> return $! complement (x :: Int)
+
+builtin_member_2 :: Monad m => Builtin m
+builtin_member_2 = Builtin
+    (Ty.any 🡒 Ty.collectionOf Ty.any 🡒 Ty.out Ty.boolean) $ pure $
+    \(Cons val (Cons collection Nil)) -> case unValue collection of
+        SetV    set -> return $! val `HS.member` set
+        ObjectV obj -> return . getAny $! foldMap (Any . (== val)) obj
+        ArrayV  arr -> return . getAny $! foldMap (Any . (== val)) arr
+        _           -> throwString "expected collection for right hand of `in`"
+
+builtin_member_3 :: Monad m => Builtin m
+builtin_member_3 = Builtin
+    (Ty.any 🡒 Ty.any 🡒 Ty.collectionOf Ty.any 🡒 Ty.out Ty.boolean) $ pure $
+    \(Cons key (Cons val (Cons collection Nil))) -> case unValue collection of
+        SetV    set -> return $! key == val && val `HS.member` set
+        ObjectV obj -> return $! HMS.lookup key obj == Just val
+        ArrayV  arr -> case unValue key of
+            NumberV n
+                | Just i <- fromIntegral <$> n ^? Number.int
+                , i >= 0, i < V.length arr -> return $! arr V.! i == val
+            _ -> return False
+        _           -> throwString "expected collection for right hand of `in`"
 
 -- | Auxiliary function to fix types.
 num :: Number -> Number

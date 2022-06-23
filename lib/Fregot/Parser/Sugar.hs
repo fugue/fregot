@@ -57,16 +57,19 @@ defaultParserOptions = ParserOptions
 
 parsePackageName :: FregotParser PackageName
 parsePackageName =
-    mkPackageName <$> Parsec.sepBy1 Tok.var (Tok.symbol Tok.TPeriod)
+    mkPackageName <$> Parsec.sepBy1 bit (Tok.symbol Tok.TPeriod)
+  where
+    bit = Tok.var <|> (Tok.symbol Tok.TIn >> pure "in")
 
 parseImportGut :: FregotParser ImportGut
 parseImportGut = do
     pos     <- Parsec.getPosition
     pkgname <- parsePackageName
     case unPackageName pkgname of
-        ("data"  : vs) -> return $! ImportData  (mkPackageName vs)
-        ("input" : vs) -> return $! ImportInput (mkPackageName vs)
-        _             -> Parsec.unexpectedAt pos $
+        ("data"  : vs)  -> return $! ImportData   (mkPackageName vs)
+        ("input" : vs)  -> return $! ImportInput  (mkPackageName vs)
+        ("future" : vs) -> return $! ImportFuture (mkPackageName vs)
+        _               -> Parsec.unexpectedAt pos $
             show (PP.pretty' pkgname) ++
             " (imports should start with `data.` or `input.`)"
 
@@ -167,9 +170,23 @@ blockOrSemi linep =
 ruleStatement :: FregotParser (RuleStatement SourceSpan Var)
 ruleStatement =
     (withSourceSpan $ do
+        (term1, term2) <- Parsec.try $ do
+            Tok.symbol Tok.TSome
+            term1 <- term
+            term2 <- Parsec.optionMaybe $ do
+                Tok.symbol Tok.TComma
+                term
+            Tok.symbol Tok.TIn
+            pure (term1, term2)
+        x <- expr
+        let (k, v) = case term2 of
+                Nothing -> (Nothing, term1)
+                Just t2 -> (Just term1, t2)
+        return $ \ann -> SomeInS ann k v x) <|>
+    (withSourceSpan $ do
         Tok.symbol Tok.TSome
         vars <- Parsec.sepBy1 var (Tok.symbol Tok.TComma)
-        return $ \ann -> VarDeclS ann vars) <|>
+        return $ \ann -> SomeS ann vars) <|>
      (LiteralS <$> literal)
 
 literal :: FregotParser (Literal SourceSpan Var)
@@ -206,9 +223,25 @@ expr = Parsec.buildExpressionParser
     , [ binary Tok.TUnify  UnifyO  Parsec.AssocRight ]
     , [ binary Tok.TAssign AssignO Parsec.AssocRight ]
     ]
-    simpleExpr
+    expr1
   where
-    simpleExpr = withSourceSpan $
+    expr1 = withSourceSpan $ do
+        kv0 <- expr2
+        (do
+            kv1 <- Parsec.try $ do
+                kv1 <- Parsec.optionMaybe $ do
+                    Tok.symbol Tok.TComma
+                    expr2
+                Tok.symbol Tok.TIn
+                pure kv1
+            x <- expr2
+            let (k, v) = case kv1 of
+                    Nothing -> (Nothing, kv0)
+                    Just v1 -> (Just kv0, v1)
+            pure $ \ss -> InE ss k v x) <|>
+            (pure $ \_ -> kv0)
+
+    expr2 = withSourceSpan $
         (do
             Tok.symbol Tok.TLParen
             e <- expr

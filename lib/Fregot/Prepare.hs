@@ -27,6 +27,7 @@ import           Data.Maybe                (catMaybes, isJust, isNothing,
 import           Fregot.Error              (Error)
 import qualified Fregot.Error              as Error
 import           Fregot.Names
+import           Fregot.Names.Renamer      (exprLhsAssignVars)
 import           Fregot.Prepare.Ast
 import           Fregot.Prepare.Lens
 import           Fregot.PrettyPrint        ((<+>), (<$$>))
@@ -240,13 +241,26 @@ prepareRuleElse re = RuleElse (re ^. Sugar.ruleElseAnn)
     <$> traverse prepareTerm (re ^. Sugar.ruleElseValue)
     <*> prepareRuleBody (re ^. Sugar.ruleElseBody)
 
--- | 'VarDeclS' statements are removed as we don't need them anymore, the info
+-- | 'SomeS' statements are removed as we don't need them anymore, the info
 -- that we are dealing with a local name is now in 'Name'.
+-- TODO: actually do this for SomeInS
 prepareRuleStatement
     :: Monad m
     => Sugar.RuleStatement SourceSpan Name
     -> ParachuteT Error m (Maybe (Literal SourceSpan))
-prepareRuleStatement (Sugar.VarDeclS _ _) = pure Nothing
+prepareRuleStatement (Sugar.SomeS _ _)    = pure Nothing
+prepareRuleStatement (Sugar.SomeInS source mbK v x) = do
+    statement <- UnifyS source
+         <$> prepareTerm v
+         <*> (RefT source <$> prepareExpr x <*> (case mbK of
+                 Nothing -> pure $ NameT source WildcardName
+                 Just k -> prepareTerm k))
+    pure . Just $ Literal
+        { _literalAnn       = source
+        , _literalNegation  = False
+        , _literalStatement = statement
+        , _literalWith      = []
+        }
 prepareRuleStatement (Sugar.LiteralS lit) = Just <$> prepareLiteral lit
 
 prepareLiteral
@@ -258,7 +272,7 @@ prepareLiteral slit = do
         Sugar.BinOpE ann x Sugar.UnifyO y ->
             UnifyS ann <$> prepareExpr x <*> prepareExpr y
         Sugar.BinOpE ann x Sugar.AssignO y -> do
-            unless (assignLhsExpr x) $ tellError $ Error.mkError "compile"
+            when (isNothing $ exprLhsAssignVars x) $ tellError $ Error.mkError "compile"
                 (x ^. Sugar.exprAnn)
                 "invalid lhs"
                 "You cannot assign to the expression to the left of `:=`"
@@ -272,25 +286,6 @@ prepareLiteral slit = do
         , _literalStatement = statement
         , _literalWith      = with
         }
-  where
-    assignLhsExpr = \case
-        Sugar.TermE _ t -> assignLhsTerm t
-        Sugar.BinOpE _ _ _ _ -> False
-        Sugar.ParensE _ e -> assignLhsExpr e
-        Sugar.IndRefE _ _ _ -> False
-
-    assignLhsTerm = \case
-        Sugar.RefT _ _ _ _ -> False
-        Sugar.CallT _ _ _ -> False
-        Sugar.VarT _ _ -> True
-        Sugar.ScalarT _ _ -> False
-        Sugar.ArrayT _ arr -> all assignLhsExpr arr
-        Sugar.SetT _ _ -> False
-        Sugar.ObjectT _ _ -> False
-        Sugar.ArrayCompT _ _ _ -> False
-        Sugar.SetCompT _ _ _ -> False
-        Sugar.ObjectCompT _ _ _ _ -> False
-        Sugar.ErrorT _ -> True
 
 prepareExpr
     :: Monad m
@@ -307,7 +302,12 @@ prepareExpr = \case
     Sugar.IndRefE source x args -> do
         t <- prepareTerm x
         prepareRef source t args
-
+    Sugar.InE source Nothing v x ->
+        CallT source (InternalFunction (QualifiedName "internal.member_2")) <$>
+        traverse prepareExpr [v, x]
+    Sugar.InE source (Just k) v x ->
+        CallT source (InternalFunction (QualifiedName "internal.member_3")) <$>
+        traverse prepareExpr [k, v, x]
 
 prepareTerm
     :: Monad m

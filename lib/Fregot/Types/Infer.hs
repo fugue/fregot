@@ -418,6 +418,8 @@ inferTerm (CallT source fun args) = do
         Nothing -> case fun of
             OperatorFunction o -> fatal $ InternalError $
                 "builtin for operator" <+> PP.pretty o <+> "not found"
+            InternalFunction i -> fatal $ InternalError $
+                "internal function for" <+> PP.pretty i <+> "not found"
             NamedFunction (QualifiedName key) -> do
                 rule <- getRule source key
                 inferUserFunction source fun rule args

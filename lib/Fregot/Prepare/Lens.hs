@@ -92,26 +92,26 @@ termAnn :: Lens' (Term a) a
 termAnn = lens getAnn setAnn
   where
     getAnn = \case
-        RefT        a _ _ -> a
-        CallT       a _ _ -> a
-        NameT       a _   -> a
-        ArrayT      a _   -> a
-        SetT        a _   -> a
-        ObjectT     a _   -> a
-        CompT       a _   -> a
-        ValueT      a _   -> a
-        ErrorT      a     -> a
+        RefT        a _ _   -> a
+        CallT       a _ _   -> a
+        NameT       a _     -> a
+        ArrayT      a _     -> a
+        SetT        a _     -> a
+        ObjectT     a _     -> a
+        CompT       a _     -> a
+        ValueT      a _     -> a
+        ErrorT      a       -> a
 
     setAnn t a = case t of
-        RefT        _ x k  -> RefT        a x k
-        CallT       _ f as -> CallT       a f as
-        NameT       _ v    -> NameT       a v
-        ArrayT      _ l    -> ArrayT      a l
-        SetT        _ s    -> SetT        a s
-        ObjectT     _ o    -> ObjectT     a o
-        CompT       _ c    -> CompT a c
-        ValueT      _ v    -> ValueT      a v
-        ErrorT      _      -> ErrorT      a
+        RefT        _ x k   -> RefT        a x k
+        CallT       _ f as  -> CallT       a f as
+        NameT       _ v     -> NameT       a v
+        ArrayT      _ l     -> ArrayT      a l
+        SetT        _ s     -> SetT        a s
+        ObjectT     _ o     -> ObjectT     a o
+        CompT       _ c     -> CompT       a c
+        ValueT      _ v     -> ValueT      a v
+        ErrorT      _       -> ErrorT      a
 
 statementTerms :: Traversal' (Statement a) (Term a)
 statementTerms f = \case

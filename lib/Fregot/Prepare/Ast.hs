@@ -160,6 +160,7 @@ data Term a
 data Function
     = NamedFunction Name
     | OperatorFunction BinOp
+    | InternalFunction Name
     deriving (Eq, Generic, Show)
 
 instance Hashable Function
@@ -299,6 +300,7 @@ instance PP.Pretty PP.Sem (Term a) where
 instance PP.Pretty PP.Sem Function where
     pretty (NamedFunction    v) = PP.pretty v
     pretty (OperatorFunction o) = PP.pretty o
+    pretty (InternalFunction i) = PP.pretty i
 
 instance PP.Pretty PP.Sem BinOp where
     pretty = PP.punctuation . PP.pretty . binOpToText
