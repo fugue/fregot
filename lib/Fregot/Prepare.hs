@@ -27,6 +27,7 @@ import           Data.Maybe                (catMaybes, isJust, isNothing,
 import           Fregot.Error              (Error)
 import qualified Fregot.Error              as Error
 import           Fregot.Names
+import           Fregot.Names.Renamer      (exprLhsAssignVars)
 import           Fregot.Prepare.Ast
 import           Fregot.Prepare.Lens
 import           Fregot.PrettyPrint        ((<+>), (<$$>))
@@ -271,7 +272,7 @@ prepareLiteral slit = do
         Sugar.BinOpE ann x Sugar.UnifyO y ->
             UnifyS ann <$> prepareExpr x <*> prepareExpr y
         Sugar.BinOpE ann x Sugar.AssignO y -> do
-            unless (assignLhsExpr x) $ tellError $ Error.mkError "compile"
+            when (isNothing $ exprLhsAssignVars x) $ tellError $ Error.mkError "compile"
                 (x ^. Sugar.exprAnn)
                 "invalid lhs"
                 "You cannot assign to the expression to the left of `:=`"
@@ -285,26 +286,6 @@ prepareLiteral slit = do
         , _literalStatement = statement
         , _literalWith      = with
         }
-  where
-    assignLhsExpr = \case
-        Sugar.TermE _ t -> assignLhsTerm t
-        Sugar.BinOpE _ _ _ _ -> False
-        Sugar.ParensE _ e -> assignLhsExpr e
-        Sugar.IndRefE _ _ _ -> False
-        Sugar.InE _ _ _ _ -> False
-
-    assignLhsTerm = \case
-        Sugar.RefT _ _ _ _ -> False
-        Sugar.CallT _ _ _ -> False
-        Sugar.VarT _ _ -> True
-        Sugar.ScalarT _ _ -> False
-        Sugar.ArrayT _ arr -> all assignLhsExpr arr
-        Sugar.SetT _ _ -> False
-        Sugar.ObjectT _ _ -> False
-        Sugar.ArrayCompT _ _ _ -> False
-        Sugar.SetCompT _ _ _ -> False
-        Sugar.ObjectCompT _ _ _ _ -> False
-        Sugar.ErrorT _ -> True
 
 prepareExpr
     :: Monad m

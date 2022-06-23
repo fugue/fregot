@@ -5,26 +5,32 @@ import future.keywords.in
 listy = ["foo"]
 
 test_some_in_listy {
-    "foo" in listy
-    0, "foo" in listy
-    not "bar" in listy
-    not 1, "foo" in listy
-    not 0, "bar" in listy
+    some a in listy
+    a == "foo"
+
+    some i, b in listy
+    b == "foo"
+    i == 0
 }
 
 setty = {"foo"}
 
 test_some_in_setty {
-    "foo" in setty
-    not "bar" in setty
+    some a in setty
+    a == "foo"
+
+    some i, b in setty
+    b == "foo"
+    i == "foo"
 }
 
 mappy = {"foo": "bar"}
 
 test_some_in_mappy {
-    "bar" in mappy
-    "foo", "bar" in mappy
-    not "qux" in mappy
-    not "qux", "bar" in mappy
-    not "foo", "qux" in mappy
+    some a in mappy
+    a == "bar"
+
+    some i, b in mappy
+    b == "bar"
+    i == "foo"
 }

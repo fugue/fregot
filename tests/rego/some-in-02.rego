@@ -2,35 +2,24 @@ package some_in_02
 
 import future.keywords.in
 
-listy = ["foo"]
+arr = ["foo"]
 
-test_some_in_listy {
-    some a in listy
-    a == "foo"
+i = 1
 
-    some i, b in listy
-    b == "foo"
-    i == 0
+test_i {
+	some i, x in arr
+	i == 0
+	x == "foo"
 }
 
-setty = {"foo"}
-
-test_some_in_setty {
-    some a in setty
-    a == "foo"
-
-    some i, b in setty
-    b == "foo"
-    i == "foo"
+lists = {
+	["a", "b", "c"],
+	["b", "c"],
 }
 
-mappy = {"foo": "bar"}
+x = "z"
 
-test_some_in_mappy {
-    some a in mappy
-    a == "bar"
-
-    some i, b in mappy
-    b == "bar"
-    i == "foo"
+test_x {
+	some [x, "b", y] in lists
+	x == "a"
 }

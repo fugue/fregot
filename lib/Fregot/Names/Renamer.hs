@@ -25,19 +25,23 @@ module Fregot.Names.Renamer
     , renameModule
     , renameQuery
     , renameExpr
+
+    , termLhsAssignVars
+    , exprLhsAssignVars
     ) where
 
-import           Control.Lens              (locally, view, (^.), (^..), _2)
+import           Control.Lens              (locally, view, (^.), (^..))
 import           Control.Lens.TH           (makeLenses)
 import           Control.Monad             (guard)
 import           Control.Monad.Parachute   (ParachuteT, fatal, mapParachuteT,
                                             tellError)
 import           Control.Monad.Reader      (Reader, runReader)
 import           Data.Bifunctor            (first)
+import           Data.Hashable             (Hashable)
 import qualified Data.HashMap.Strict       as HMS
 import qualified Data.HashSet.Extended     as HS
 import           Data.List.Extended        (splits, unsnoc)
-import           Data.Maybe                (listToMaybe, maybeToList)
+import           Data.Maybe                (fromMaybe, listToMaybe, maybeToList)
 import           Data.Traversable          (for)
 import           Fregot.Builtins.Internal  (ReadyBuiltin)
 import           Fregot.Error              (Error)
@@ -93,9 +97,14 @@ withLocalVarDecls bodies =
     locally reLocalVars (HS.union localVars)
   where
     localVars :: HS.HashSet UnqualifiedVar
-    localVars = HS.toHashSetOf
-        (traverse . traverse . _SomeS . _2 . traverse)
-        bodies
+    localVars = foldMap someVars (concat bodies)
+
+    someVars :: RuleStatement SourceSpan Var -> HS.HashSet UnqualifiedVar
+    someVars (LiteralS _)      = mempty
+    someVars (SomeS _ vs)      = HS.fromList vs
+    someVars (SomeInS _ k v _) =
+        fromMaybe mempty (k >>= termLhsAssignVars) <>
+        fromMaybe mempty (termLhsAssignVars v)
 
 renameModule :: Rename Module
 renameModule modul = Module
@@ -388,3 +397,27 @@ renameWith with = With
     <$> pure (with ^. withAnn)
     <*> pure (with ^. withPath)
     <*> renameTerm (with ^. withAs)
+
+-- | Computes the variables in the left hand side of a `:=` or `some in` we
+-- can assign to.  If we can't assign to a specific term, returns Nothing.
+termLhsAssignVars :: (Eq n, Hashable n) => Term a n -> Maybe (HS.HashSet n)
+termLhsAssignVars = \case
+    RefT         _ _ _ _ -> Nothing
+    CallT        _ _ _   -> Nothing
+    VarT         _ v     -> Just $ HS.singleton v
+    ScalarT      _ _     -> Just mempty
+    ArrayT       _ xs    -> HS.unions <$> traverse exprLhsAssignVars xs
+    SetT         _ _     -> Nothing
+    ObjectT      _ _     -> Nothing
+    ArrayCompT   _ _ _   -> Nothing
+    SetCompT     _ _ _   -> Nothing
+    ObjectCompT  _ _ _ _ -> Nothing
+    ErrorT       _       -> Just mempty
+
+exprLhsAssignVars :: (Eq n, Hashable n) => Expr a n -> Maybe (HS.HashSet n)
+exprLhsAssignVars = \case
+    TermE   _ t     -> termLhsAssignVars t
+    BinOpE  _ _ _ _ -> Nothing
+    ParensE _ e     -> exprLhsAssignVars e
+    IndRefE _ _ _   -> Nothing
+    InE     _ _ _ _ -> Nothing
