@@ -31,13 +31,22 @@ renderCapabilities builtins = A.object
     ]
 
 renderBuiltins :: Builtins m -> A.Value
-renderBuiltins = A.toJSON . map (uncurry renderBuiltin) .
-    sortOn (functionName . fst) . HMS.toList
+renderBuiltins =
+    A.toJSON . map (uncurry renderBuiltin) .
+    sortOn (functionName . fst) .
+    filter (not . functionHidden . fst) . HMS.toList
+
+functionHidden :: Function -> Bool
+functionHidden = \case
+    NamedFunction    _ -> False
+    OperatorFunction _ -> False
+    InternalFunction _ -> True
 
 functionName :: Function -> T.Text
 functionName = \case
-    NamedFunction name  -> nameToText name
-    OperatorFunction op -> operatorName op
+    NamedFunction    name -> nameToText name
+    OperatorFunction op   -> operatorName op
+    InternalFunction name -> nameToText name
 
 renderBuiltin :: Function -> Builtin m -> A.Value
 renderBuiltin fn (Builtin bt _) = A.object $
@@ -45,6 +54,7 @@ renderBuiltin fn (Builtin bt _) = A.object $
     , "name" A..= functionName fn
     ] ++ case fn of
         NamedFunction    _  -> []
+        InternalFunction _  -> []
         OperatorFunction op -> ["infix" A..= binOpToText op]
 
 operatorName :: BinOp -> T.Text

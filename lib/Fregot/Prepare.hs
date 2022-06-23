@@ -302,8 +302,12 @@ prepareExpr = \case
     Sugar.IndRefE source x args -> do
         t <- prepareTerm x
         prepareRef source t args
-    Sugar.InE source k v x -> InT source <$>
-        traverse prepareExpr k <*> prepareExpr v <*> prepareExpr x
+    Sugar.InE source Nothing v x ->
+        CallT source (InternalFunction (QualifiedName "internal.member_2")) <$>
+        traverse prepareExpr [v, x]
+    Sugar.InE source (Just k) v x ->
+        CallT source (InternalFunction (QualifiedName "internal.member_3")) <$>
+        traverse prepareExpr [k, v, x]
 
 prepareTerm
     :: Monad m

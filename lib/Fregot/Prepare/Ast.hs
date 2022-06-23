@@ -154,13 +154,13 @@ data Term a
     | ObjectT     a (Object a)
     | CompT       a (Comprehension a)
     | ValueT      a Value
-    | InT         a (Maybe (Term a)) (Term a) (Term a)
     | ErrorT      a
     deriving (Functor, Show)
 
 data Function
     = NamedFunction Name
     | OperatorFunction BinOp
+    | InternalFunction Name
     deriving (Eq, Generic, Show)
 
 instance Hashable Function
@@ -295,16 +295,12 @@ instance PP.Pretty PP.Sem (Term a) where
 
     pretty (ValueT _ v) = PP.literal $ PP.pretty v
 
-    pretty (InT _ Nothing v x) = PP.pretty v <+> PP.keyword "in" <+> PP.pretty x
-    pretty (InT _ (Just k) v x) =
-        PP.pretty k <> PP.comma <+> PP.pretty v <+>
-        PP.keyword "in" <+> PP.pretty x
-
     pretty (ErrorT _) = PP.errorNode
 
 instance PP.Pretty PP.Sem Function where
     pretty (NamedFunction    v) = PP.pretty v
     pretty (OperatorFunction o) = PP.pretty o
+    pretty (InternalFunction i) = PP.pretty i
 
 instance PP.Pretty PP.Sem BinOp where
     pretty = PP.punctuation . PP.pretty . binOpToText

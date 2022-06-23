@@ -197,14 +197,6 @@ evalTerm (CompT source comp) = evalComprehension source comp
 
 evalTerm (ValueT _ v) = pure $ muValue v
 
-evalTerm (InT source mbK v x) = do
-    -- TODO: This is slow as it will iterate over the set, we should check if
-    -- we can do an index instead.
-    nonempty . evalStatement $  UnifyS source v $ RefT source x $ case mbK of
-        Just k  -> k
-        Nothing -> NameT source WildcardName
-    pure muTrue
-
 evalTerm (ErrorT source) = raise' source "internal error" $
     "An error node was created during compilation so evaluation should" <+>
     "be allowed."

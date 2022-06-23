@@ -100,7 +100,6 @@ termAnn = lens getAnn setAnn
         ObjectT     a _     -> a
         CompT       a _     -> a
         ValueT      a _     -> a
-        InT         a _ _ _ -> a
         ErrorT      a       -> a
 
     setAnn t a = case t of
@@ -112,7 +111,6 @@ termAnn = lens getAnn setAnn
         ObjectT     _ o     -> ObjectT     a o
         CompT       _ c     -> CompT       a c
         ValueT      _ v     -> ValueT      a v
-        InT         _ k v x -> InT         a k v x
         ErrorT      _       -> ErrorT      a
 
 statementTerms :: Traversal' (Statement a) (Term a)
@@ -150,7 +148,6 @@ instance Plated (Term a) where
                                 traverse (\(k, v) -> (,) <$> f k <*> f v) xs
         CompT       a c     -> CompT a <$> traverseOf comprehensionTerms f c
         ValueT      a v     -> pure (ValueT a v)
-        InT         a k v x -> InT a <$> traverse f k <*> f v <*> f x
         ErrorT      a       -> pure (ErrorT a)
 
 -- | Fold over the direct names of a term.
