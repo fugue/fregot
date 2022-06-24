@@ -6,15 +6,15 @@
 packages:
 - completed:
     name: goldplate
-    version: 0.1.3
+    version: 0.2.1
     git: https://github.com/fugue/goldplate.git
     pantry-tree:
-      size: 2305
-      sha256: 2bdbe9128847946c0a2ade94d9b41fa6f1899fb9db8b370d006c3e19c22a7ab5
-    commit: d799f3a88f50f79a080da9444853a7708d9b417f
+      size: 2689
+      sha256: fbd30fc1b6e3c05ff924b91dc5402120af4b0c9aa7e09f0cbf1e9ed0e331a834
+    commit: 0ebf8fc353e518acf1f7eebcab3d733ed1031b1e
   original:
     git: https://github.com/fugue/goldplate.git
-    commit: d799f3a88f50f79a080da9444853a7708d9b417f
+    commit: 0ebf8fc353e518acf1f7eebcab3d733ed1031b1e
 snapshots:
 - completed:
     size: 619158

@@ -10,7 +10,7 @@ packages:
 extra-deps:
 - './packages/pcre-simple'
 - git: https://github.com/fugue/goldplate.git
-  commit: d799f3a88f50f79a080da9444853a7708d9b417f
+  commit: 0ebf8fc353e518acf1f7eebcab3d733ed1031b1e
 
 nix:
   packages: ['zlib.dev', 'zlib.out']
