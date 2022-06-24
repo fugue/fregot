@@ -1,5 +1,9 @@
 # CHANGELOG
 
+ -  0.14.1 (2022-06-24)
+     *  Build binaries in github actions
+     *  Upgrade dependencies
+
  -  0.14.0 (2022-06-23)
      *  Support `in` and `some in`
      *  Support negative numbers in `format_int`
