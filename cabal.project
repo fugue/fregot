@@ -1,7 +1,0 @@
-packages:
-  ./
-  packages/pcre-simple/
-
-package fregot
-  tests: True
-  ghc-options: -Werror

@@ -186,7 +186,7 @@ Executable fregot
   Main-is:           Main.hs
   Default-language:  Haskell2010
   Ghc-options:       -Wall -rtsopts -threaded -O2
-  build-depends:     base, fregot
+  Build-depends:     base, fregot
 
 Test-suite fregot-tests
   Hs-source-dirs:    tests/hs
