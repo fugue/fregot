@@ -100,9 +100,10 @@ withLocalVarDecls bodies =
     localVars = foldMap someVars (concat bodies)
 
     someVars :: RuleStatement SourceSpan Var -> HS.HashSet UnqualifiedVar
-    someVars (LiteralS _)      = mempty
-    someVars (SomeS _ vs)      = HS.fromList vs
-    someVars (SomeInS _ k v _) =
+    someVars (LiteralS _)         = mempty
+    someVars (EveryInS _ _ _ _ _) = mempty
+    someVars (SomeS _ vs)         = HS.fromList vs
+    someVars (SomeInS _ k v _)    =
         fromMaybe mempty (k >>= termLhsAssignVars) <>
         fromMaybe mempty (termLhsAssignVars v)
 
@@ -147,10 +148,19 @@ renameRuleElse re = RuleElse
 
 renameRuleStatement :: Rename RuleStatement
 renameRuleStatement = \case
-    SomeS    a vs    -> pure (SomeS a vs)
-    LiteralS lit     -> LiteralS <$> renameLiteral lit
-    SomeInS  a k v x ->
+    SomeS    a vs      -> pure (SomeS a vs)
+    LiteralS lit       -> LiteralS <$> renameLiteral lit
+    SomeInS  a k v x   ->
         SomeInS a <$> traverse renameTerm k <*> renameTerm v <*> renameExpr x
+    EveryInS a k v x b ->
+        let everyVars =
+                fromMaybe mempty (k >>= termLhsAssignVars) <>
+                fromMaybe mempty (termLhsAssignVars v) in
+        EveryInS a
+            <$> traverse renameTerm k
+            <*> renameTerm v
+            <*> renameExpr x
+            <*> locally reLocalVars (HS.union everyVars) (renameRuleBody b)
 
 renameLiteral :: Rename Literal
 renameLiteral lit = Literal

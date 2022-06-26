@@ -123,6 +123,10 @@ statementTerms f = \case
         IndexedCompS a . IndexedComprehension u ks v <$>
         traverseOf comprehensionTerms f c
 
+    EveryS a x b -> EveryS a
+        <$> traverseOf statementTerms f x
+        <*> traverseOf ruleBodyTerms f b
+
 literalTerms :: Traversal' (Literal a) (Term a)
 literalTerms f lit = Literal (lit ^. literalAnn) (lit ^. literalNegation)
     <$> statementTerms f (lit ^. literalStatement)

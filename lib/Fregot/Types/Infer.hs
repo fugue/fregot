@@ -397,6 +397,9 @@ inferStatement = \case
     IndexedCompS source (IndexedComprehension _ _ v c) -> do
         rt <- inferComprehension source c
         void $ Unify.bindTerm source v rt
+    EveryS _ statement body -> do
+        inferStatement statement
+        inferRuleBody body
 
 inferNonVoidTerm :: SourceSpan -> Term SourceSpan -> InferM SourceType
 inferNonVoidTerm use term = do

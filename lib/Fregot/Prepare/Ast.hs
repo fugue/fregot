@@ -125,11 +125,13 @@ data Literal a = Literal
     } deriving (Functor, Show)
 
 data Statement a
-    = UnifyS  a (Term a) (Term a)
-    | AssignS a (Term a) (Term a)
-    | TermS     (Term a)
+    = UnifyS       a (Term a) (Term a)
+    | AssignS      a (Term a) (Term a)
+    | TermS          (Term a)
     -- Indexed comprehension statements.  This is an optimization.
     | IndexedCompS a (IndexedComprehension a)
+    -- TODO: Refactor statement to something else?
+    | EveryS       a (Statement a) (RuleBody a)
     deriving (Functor, Show)
 
 data Comprehension a
@@ -213,6 +215,11 @@ instance Bifunctor Rule where
 -- ones.  Not much we can do about that, though.  They are mostly used for
 -- debugging (i.e. dump).
 
+prettyRuleBody :: PP.Pretty PP.Sem a => [a] -> PP.Doc PP.Sem
+prettyRuleBody body = PP.punctuation "{" <$$>
+    PP.ind (PP.vcat $ map PP.pretty body) <$$>
+    PP.punctuation "}"
+
 instance PP.Pretty PP.Sem i => PP.Pretty PP.Sem (Rule i a) where
     pretty r = PP.vcat $
         ["[" <> name <+> PP.pretty (r ^. ruleInfo) <> "]"] ++
@@ -230,17 +237,14 @@ instance PP.Pretty PP.Sem (RuleDefinition a) where
         (fmap (("=" <+>) . PP.pretty) $ rdef ^. ruleValue) <+>?
         (case rdef ^. ruleBodies of
             [] -> Nothing
-            bs -> Just $ PP.hcat $ L.intersperse " " $ map prettyBody bs) <+>?
+            bs -> Just $ PP.hcat $ L.intersperse " " $ map prettyRuleBody bs) <+>?
         (case rdef ^. ruleElses of
             [] -> Nothing
             es -> Just $ PP.hcat $ L.intersperse " " $ map prettyElse es)
       where
-        prettyBody b = PP.punctuation "{" <$$>
-            PP.ind (PP.vcat $ map PP.pretty b) <$$>
-            PP.punctuation "}"
         prettyElse e =
             PP.keyword "else" <+>? fmap PP.pretty (e ^. ruleElseValue) <+>
-            prettyBody (e ^. ruleElseBody)
+            prettyRuleBody (e ^. ruleElseBody)
 
 instance PP.Pretty PP.Sem (Literal a) where
     pretty lit =
@@ -261,6 +265,9 @@ instance PP.Pretty PP.Sem (Statement a) where
         PP.punctuation "[" <> PP.keyword "index" <+>
         PP.commaSep (map PP.pretty keys) <> PP.punctuation "]" <+>
         PP.pretty v <+> PP.punctuation ":=" <+> PP.pretty c
+
+    pretty (EveryS _ lit body) =
+        PP.keyword "every" <+> PP.pretty lit <+> prettyRuleBody body
 
 instance PP.Pretty PP.Sem (Comprehension a) where
     pretty (ArrayComp x lits) =

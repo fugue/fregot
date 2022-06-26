@@ -248,20 +248,23 @@ prepareRuleStatement
     :: Monad m
     => Sugar.RuleStatement SourceSpan Name
     -> ParachuteT Error m (Maybe (Literal SourceSpan))
-prepareRuleStatement (Sugar.SomeS _ _)    = pure Nothing
-prepareRuleStatement (Sugar.SomeInS source mbK v x) = do
-    statement <- UnifyS source
+prepareRuleStatement = \case
+    Sugar.SomeS _ _ -> pure Nothing
+    Sugar.LiteralS lit -> Just <$> prepareLiteral lit
+    Sugar.SomeInS source mbK v x -> do
+        statement <- prepareIn source mbK v x
+        pure . Just $ literal source statement
+    Sugar.EveryInS source mbK v x body -> do
+        statement <- EveryS source <$>
+            prepareIn source mbK v x <*> prepareRuleBody body
+        pure . Just $ literal source statement
+  where
+    -- | Generates a corresponding 'v = x[k]` for `some k, v in x`
+    prepareIn source mbK v x = UnifyS source
          <$> prepareTerm v
          <*> (RefT source <$> prepareExpr x <*> (case mbK of
                  Nothing -> pure $ NameT source WildcardName
                  Just k -> prepareTerm k))
-    pure . Just $ Literal
-        { _literalAnn       = source
-        , _literalNegation  = False
-        , _literalStatement = statement
-        , _literalWith      = []
-        }
-prepareRuleStatement (Sugar.LiteralS lit) = Just <$> prepareLiteral lit
 
 prepareLiteral
     :: Monad m
