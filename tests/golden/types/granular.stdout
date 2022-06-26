@@ -1,14 +1,14 @@
 repl% granular% people : array{0: object{
-  "age": number,
+  "name": string,
   "address": object{
-    "number": number,
-    "street": string
+    "street": string,
+    "number": number
   },
-  "name": string
+  "age": number
 }}
 granular% people[99].address : object{
-  "number": number,
-  "street": string
+  "street": string,
+  "number": number
 }
 granular% [
   "Hello",

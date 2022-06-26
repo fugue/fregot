@@ -2,13 +2,13 @@ repl% repl% 11|   security_group = security_groups[id]
       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 debug_context(debug)% = {
   0: {
-    "type": "security_group",
     "id": "1",
+    "type": "security_group",
     "good_boy": true
   },
   1: {
-    "type": "security_group",
     "id": "2",
+    "type": "security_group",
     "good_boy": false
   }
 }
