@@ -1,5 +1,8 @@
 # CHANGELOG
 
+ -  0.14.2 (2022-06-27)
+     *  Support `every in`
+
  -  0.14.1 (2022-06-24)
      *  Build binaries in github actions
      *  Upgrade dependencies
