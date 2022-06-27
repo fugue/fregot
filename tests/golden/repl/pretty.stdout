@@ -1,11 +1,11 @@
 repl% pretty% = {
-  "age": 52,
-  "address": "Sun Isle 20"
+  "address": "Sun Isle 20",
+  "age": 52
 }
 | name = "Tom Nook"
 pretty% = "Tom Nook"
 | person = {
-    "age": 52,
-    "address": "Sun Isle 20"
+    "address": "Sun Isle 20",
+    "age": 52
   }
 pretty% 

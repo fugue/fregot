@@ -1,5 +1,5 @@
 repl% repl% = {"request": {
-  "method": "GET",
-  "path": "/api/v1/users"
+  "path": "/api/v1/users",
+  "method": "GET"
 }}
 repl% 

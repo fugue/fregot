@@ -1,5 +1,5 @@
 repl% repl% = {"foo": {
-  "qux": {"name": "mode-data.yaml"},
-  "bar": {"name": "prefix-data.json"}
+  "bar": {"name": "prefix-data.json"},
+  "qux": {"name": "mode-data.yaml"}
 }}
 repl% 
