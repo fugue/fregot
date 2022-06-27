@@ -695,6 +695,11 @@ evalStatement (IndexedCompS source comp) = do
     iv <- toInstVar (comp ^. indexedAssignee)
     _  <- unify source (Mu (FreeM iv)) collection
     return muTrue
+evalStatement (EveryS _ statement body) = do
+    negation not $ do
+        _ <- evalStatement statement
+        evalRuleBody body (pure True) `orElse` pure False
+    pure muTrue
 
 
 unify :: SourceSpan -> Mu' -> Mu' -> EvalM Mu'

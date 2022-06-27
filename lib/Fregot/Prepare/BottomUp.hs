@@ -74,6 +74,7 @@ assignedOnceStatement var = \case
         if appearsInTerm var r then No else Unknown
     TermS t -> if appearsInTerm var t then No else Unknown
     IndexedCompS _ _ -> No
+    EveryS _ _ _     -> No
 
 appearsInTerm :: Var -> Term a -> Bool
 appearsInTerm v term = anyOf (termCosmosNames . _2 . _LocalName) (== v) term

@@ -166,6 +166,7 @@ data Token
     | TAs
     | TDefault
     | TElse
+    | TEvery
     | TFalse
     | TImport
     | TIn
@@ -236,6 +237,7 @@ parseVar = do
         "as"      -> TAs
         "default" -> TDefault
         "else"    -> TElse
+        "every"   -> TEvery
         "false"   -> TFalse
         "import"  -> TImport
         "in"      -> TIn
@@ -275,8 +277,10 @@ keywords =
     [ "as"
     , "default"
     , "else"
+    , "every"
     , "false"
     , "import"
+    , "in"
     , "package"
     , "not"
     , "null"
@@ -358,6 +362,7 @@ prettyToken token = case token of
     TAs                    -> "keyword 'as'"
     TDefault               -> "keyword 'default'"
     TElse                  -> "keyword 'else'"
+    TEvery                 -> "keyword 'every'"
     TFalse                 -> "keyword 'false'"
     TImport                -> "keyword 'import'"
     TIn                    -> "keyword 'in'"
