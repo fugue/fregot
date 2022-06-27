@@ -1,12 +1,12 @@
 [english object{
-  "one": number,
   "two": number,
+  "one": number,
   "three": number
 }]
 english = {
   "three": 3,
-  "one": 1,
-  "two": 2
+  "two": 2,
+  "one": 1
 }
 [should_be_1 set{number}]
 should_be_1 = ret {

@@ -77,6 +77,7 @@
         },
         "type": "function"
       },
+      "infix": "&",
       "name": "and"
     },
     {
@@ -103,7 +104,6 @@
         },
         "type": "function"
       },
-      "infix": "&",
       "name": "and"
     },
     {

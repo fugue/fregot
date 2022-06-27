@@ -1,9 +1,9 @@
 repl% repl% fregot.tests.repl.input_doc% = {
-  "1": {
+  "2": {
     "type": "security_group",
     "attributes": {}
   },
-  "2": {
+  "1": {
     "type": "security_group",
     "attributes": {}
   }

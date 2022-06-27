@@ -6,8 +6,8 @@ fregot (typecheck error):
          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
   Cannot use type object{
-    "bar": boolean,
     "baz": number,
+    "bar": boolean,
     "foo": boolean
   } as object{any: boolean}|array{number: boolean}|set{boolean}
 
@@ -19,7 +19,7 @@ fregot (typecheck error):
          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
   Cannot use type object{
-    "bar": boolean,
     "baz": number,
+    "bar": boolean,
     "foo": boolean
   } as object{any: boolean}|array{number: boolean}|set{boolean}

@@ -1,19 +1,19 @@
 [mock_input object{"exposed": array{
   0: object{
-    "port": number,
-    "interface": string
+    "interface": string,
+    "port": number
   },
   1: object{
-    "port": number,
-    "interface": string
+    "interface": string,
+    "port": number
   },
   2: object{
-    "port": number,
-    "interface": string
+    "interface": string,
+    "port": number
   },
   3: object{
-    "port": number,
-    "interface": string
+    "interface": string,
+    "port": number
   }
 }}]
 mock_input = {"exposed": [
