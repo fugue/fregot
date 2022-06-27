@@ -5,16 +5,12 @@
 
 packages:
 - completed:
-    name: goldplate
-    version: 0.2.1
-    git: https://github.com/fugue/goldplate.git
+    hackage: goldplate-0.2.0@sha256:74ff4bc324eb3b3e1e9b91acc9e38ccd803f5186b9418de3b2a2d524b4f72a40,1831
     pantry-tree:
-      size: 2689
-      sha256: fbd30fc1b6e3c05ff924b91dc5402120af4b0c9aa7e09f0cbf1e9ed0e331a834
-    commit: 0ebf8fc353e518acf1f7eebcab3d733ed1031b1e
+      size: 391
+      sha256: 9fdb7b3c10645bd2623d6a759a49c22a4091ddf2586590756933891c77fd7cb5
   original:
-    git: https://github.com/fugue/goldplate.git
-    commit: 0ebf8fc353e518acf1f7eebcab3d733ed1031b1e
+    hackage: goldplate-0.2.0
 snapshots:
 - completed:
     size: 619158
