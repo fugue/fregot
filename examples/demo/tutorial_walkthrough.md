@@ -10,7 +10,7 @@ whether AWS EC2 instances in a Terraform plan use AMIs from an approved list.
 - `git clone https://github.com/fugue/fregot.git` 
 - `cd fregot/examples/demo`
 - [Install 
-fregot](https://github.com/fugue/fregot/blob/master/README.md#installation)
+fregot](https://github.com/fugue/fregot/blob/main/README.md#installation)
 
 ### Optional Steps
 
@@ -59,7 +59,7 @@ jq:](https://www.terraform.io/docs/commands/show.html)
 
 Let's start by validating the Terraform plan JSON against the Rego policy. We'll
 use [`fregot
-eval`](https://github.com/fugue/fregot/blob/master/README.md#fregot-eval) to
+eval`](https://github.com/fugue/fregot/blob/main/README.md#fregot-eval) to
 specify the input file (`repl_demo_input.json`), the function we want to
 evaluate (`data.fregot.examples.demo.deny`), and the Rego file it is in
 (`demo.rego`):
