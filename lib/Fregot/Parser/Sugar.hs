@@ -267,7 +267,7 @@ expr = Parsec.buildExpressionParser
         (do
             startI <- Indent.indentation
             t <- term
-            ras <- Parsec.option [] $ Indent.same startI >> Parsec.many refArg
+            ras <- Parsec.option [] $ Parsec.many1 $ Indent.same startI >> refArg
             case ras of
                 [] -> pure $ \ss -> TermE ss t
                 _ : _ -> pure $ \ss -> IndRefE ss t ras)
@@ -282,7 +282,7 @@ term = withSourceSpan $
     (do
         startI   <- Indent.indentation
         (v, vss) <- withSourceSpan $ var >>= \v -> return $ \vss -> (v, vss)
-        refArgs  <- Parsec.option [] $ Indent.same startI >> Parsec.many refArg
+        refArgs  <- Parsec.option [] $ Parsec.many1 $ Indent.same startI >> refArg
 
         let isDotArg (RefDotArg _ _) = True
             isDotArg (RefBrackArg _) = False
@@ -328,6 +328,11 @@ refArg =
     (do
         Tok.symbol Tok.TLBracket
         e <- expr
+        Parsec.option () $ do
+            -- Don't call expectToken if there is a comma because then we will
+            -- really mess up the parse state here.
+            Tok.symbol Tok.TComma
+            Parsec.unexpected "token, expecting ]"
         expectToken Tok.TRBracket
         return $ RefBrackArg e) <|>
     (withSourceSpan $ do
