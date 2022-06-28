@@ -11,6 +11,17 @@ packages:
       sha256: 9fdb7b3c10645bd2623d6a759a49c22a4091ddf2586590756933891c77fd7cb5
   original:
     hackage: goldplate-0.2.0
+- completed:
+    name: regexp
+    version: 0.1.0.0
+    git: https://github.com/jaspervdj/regexp.git
+    pantry-tree:
+      size: 2241
+      sha256: b081239d7a9891c6d9d530117f9fd6eeca8fe25638383c280045531b0bc51339
+    commit: 294f1822cde271d1a2f81c531a748037cc02f855
+  original:
+    git: https://github.com/jaspervdj/regexp.git
+    commit: 294f1822cde271d1a2f81c531a748037cc02f855
 snapshots:
 - completed:
     size: 619158

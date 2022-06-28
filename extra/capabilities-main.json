@@ -1509,6 +1509,23 @@
         "args": [
           {
             "type": "string"
+          },
+          {
+            "type": "string"
+          }
+        ],
+        "result": {
+          "type": "boolean"
+        },
+        "type": "function"
+      },
+      "name": "regex.globs_match"
+    },
+    {
+      "decl": {
+        "args": [
+          {
+            "type": "string"
           }
         ],
         "result": {
