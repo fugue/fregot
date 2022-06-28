@@ -10,6 +10,8 @@ packages:
 extra-deps:
 - './packages/pcre-simple'
 - 'goldplate-0.2.0'
+- git: 'https://github.com/jaspervdj/regexp.git'
+  commit: '294f1822cde271d1a2f81c531a748037cc02f855'
 
 nix:
   packages: ['zlib.dev', 'zlib.out']
