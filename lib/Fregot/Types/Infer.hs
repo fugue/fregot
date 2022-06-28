@@ -524,13 +524,18 @@ inferTerm (RefT source lhs rhs) = do
             unifyTermType source rhs (Types.unknown, NonEmpty.singleton source)
             return (Types.unknown, NonEmpty.singleton source)
 
-        (Types.Union opts, _) -> case NonEmpty.fromList (HS.toList opts) of
-            Nothing    -> fatal $ CannotRef source lhsTy
-            Just nopts -> do
-                (keytys, valtys) <- fmap NonEmpty.unzip $
-                    mapM (inferElemRef lhsTy) nopts
-                unifyTermType source rhs (mergeSourceTypes keytys)
-                return $ mergeSourceTypes valtys
+        (Types.Union opts, _) -> do
+            keyValTys <- fmap catMaybes $ forM (HS.toList opts) $ \opt ->
+                catching
+                    (\errs -> if null errs then Nothing else Just errs)
+                    (Just <$> inferElemRef lhsTy opt)
+                    (\_ -> pure Nothing)
+            case NonEmpty.fromList keyValTys of
+                Nothing -> fatal $ CannotRef source lhsTy
+                Just nkeyValTys -> do
+                    let (keytys, valtys) = NonEmpty.unzip nkeyValTys
+                    unifyTermType source rhs (mergeSourceTypes keytys)
+                    return $ mergeSourceTypes valtys
 
   where
     inferElemRef
