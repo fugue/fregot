@@ -364,7 +364,8 @@ foundRegoFilePath (DestinationPrefix _ (Nothing,  path)) = path
 foundRegoFilePath (DestinationPrefix _ (Just dir, path)) = dir </> path
 
 foundRegoFilePrefix :: FoundRegoFile -> PackageName
-foundRegoFilePrefix (DestinationPrefix prefix (_, path)) =
+foundRegoFilePrefix (DestinationPrefix prefix (Nothing, _)) = prefix
+foundRegoFilePrefix (DestinationPrefix prefix (Just _, path)) =
     prefix <> inferred
   where
     inferred = fromMaybe mempty . packageNameFromPieces $

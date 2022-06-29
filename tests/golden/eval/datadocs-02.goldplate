@@ -1,0 +1,10 @@
+{
+    "command": "fregot",
+    "arguments": [
+        "eval", "data", "nest:dir1"
+    ],
+    "asserts": [
+        {"exit_code": 0},
+        {"stdout": "${GOLDPLATE_NAME}.stdout"}
+    ]
+}
