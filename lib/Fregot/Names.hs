@@ -53,6 +53,10 @@ module Fregot.Names
     , parseDestinationPrefix
     , unparseDestinationPrefix
     , hasDestinationPrefix
+
+    , FoundRegoFile
+    , parseFoundRegoFile
+    , foundRegoFilePath
     ) where
 
 import           Control.Comonad       (Comonad (..))
@@ -77,7 +81,7 @@ import qualified Fregot.PrettyPrint    as PP
 import           GHC.Generics          (Generic)
 import           System.FilePath       (dropTrailingPathSeparator, isRelative,
                                         joinPath, splitExtension, splitPath,
-                                        (<.>))
+                                        (<.>), (</>))
 import           System.IO.Unsafe      (unsafePerformIO)
 
 data PackageName = PackageName {-# UNPACK #-} !Unique ![T.Text]
@@ -347,3 +351,12 @@ unparseDestinationPrefix (DestinationPrefix pkg fp)
 
 hasDestinationPrefix :: DestinationPrefix a -> Bool
 hasDestinationPrefix (DestinationPrefix pkg _) = pkg /= mempty
+
+type FoundRegoFile = DestinationPrefix (Maybe FilePath, FilePath)
+
+parseFoundRegoFile :: T.Text -> FoundRegoFile
+parseFoundRegoFile = fmap ((,) Nothing) . parseDestinationPrefix
+
+foundRegoFilePath :: FoundRegoFile -> FilePath
+foundRegoFilePath (DestinationPrefix _ (Nothing,  path)) = path
+foundRegoFilePath (DestinationPrefix _ (Just dir, path)) = dir </> path
