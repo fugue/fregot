@@ -57,6 +57,7 @@ module Fregot.Names
     , FoundRegoFile
     , parseFoundRegoFile
     , foundRegoFilePath
+    , foundRegoFilePrefix
     ) where
 
 import           Control.Comonad       (Comonad (..))
@@ -71,6 +72,7 @@ import           Data.Binary           (Binary)
 import qualified Data.Binary           as Binary
 import           Data.Hashable         (Hashable (..))
 import qualified Data.List             as L
+import           Data.Maybe            (fromMaybe)
 import           Data.String           (IsString (..))
 import qualified Data.Text.Extended    as T
 import           Data.Unique           (HasUnique (..), Unique, Uniquely (..))
@@ -79,9 +81,9 @@ import qualified Data.Vector           as V
 import qualified Fregot.Lexer.Internal as Lexer
 import qualified Fregot.PrettyPrint    as PP
 import           GHC.Generics          (Generic)
-import           System.FilePath       (dropTrailingPathSeparator, isRelative,
-                                        joinPath, splitExtension, splitPath,
-                                        (<.>), (</>))
+import           System.FilePath       (dropFileName, dropTrailingPathSeparator,
+                                        isRelative, joinPath, splitExtension,
+                                        splitPath, (<.>), (</>))
 import           System.IO.Unsafe      (unsafePerformIO)
 
 data PackageName = PackageName {-# UNPACK #-} !Unique ![T.Text]
@@ -360,3 +362,12 @@ parseFoundRegoFile = fmap ((,) Nothing) . parseDestinationPrefix
 foundRegoFilePath :: FoundRegoFile -> FilePath
 foundRegoFilePath (DestinationPrefix _ (Nothing,  path)) = path
 foundRegoFilePath (DestinationPrefix _ (Just dir, path)) = dir </> path
+
+foundRegoFilePrefix :: FoundRegoFile -> PackageName
+foundRegoFilePrefix (DestinationPrefix prefix (_, path)) =
+    prefix <> inferred
+  where
+    inferred = fromMaybe mempty . packageNameFromPieces $
+        map T.pack . filter (not . null) .
+        map dropTrailingPathSeparator . splitPath $
+        dropFileName path

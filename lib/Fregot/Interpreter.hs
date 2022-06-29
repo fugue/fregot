@@ -275,7 +275,7 @@ loadData
         => PackageName -> SourcePointer -> T.Text
         -> ParachuteT Error m Prepare.PreparedTree)
     -> InterpreterM ()
-loadData h found@(DestinationPrefix destination _) mkTree = do
+loadData h found mkTree = do
     canonical <- catchIO $ liftIO $ canonicalizePath path
     input     <- catchIO $ T.readFile path
     liftIO $ IORef.atomicModifyIORef_ (h ^. sources) $
@@ -288,8 +288,9 @@ loadData h found@(DestinationPrefix destination _) mkTree = do
             Just t  -> (HMS.insert canonical tree ys, Tree.keys t)
     evictRules h $ mapMaybe (preview qualifiedVarFromKey) oldRules
   where
-    path    = foundRegoFilePath found
-    sourcep = Sources.FileInput path
+    destination = foundRegoFilePrefix found
+    path        = foundRegoFilePath found
+    sourcep     = Sources.FileInput path
 
 loadYaml
     :: Handle -> FoundRegoFile -> InterpreterM ()
