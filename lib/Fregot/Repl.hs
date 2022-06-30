@@ -98,10 +98,7 @@ data Config = Config
 data Handle = Handle
     { _config        :: !Config
     , _sources       :: !Sources.Handle
-    -- | The 'PackageName' here is the prefix for the files.  This should
-    -- be 'mempty' for most rego files, but may be filled for JSON or YAML
-    -- files.
-    , _fileWatch     :: !(FileWatch.Handle PackageName)
+    , _fileWatch     :: !(FileWatch.Handle FoundRegoFile)
     -- | Stored in an MVar so we have a mutex.
     , _interpreter   :: !(MVar Interpreter.Handle)
     , _replCount     :: !(IORef Int)
@@ -137,7 +134,7 @@ defaultConfig = do
 withHandle
     :: Config
     -> Sources.Handle
-    -> FileWatch.Handle PackageName
+    -> FileWatch.Handle FoundRegoFile
     -> Interpreter.Handle
     -> (Handle -> IO a)
     -> IO a
@@ -481,12 +478,13 @@ metaCommands =
     , MetaCommand ":load" "load a rego file, e.g. `:load foo.rego`" $ \h args ->
         case args of
         [arg] -> do
-            let ppath@(DestinationPrefix pkg path) = parseDestinationPrefix arg
+            let found = parseFoundRegoFile arg
+                path  = foundRegoFilePath found
             IO.hPutStrLn IO.stderr $ "Loading " ++ path ++ "..."
-            FileWatch.watch (h ^. fileWatch) path pkg
+            FileWatch.watch (h ^. fileWatch) path found
             void $ runInterpreter h $ \i -> do
                 mbPkg <- Interpreter.loadFileByExtension i
-                    Parser.defaultParserOptions ppath
+                    Parser.defaultParserOptions found
                 Interpreter.compileRules i
                 case mbPkg of
                     Nothing -> liftIO $ IO.hPutStrLn IO.stderr "OK"
@@ -618,7 +616,7 @@ data Reload
     | ReloadRefusedDebug
     deriving (Eq)
 
-reload :: Handle -> [(FilePath, PackageName)] -> IO Reload
+reload :: Handle -> [(FilePath, FoundRegoFile)] -> IO Reload
 reload h paths = guarded $ runInterpreter h $ \i -> do
     -- Separate input and normal paths.
     mbInput <- liftIO $ IORef.readIORef (h ^. inputPath)
@@ -628,9 +626,8 @@ reload h paths = guarded $ runInterpreter h $ \i -> do
         Interpreter.setInputFile i input
         liftIO $ IO.hPutStrLn IO.stderr $ "Reloaded " ++ input
 
-    let prefixed = [DestinationPrefix pkg path | (path, pkg) <- regoPaths]
-    forM_ prefixed $ \path ->
-        Interpreter.loadFileByExtension i Parser.defaultParserOptions path
+    forM_ paths $ \(_, found) ->
+        Interpreter.loadFileByExtension i Parser.defaultParserOptions found
     Interpreter.compileRules i
     liftIO $ case regoPaths of
         [] -> pure ()
@@ -652,7 +649,8 @@ setInputFile h path = do
     for_ mbOld $ \old -> FileWatch.unwatch (h ^. fileWatch) old
     void $ runInterpreter h (`Interpreter.setInputFile` path)
     IORef.writeIORef (h ^. inputPath) (Just path)
-    FileWatch.watch (h ^. fileWatch) path mempty
+    FileWatch.watch (h ^. fileWatch) path $
+        DestinationPrefix mempty (Nothing, path)
 
 completeBuiltins :: Handle -> Hl.CompletionFunc IO
 completeBuiltins h = Hl.completeDictionary completeWhitespace $ do

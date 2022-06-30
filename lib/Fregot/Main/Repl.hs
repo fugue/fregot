@@ -83,9 +83,9 @@ main gopts opts = do
         Repl.withHandle replConfig sources fileWatch itpr $ \repl -> do
         (lerrs, mbResult) <- runParachuteT $ do
             forM_ (opts ^. input) $ liftIO . Repl.setInputFile repl
-            forM_ regoPaths $ \path@(DestinationPrefix pkg fp) -> do
-                liftIO $ FileWatch.watch fileWatch fp pkg
-                Interpreter.loadFileByExtension itpr defaultParserOptions path
+            forM_ regoPaths $ \found -> do
+                liftIO $ FileWatch.watch fileWatch (foundRegoFilePath found) found
+                Interpreter.loadFileByExtension itpr defaultParserOptions found
             Interpreter.compileRules itpr
         sauce <- IORef.readIORef sources
         Error.hPutErrors IO.stderr sauce Error.Text lerrs
