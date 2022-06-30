@@ -12,16 +12,16 @@ packages:
   original:
     hackage: goldplate-0.2.0
 - completed:
-    name: regexp
+    name: glob-intersection
     version: 0.1.0.0
-    git: https://github.com/jaspervdj/regexp.git
+    git: https://github.com/jaspervdj/glob-intersection.git
     pantry-tree:
-      size: 2241
-      sha256: b081239d7a9891c6d9d530117f9fd6eeca8fe25638383c280045531b0bc51339
-    commit: 294f1822cde271d1a2f81c531a748037cc02f855
+      size: 563
+      sha256: 9e48b2185f48cc03edb77fd135ef694006d17fbd4e6e4ef1df5d16350d2af9db
+    commit: 8f06cb21d4943e7473f7a41e4e621fa5d51e9606
   original:
-    git: https://github.com/jaspervdj/regexp.git
-    commit: 294f1822cde271d1a2f81c531a748037cc02f855
+    git: https://github.com/jaspervdj/glob-intersection.git
+    commit: 8f06cb21d4943e7473f7a41e4e621fa5d51e9606
 snapshots:
 - completed:
     size: 619158
