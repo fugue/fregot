@@ -23,6 +23,7 @@ import qualified Fregot.Error              as Error
 import qualified Fregot.Find               as Find
 import qualified Fregot.Interpreter        as Interpreter
 import           Fregot.Main.GlobalOptions
+import           Fregot.Names
 import qualified Fregot.Parser             as Parser
 import qualified Fregot.Sources            as Sources
 import qualified Options.Applicative       as OA
@@ -31,7 +32,7 @@ import qualified System.IO                 as IO
 
 data Options = Options
     { _output :: !FilePath
-    , _paths  :: [FilePath]
+    , _paths  :: [DestinationPrefix FilePath]
     } deriving (Show)
 
 $(makeLenses ''Options)
@@ -43,7 +44,7 @@ parseOptions = Options
             OA.long    "output" <>
             OA.metavar "BUNDLE" <>
             OA.help    "Path of output file")
-    <*> (OA.some $ OA.strArgument $
+    <*> (OA.some $ fmap parseDestinationPrefix $ OA.strArgument $
             OA.metavar "PATHS" <>
             OA.help    "Rego files or directories to bundle")
 
@@ -53,10 +54,10 @@ main gopts opts = do
     interpreter <- Interpreter.newHandle
         (Interpreter.defaultConfig {Interpreter._dumpTags = gopts ^. dumpTags})
         sources
-    regoPaths <- concat <$> traverse Find.findRegoFiles (opts ^. paths)
+    regoPaths <- Find.findPrefixedRegoFiles (opts ^. paths)
     (errors, _) <- Parachute.runParachuteT $ do
         forM_ regoPaths $ \path -> Interpreter.loadModule interpreter
-            Parser.defaultParserOptions path
+            Parser.defaultParserOptions (foundRegoFilePath path)
         Interpreter.saveBundle interpreter (opts ^. output)
 
     sources' <- IORef.readIORef sources
